@@ -69,15 +69,16 @@ The GUI is being split gradually so behavior remains stable while helper logic b
 
 ```text
 gui/app.py            public GUI entry point; exports ScopeGui
-gui/stateful_window.py preference-enabled wrapper around the active window
+gui/stateful_window.py preference-enabled wrapper and helper-method override layer
 gui/main_window.py    active Tkinter window implementation
 gui/runner.py         console-script and python -m entry point
 gui/config.py         output folder and filename generation helpers
+gui/connection_ui.py  connection resource, timeout, and trigger form validation helpers
 gui/image_preview.py  preview sizing/subsampling helpers
 gui/preferences.py    persistent GUI preference load/save helpers
 ```
 
-The public `ScopeGui` class now comes from `stateful_window.py`, so the app loads preferences at startup and saves them after edits and on window close. The large `main_window.py` implementation remains available for controlled incremental extraction.
+The public `ScopeGui` class now comes from `stateful_window.py`, so the app loads preferences at startup, saves them after edits and on window close, and routes connection/resource/path/preview-size calculations through testable helper modules. The large `main_window.py` implementation remains available for controlled incremental extraction.
 
 ## Tests
 
