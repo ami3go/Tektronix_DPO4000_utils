@@ -1,0 +1,57 @@
+name: Build GUI Executables
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    name: Windows EXE
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Build Windows EXE
+        shell: cmd
+        run: scripts\build_windows_exe.bat
+
+      - name: Upload Windows EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: TektronixScopeGUI-windows
+          path: dist/TektronixScopeGUI.exe
+          if-no-files-found: error
+
+  build-linux:
+    name: Linux executable
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install Tk runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-tk tk
+
+      - name: Build Linux executable
+        run: bash scripts/build_linux_executable.sh
+
+      - name: Upload Linux executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: TektronixScopeGUI-linux
+          path: dist/TektronixScopeGUI
+          if-no-files-found: error
