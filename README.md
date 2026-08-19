@@ -7,6 +7,7 @@ Python utilities and a Tkinter GUI for Tektronix DPO4000-family oscilloscopes, d
 - USB/VISA and Ethernet VISA resource support.
 - Read and write CH1..CH4 channel labels.
 - Capture the scope screen as PNG and preview it in the GUI.
+- Copy the latest captured preview image to the system clipboard with `Ctrl+C`.
 - Export enabled channel waveform data to CSV.
 - Save and restore oscilloscope settings through Tektronix SCPI setup strings.
 - Set and read A trigger level from the GUI.
@@ -57,7 +58,8 @@ The package now uses a root package layout: `dpo4000_utils/` is directly in the 
 
 3. **Capture screen and waveform data**
    - Click **Capture PNG** to read a scope hardcopy and save it to the configured output folder.
-   - The GUI preview updates from the saved PNG.
+   - The GUI preview updates from the saved PNG and receives keyboard focus.
+   - Press `Ctrl+C` while the preview is focused, or click **Copy preview**, to copy the latest saved PNG image to the system clipboard.
    - Click **Save CSV** to export all enabled channel waveforms into one CSV file.
    - The CSV path uses the shared waveform driver helpers, including enabled-channel detection and voltage scaling.
 
@@ -180,6 +182,7 @@ gui/app.py              public GUI entry point; exports ScopeGui
 gui/scope_gui.py        active flattened ScopeGui class
 gui/base_window.py      historical base window implementation
 gui/main_window.py      compatibility shim for older imports
+gui/clipboard.py        platform image clipboard helpers for preview copy
 gui/connection_panel.py extracted Connection tab builder
 gui/channels_panel.py   extracted Channels tab builder
 gui/trigger_panel.py    extracted Trigger tab builder
