@@ -35,6 +35,11 @@ where = ["src"]
 [tool.setuptools.package-data]
 "dpo4000_utils.gui" = ["*.ico", "*.png"]
 
+[tool.pytest.ini_options]
+markers = [
+    "hardware: tests that require a connected Tektronix DPO4000-family oscilloscope and VISA runtime",
+]
+
 [tool.ruff]
 line-length = 100
 target-version = "py310"
