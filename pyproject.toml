@@ -26,18 +26,18 @@ build = [
 dpo4000-gui = "dpo4000_utils.gui.runner:main"
 
 [tool.setuptools]
-package-dir = {"" = "src"}
 py-modules = ["tektronix_utils"]
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["."]
+include = ["dpo4000_utils*"]
 
 [tool.setuptools.package-data]
 "dpo4000_utils.gui" = ["*.ico", "*.png"]
 
 [tool.pytest.ini_options]
 markers = [
-    "hardware: tests that require a connected Tektronix DPO4000-family oscilloscope and VISA runtime",
+    "hardware: tests that require a connected Tektronix DPO4000-family oscilloscope",
 ]
 
 [tool.ruff]
