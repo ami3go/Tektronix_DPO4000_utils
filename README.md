@@ -57,30 +57,31 @@ The driver is split into focused modules while keeping the public `DPO4054` API 
 connection.py   VISA session lifecycle and USB/Ethernet resource helpers
 settings.py     JSON save/restore helpers, setup validation, and restore error handling
 hardcopy.py     PNG screen capture, SCPI block cleanup, validation, and file save helpers
-waveform.py     waveform acquisition and CSV export
+waveform.py     waveform acquisition, scaling, enabled-channel discovery, and CSV export
 channels.py     channel labels and simple measurements
 trigger.py      acquisition and A-trigger helpers
 instrument.py   DPO4000Scope / DPO4054 classes composed from mixins
 ```
 
-The GUI screenshot path uses `hardcopy.py`, and the GUI settings restore path uses `settings.py`, so transfer, validation, and diagnostic behavior are shared between scripts and the GUI.
+The GUI screenshot path uses `hardcopy.py`, the GUI settings restore path uses `settings.py`, and the GUI CSV export path uses `waveform.py`, so transfer, validation, scaling, and diagnostic behavior are shared between scripts and the GUI.
 
 ## GUI modules
 
 The GUI is being split gradually so behavior remains stable while helper logic becomes testable:
 
 ```text
-gui/app.py            public GUI entry point; exports ScopeGui
+gui/app.py             public GUI entry point; exports ScopeGui
+gui/waveform_window.py waveform-aware wrapper for shared CSV export
 gui/stateful_window.py preference-enabled wrapper and helper-method override layer
-gui/main_window.py    active Tkinter window implementation
-gui/runner.py         console-script and python -m entry point
-gui/config.py         output folder and filename generation helpers
-gui/connection_ui.py  connection resource, timeout, and trigger form validation helpers
-gui/image_preview.py  preview sizing/subsampling helpers
-gui/preferences.py    persistent GUI preference load/save helpers
+gui/main_window.py     active Tkinter window implementation
+gui/runner.py          console-script and python -m entry point
+gui/config.py          output folder and filename generation helpers
+gui/connection_ui.py   connection resource, timeout, and trigger form validation helpers
+gui/image_preview.py   preview sizing/subsampling helpers
+gui/preferences.py     persistent GUI preference load/save helpers
 ```
 
-The public `ScopeGui` class now comes from `stateful_window.py`, so the app loads preferences at startup, saves them after edits and on window close, and routes connection/resource/path/preview-size/image-capture/settings-restore calculations through testable helper modules. The large `main_window.py` implementation remains available for controlled incremental extraction.
+The public `ScopeGui` class now comes from `waveform_window.py`, layering CSV export on top of the preference-enabled wrapper. The app loads preferences at startup, saves them after edits and on window close, and routes connection/resource/path/preview-size/image-capture/settings-restore/waveform-export calculations through testable helper modules. The large `main_window.py` implementation remains available for controlled incremental extraction.
 
 ## Tests
 
