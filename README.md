@@ -73,6 +73,7 @@ The GUI is being split gradually so behavior remains stable while helper logic b
 gui/app.py              public GUI entry point; exports ScopeGui
 gui/sectioned_window.py wrapper that delegates individual UI sections to extracted builders
 gui/connection_panel.py extracted Connection tab builder
+gui/trigger_panel.py    extracted Trigger tab builder
 gui/waveform_window.py  waveform-aware wrapper for shared CSV export
 gui/stateful_window.py  preference-enabled wrapper and helper-method override layer
 gui/main_window.py      legacy monolithic Tkinter window implementation
@@ -83,7 +84,7 @@ gui/image_preview.py    preview sizing/subsampling helpers
 gui/preferences.py      persistent GUI preference load/save helpers
 ```
 
-The public `ScopeGui` class now comes from `sectioned_window.py`, layering the extracted Connection tab builder on top of the waveform-aware and preference-enabled wrappers. The app loads preferences at startup, saves them after edits and on window close, and routes connection/resource/path/preview-size/image-capture/settings-restore/waveform-export calculations through testable helper modules. The large `main_window.py` implementation remains available for controlled incremental extraction of the remaining tabs.
+The public `ScopeGui` class now comes from `sectioned_window.py`, layering the extracted Connection and Trigger tab builders on top of the waveform-aware and preference-enabled wrappers. The app loads preferences at startup, saves them after edits and on window close, and routes connection/resource/path/preview-size/image-capture/settings-restore/waveform-export calculations through testable helper modules. The large `main_window.py` implementation remains available for controlled incremental extraction of the remaining tabs.
 
 ## Tests
 
