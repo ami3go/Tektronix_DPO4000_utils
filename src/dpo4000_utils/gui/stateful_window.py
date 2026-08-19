@@ -14,6 +14,7 @@ from typing import Iterable
 
 import tkinter as tk
 
+from ..hardcopy import save_screen_png
 from .config import FileNaming, build_output_path as build_config_output_path, resolve_output_folder, safe_filename_part
 from .connection_ui import (
     build_ethernet_resource,
@@ -151,6 +152,14 @@ class PersistentScopeGui(BaseScopeGui):
 
         size = usable_preview_size(width, height)
         return size.width, size.height
+
+    # ------------------------------------------------------------------
+    # Extracted hardcopy capture helper
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _save_scope_image_png_robust(scope, path: Path) -> Path:
+        """Save a scope screenshot using the shared driver hardcopy helper."""
+        return save_screen_png(getattr(scope, "scope", None), path)
 
     # ------------------------------------------------------------------
     # Preference persistence
