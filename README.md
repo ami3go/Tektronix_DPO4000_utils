@@ -102,6 +102,20 @@ scope.set_trigger_level(1.0, channel=1)
 
 The hardware API tests are skipped unless explicitly enabled. The default hardware suite is read-mostly and checks connection, `*IDN?`, channel-label reads, trigger-level reads, and `*ESR?` status access.
 
+Recommended Windows PowerShell setup from a checkout:
+
+```powershell
+py -3.13 -m pip install --upgrade pip
+py -3.13 -m pip install -e .[dev]
+$env:DPO4000_HARDWARE = "1"
+$env:DPO4000_RESOURCE = "USB0::0x0699::0x0401::C011280::INSTR"
+py -3.13 -m pytest -q -m hardware tests/hardware
+```
+
+Direct `pytest` from a checkout is also supported by `tests/conftest.py`, which adds `src/` to `sys.path` for test collection. Editable install is still recommended because it also verifies package metadata and console scripts.
+
+Linux/macOS shell equivalent:
+
 ```bash
 DPO4000_HARDWARE=1 \
 DPO4000_RESOURCE='USB0::0x0699::0x0401::C011280::INSTR' \
@@ -110,12 +124,12 @@ pytest -q -m hardware tests/hardware
 
 The optional label write/restore test changes one channel label, verifies it, and restores the previous value. Enable it only on a bench scope where this is acceptable:
 
-```bash
-DPO4000_HARDWARE=1 \
-DPO4000_ENABLE_WRITE_TESTS=1 \
-DPO4000_TEST_CHANNEL=1 \
-DPO4000_RESOURCE='USB0::0x0699::0x0401::C011280::INSTR' \
-pytest -q -m hardware tests/hardware
+```powershell
+$env:DPO4000_HARDWARE = "1"
+$env:DPO4000_ENABLE_WRITE_TESTS = "1"
+$env:DPO4000_TEST_CHANNEL = "1"
+$env:DPO4000_RESOURCE = "USB0::0x0699::0x0401::C011280::INSTR"
+py -3.13 -m pytest -q -m hardware tests/hardware
 ```
 
 The manual GitHub Actions workflow named **Hardware API Tests** is intended for a self-hosted runner connected to the oscilloscope and labeled `self-hosted` and `dpo4000`.
