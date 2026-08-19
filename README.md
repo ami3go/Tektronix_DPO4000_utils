@@ -98,9 +98,17 @@ pip install -e .[dev]
 pytest -q
 ```
 
-Hardware operations still require a connected scope and VISA runtime.
+Hardware API tests are opt-in and require a connected DPO4000-family scope plus a VISA runtime:
 
-GitHub Actions runs the pure test suite on Python 3.10, 3.11, 3.12, and 3.13 for pushes and pull requests targeting `main`.
+```bash
+DPO4000_HARDWARE=1 \
+DPO4000_RESOURCE='USB0::0x0699::0x0401::C011280::INSTR' \
+pytest -q -m hardware tests/hardware
+```
+
+The hardware suite checks connection, `*IDN?`, channel-label read API, trigger-level read API, and SCPI status access. A label write/restore test is available only when `DPO4000_ENABLE_WRITE_TESTS=1` is set. See `docs/hardware-api-tests.md` for bench setup and the manual self-hosted GitHub Actions workflow.
+
+GitHub Actions runs the pure test suite on Python 3.10, 3.11, 3.12, and 3.13 for pushes and pull requests targeting `main`. Hardware tests are run only by the manual `Hardware API Tests` workflow on a self-hosted runner with access to the oscilloscope.
 
 ## Build a Windows executable
 
