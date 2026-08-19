@@ -11,6 +11,7 @@ Python utilities and a Tkinter GUI for Tektronix DPO4000-family oscilloscopes, d
 - Save and restore oscilloscope settings through Tektronix SCPI setup strings.
 - Set and read A trigger level from the GUI.
 - Short-lived VISA sessions in the GUI so other scope software is not blocked while idle.
+- Persistent GUI preference helpers for last-used resources, output folders, naming settings, and trigger options.
 
 ## Requirements
 
@@ -64,17 +65,16 @@ instrument.py   DPO4000Scope / DPO4054 classes composed from mixins
 
 ## GUI modules
 
-The GUI entry point is now separated from the main window implementation:
+The GUI is being split gradually so behavior remains stable while helper logic becomes testable:
 
 ```text
-gui/app.py          small public GUI entry point
-gui/main_window.py  Tkinter main window implementation
-gui/config.py       testable output-folder and filename helpers
-gui/image_preview.py testable preview sizing helpers
-gui/runner.py       console-script adapter for dpo4000-gui
+gui/app.py          public GUI entry point
+gui/main_window.py  active Tkinter window implementation
+gui/runner.py       console-script and python -m entry point
+gui/config.py       output folder and filename generation helpers
+gui/image_preview.py preview sizing/subsampling helpers
+gui/preferences.py  persistent GUI preference load/save helpers
 ```
-
-The next GUI refactor step can migrate logic from `main_window.py` into these helper modules incrementally without changing the public entry point.
 
 ## Tests
 
@@ -86,6 +86,8 @@ pytest -q
 ```
 
 Hardware operations still require a connected scope and VISA runtime.
+
+GitHub Actions runs the pure test suite on Python 3.10, 3.11, 3.12, and 3.13 for pushes and pull requests targeting `main`.
 
 ## Build a Windows executable
 
