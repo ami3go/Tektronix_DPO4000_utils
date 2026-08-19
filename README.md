@@ -56,12 +56,14 @@ The driver is split into focused modules while keeping the public `DPO4054` API 
 ```text
 connection.py   VISA session lifecycle and USB/Ethernet resource helpers
 settings.py     JSON save/restore for Tektronix setup strings
-hardcopy.py     PNG screen capture and SCPI block cleanup helpers
+hardcopy.py     PNG screen capture, SCPI block cleanup, validation, and file save helpers
 waveform.py     waveform acquisition and CSV export
 channels.py     channel labels and simple measurements
 trigger.py      acquisition and A-trigger helpers
 instrument.py   DPO4000Scope / DPO4054 classes composed from mixins
 ```
+
+The GUI screenshot path also uses `hardcopy.py`, so PNG transfer fixes and diagnostics are shared between scripts and the GUI.
 
 ## GUI modules
 
@@ -78,7 +80,7 @@ gui/image_preview.py  preview sizing/subsampling helpers
 gui/preferences.py    persistent GUI preference load/save helpers
 ```
 
-The public `ScopeGui` class now comes from `stateful_window.py`, so the app loads preferences at startup, saves them after edits and on window close, and routes connection/resource/path/preview-size calculations through testable helper modules. The large `main_window.py` implementation remains available for controlled incremental extraction.
+The public `ScopeGui` class now comes from `stateful_window.py`, so the app loads preferences at startup, saves them after edits and on window close, and routes connection/resource/path/preview-size/image-capture calculations through testable helper modules. The large `main_window.py` implementation remains available for controlled incremental extraction.
 
 ## Tests
 
