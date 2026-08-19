@@ -42,14 +42,36 @@ python -m dpo4000_utils.gui
 ```python
 from dpo4000_utils import DPO4054
 
-scope = DPO4054(auto_connect=True)
-try:
+with DPO4054(auto_connect=True) as scope:
     print(scope.scope.query("*IDN?").strip())
-finally:
-    scope.disconnect()
 ```
 
 Legacy scripts that use `from tektronix_utils import DPO4054` are supported by the top-level compatibility module.
+
+## Driver modules
+
+The driver is split into focused modules while keeping the public `DPO4054` API compatible:
+
+```text
+connection.py   VISA session lifecycle and USB/Ethernet resource helpers
+settings.py     JSON save/restore for Tektronix setup strings
+hardcopy.py     PNG screen capture and SCPI block cleanup helpers
+waveform.py     waveform acquisition and CSV export
+channels.py     channel labels and simple measurements
+trigger.py      acquisition and A-trigger helpers
+instrument.py   DPO4000Scope / DPO4054 classes composed from mixins
+```
+
+## Tests
+
+Pure helper tests do not require a real oscilloscope:
+
+```bash
+pip install -e .[dev]
+pytest -q
+```
+
+Hardware operations still require a connected scope and VISA runtime.
 
 ## Build a Windows executable
 
@@ -67,5 +89,6 @@ src/dpo4000_utils/gui/       active GUI application
 examples/                    small usage examples
 scripts/                     helper scripts, including PyInstaller build
 docs/                        usage and troubleshooting notes
+tests/                       pure helper tests without hardware dependency
 archive/gui_versions/        old GUI snapshots kept for reference
 ```
