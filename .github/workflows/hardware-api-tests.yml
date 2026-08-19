@@ -1,0 +1,60 @@
+name: Hardware API Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      visa_resource:
+        description: "VISA resource for the oscilloscope"
+        required: true
+        default: "USB0::0x0699::0x0401::C011280::INSTR"
+      expected_idn:
+        description: "Expected substring in *IDN? response"
+        required: false
+        default: "TEKTRONIX"
+      enable_write_tests:
+        description: "Enable tests that temporarily write and restore channel label"
+        required: true
+        type: boolean
+        default: false
+      test_channel:
+        description: "Channel used by optional write tests"
+        required: true
+        default: "1"
+
+jobs:
+  hardware-api:
+    name: DPO4000 hardware API pytest
+    runs-on: [self-hosted, dpo4000]
+    timeout-minutes: 15
+
+    env:
+      DPO4000_HARDWARE: "1"
+      DPO4000_RESOURCE: ${{ inputs.visa_resource }}
+      DPO4000_EXPECT_IDN: ${{ inputs.expected_idn }}
+      DPO4000_ENABLE_WRITE_TESTS: ${{ inputs.enable_write_tests }}
+      DPO4000_TEST_CHANNEL: ${{ inputs.test_channel }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .[dev]
+
+      - name: Show VISA resource
+        run: |
+          python - <<'PY'
+          import os
+          print("DPO4000_RESOURCE=", os.environ.get("DPO4000_RESOURCE"))
+          print("DPO4000_ENABLE_WRITE_TESTS=", os.environ.get("DPO4000_ENABLE_WRITE_TESTS"))
+          PY
+
+      - name: Run hardware API tests
+        run: pytest -q -m hardware tests/hardware
