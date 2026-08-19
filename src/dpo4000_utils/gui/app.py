@@ -1,13 +1,14 @@
 """Public GUI entry point.
 
-The large Tkinter main-window implementation lives in ``main_window.py``.
-Keeping this module small makes the package entry point easier to maintain while
-preserving existing imports such as ``from dpo4000_utils.gui.app import ScopeGui``.
+The large Tkinter main-window implementation lives in ``main_window.py``. The
+public entry point uses ``stateful_window.py`` so user preferences are loaded and
+saved without changing imports such as ``from dpo4000_utils.gui.app import
+ScopeGui``.
 """
 
 from __future__ import annotations
 
-from .main_window import ScopeGui
+from .stateful_window import PersistentScopeGui as ScopeGui
 
 __all__ = ["ScopeGui", "main"]
 
