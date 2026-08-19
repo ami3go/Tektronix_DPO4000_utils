@@ -7,6 +7,7 @@ from tkinter import ttk
 
 PREVIEW_TITLE = "Screen preview"
 PREVIEW_EMPTY_TEXT = "Press 'Capture preview' to read the current scope screen."
+PREVIEW_COPY_HINT = "After capture, press Ctrl+C while the preview is focused to copy the image."
 POST_IMAGE_TRIGGER_VALUES = ("", "1", "2", "3", "4")
 
 
@@ -25,9 +26,20 @@ def build_image_preview(gui, parent: tk.Widget) -> None:
         text=PREVIEW_EMPTY_TEXT,
         style="Card.TLabel",
         anchor="center",
+        takefocus=True,
     )
-    gui.preview_label.pack(fill=tk.BOTH, expand=True, padx=14, pady=(8, 8))
+    gui.preview_label.pack(fill=tk.BOTH, expand=True, padx=14, pady=(8, 4))
     gui.preview_label.bind("<Configure>", gui._on_preview_resize)
+    gui.preview_label.bind("<Button-1>", lambda event: event.widget.focus_set())
+    gui.preview_label.bind("<Control-c>", gui.copy_preview_to_clipboard)
+    gui.preview_label.bind("<Control-C>", gui.copy_preview_to_clipboard)
+
+    ttk.Label(
+        card,
+        text=PREVIEW_COPY_HINT,
+        style="Muted.TLabel",
+        anchor="center",
+    ).pack(fill=tk.X, padx=14, pady=(0, 8))
 
     build_preview_bottom_actions(gui, card)
 
@@ -63,6 +75,12 @@ def build_preview_bottom_actions(gui, parent: tk.Widget) -> None:
         fill=tk.X,
         expand=True,
     )
+    ttk.Button(buttons_row, text="Copy preview", command=gui.copy_preview_to_clipboard).pack(
+        side=tk.LEFT,
+        fill=tk.X,
+        expand=True,
+        padx=(8, 0),
+    )
     ttk.Button(buttons_row, text="Save PNG image...", command=gui.save_png_image).pack(
         side=tk.LEFT,
         fill=tk.X,
@@ -79,6 +97,7 @@ def build_preview_bottom_actions(gui, parent: tk.Widget) -> None:
 
 __all__ = [
     "POST_IMAGE_TRIGGER_VALUES",
+    "PREVIEW_COPY_HINT",
     "PREVIEW_EMPTY_TEXT",
     "PREVIEW_TITLE",
     "build_image_preview",
