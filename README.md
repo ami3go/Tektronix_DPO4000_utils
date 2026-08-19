@@ -38,6 +38,88 @@ or:
 python -m dpo4000_utils.gui
 ```
 
+## Interaction guide
+
+### GUI interaction flow
+
+1. **Select connection mode**
+   - Use **USB/VISA** for a discovered local VISA resource such as `USB0::0x0699::0x0401::C011280::INSTR`.
+   - Use **Ethernet** for a TCPIP resource generated from host, protocol, and port fields.
+   - Click **Refresh resources** to re-scan VISA resources.
+   - Click **Connect / IDN** to open a short-lived session and read `*IDN?`.
+
+2. **Work with channel labels**
+   - Use the Channels tab to read CH1..CH4 labels from the scope.
+   - Edit a label field and apply it to write the corresponding `CHn:LABEL` setting.
+   - Label changes are direct hardware writes.
+
+3. **Capture screen and waveform data**
+   - Click **Capture PNG** to read a scope hardcopy and save it to the configured output folder.
+   - The GUI preview updates from the saved PNG.
+   - Click **Save CSV** to export all enabled channel waveforms into one CSV file.
+   - The CSV path uses the shared waveform driver helpers, including enabled-channel detection and voltage scaling.
+
+4. **Use trigger controls**
+   - Read or set A trigger level from the Trigger tab.
+   - Trigger level accepts numeric volts and supported presets such as `TTL` or `ECL`.
+   - Optional re-arm behavior after image capture can be enabled in the settings.
+
+5. **Save and restore scope setup**
+   - Click **Save settings** to store the current scope setup as JSON.
+   - Click **Restore settings** to apply a saved JSON setup file back to the scope.
+   - Restore can optionally wait for `*OPC?`, but this may time out on some older DPO4000 firmware even when the setup has applied.
+
+6. **Configure output and preferences**
+   - Choose the output folder and filename prefixes/base names in the Settings tab.
+   - GUI preferences are persisted automatically after edits and again on window close.
+   - Stored preferences include resource selection, Ethernet settings, timeout, output folder, naming options, and trigger options.
+
+### Script/API interaction flow
+
+Use the driver directly when you want automation without the GUI:
+
+```python
+from dpo4000_utils import DPO4054
+
+with DPO4054("USB0::0x0699::0x0401::C011280::INSTR", auto_connect=True) as scope:
+    print(scope.scope.query("*IDN?").strip())
+    print(scope.get_channel_labels())
+    print(scope.get_trigger_level(channel=1))
+```
+
+Common API interactions:
+
+```python
+scope.save_image_path("scope_screen.png")
+scope.save_all_channels_to_single_csv("waveforms.csv")
+scope.save_scope_settings("setup.json", ask_before_overwrite=False)
+scope.apply_scope_settings("setup.json", wait_complete=False)
+scope.set_channel_label(1, "INPUT")
+scope.set_trigger_level(1.0, channel=1)
+```
+
+### Hardware test interaction flow
+
+The hardware API tests are skipped unless explicitly enabled. The default hardware suite is read-mostly and checks connection, `*IDN?`, channel-label reads, trigger-level reads, and `*ESR?` status access.
+
+```bash
+DPO4000_HARDWARE=1 \
+DPO4000_RESOURCE='USB0::0x0699::0x0401::C011280::INSTR' \
+pytest -q -m hardware tests/hardware
+```
+
+The optional label write/restore test changes one channel label, verifies it, and restores the previous value. Enable it only on a bench scope where this is acceptable:
+
+```bash
+DPO4000_HARDWARE=1 \
+DPO4000_ENABLE_WRITE_TESTS=1 \
+DPO4000_TEST_CHANNEL=1 \
+DPO4000_RESOURCE='USB0::0x0699::0x0401::C011280::INSTR' \
+pytest -q -m hardware tests/hardware
+```
+
+The manual GitHub Actions workflow named **Hardware API Tests** is intended for a self-hosted runner connected to the oscilloscope and labeled `self-hosted` and `dpo4000`.
+
 ## Basic script usage
 
 ```python
