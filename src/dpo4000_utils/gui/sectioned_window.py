@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from .channels_panel import build_channels_card
 from .connection_panel import build_connection_card
+from .log_panel import build_log
 from .preview_panel import build_image_preview
 from .settings_panel import build_settings_card
 from .trigger_panel import build_trigger_card
@@ -32,6 +33,10 @@ class SectionedScopeGui(WaveformScopeGui):
     def _build_settings_card(self, parent) -> None:
         """Build the Settings tab through the extracted panel module."""
         build_settings_card(self, parent)
+
+    def _build_log(self, parent) -> None:
+        """Build the Log tab through the extracted panel module."""
+        build_log(self, parent)
 
 
 __all__ = ["SectionedScopeGui"]
