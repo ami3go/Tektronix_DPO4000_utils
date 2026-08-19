@@ -13,8 +13,10 @@ from pathlib import Path
 from typing import Iterable
 
 import tkinter as tk
+from tkinter import filedialog
 
 from ..hardcopy import save_screen_png
+from ..settings import apply_scope_settings_file
 from .config import FileNaming, build_output_path as build_config_output_path, resolve_output_folder, safe_filename_part
 from .connection_ui import (
     build_ethernet_resource,
@@ -24,7 +26,7 @@ from .connection_ui import (
     selected_resource_name,
 )
 from .image_preview import usable_preview_size
-from .main_window import ScopeGui as BaseScopeGui
+from .main_window import DEFAULT_RESTORE_TIMEOUT_MS, ScopeGui as BaseScopeGui
 from .preferences import GuiPreferences, load_preferences, save_preferences
 
 
@@ -160,6 +162,57 @@ class PersistentScopeGui(BaseScopeGui):
     def _save_scope_image_png_robust(scope, path: Path) -> Path:
         """Save a scope screenshot using the shared driver hardcopy helper."""
         return save_screen_png(getattr(scope, "scope", None), path)
+
+    # ------------------------------------------------------------------
+    # Extracted settings restore helper
+    # ------------------------------------------------------------------
+    def restore_settings(self) -> None:
+        """Restore scope settings through the shared driver settings helper."""
+        selected = filedialog.askopenfilename(
+            title="Restore scope settings JSON",
+            initialdir=str(self._configured_output_folder(create=True)),
+            filetypes=[("JSON file", "*.json"), ("All files", "*.*")],
+        )
+        if not selected:
+            return
+
+        path = Path(selected)
+        wait_opc = self.restore_wait_opc_var.get()
+
+        def job():
+            def action(scope):
+                return apply_scope_settings_file(
+                    getattr(scope, "scope", None),
+                    path,
+                    wait_complete=wait_opc,
+                    check_error=True,
+                    opc_timeout_ms=DEFAULT_RESTORE_TIMEOUT_MS,
+                )
+
+            data = self._new_scope_session(action)
+            instrument = data.get("instrument", "Unknown") if isinstance(data, dict) else "Unknown"
+            return {"instrument": instrument}
+
+        self._run_job("Restoring scope settings JSON", job)
+
+    @staticmethod
+    def _apply_scope_settings_locally(
+        scope,
+        file_path: Path,
+        wait_complete: bool = False,
+        check_error: bool = True,
+        restore_delay_s: float = 2.0,
+        opc_timeout_ms: int = DEFAULT_RESTORE_TIMEOUT_MS,
+    ) -> dict:
+        """Compatibility fallback that also uses the shared settings helper."""
+        return apply_scope_settings_file(
+            getattr(scope, "scope", None),
+            file_path,
+            wait_complete=wait_complete,
+            check_error=check_error,
+            restore_delay_s=restore_delay_s,
+            opc_timeout_ms=opc_timeout_ms,
+        )
 
     # ------------------------------------------------------------------
     # Preference persistence
