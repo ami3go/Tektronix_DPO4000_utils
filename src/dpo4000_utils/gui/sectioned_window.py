@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from .channels_panel import build_channels_card
 from .connection_panel import build_connection_card
 from .trigger_panel import build_trigger_card
 from .waveform_window import WaveformScopeGui
@@ -13,6 +14,10 @@ class SectionedScopeGui(WaveformScopeGui):
     def _build_connection_card(self, parent) -> None:
         """Build the Connection tab through the extracted panel module."""
         build_connection_card(self, parent)
+
+    def _build_channels_card(self, parent) -> None:
+        """Build the Channels tab through the extracted panel module."""
+        build_channels_card(self, parent)
 
     def _build_trigger_card(self, parent) -> None:
         """Build the Trigger tab through the extracted panel module."""
