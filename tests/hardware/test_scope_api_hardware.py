@@ -1,0 +1,111 @@
+"""Opt-in hardware API tests for a real Tektronix DPO4000-family scope.
+
+These tests are skipped unless explicitly enabled with environment variables.
+They are designed for a bench PC or self-hosted CI runner that has:
+
+- a connected DPO4000-family oscilloscope,
+- a working VISA runtime such as NI-VISA/TekVISA/Keysight VISA,
+- PyVISA installed through this package.
+"""
+
+from __future__ import annotations
+
+import os
+from collections.abc import Iterator
+
+import pytest
+
+from dpo4000_utils import DPO4054
+from dpo4000_utils.connection import visaResourceAddr
+
+
+_TRUE_VALUES = {"1", "true", "yes", "on"}
+
+
+def _env_enabled(name: str) -> bool:
+    return os.getenv(name, "").strip().lower() in _TRUE_VALUES
+
+
+def _hardware_resource() -> str:
+    return os.getenv("DPO4000_RESOURCE", visaResourceAddr).strip()
+
+
+@pytest.fixture(scope="session")
+def hardware_enabled() -> str:
+    """Return configured resource name or skip when hardware tests are disabled."""
+    if not _env_enabled("DPO4000_HARDWARE"):
+        pytest.skip("Set DPO4000_HARDWARE=1 to run real oscilloscope tests.")
+
+    resource = _hardware_resource()
+    if not resource:
+        pytest.skip("Set DPO4000_RESOURCE to the VISA resource of the oscilloscope.")
+    return resource
+
+
+@pytest.fixture(scope="session")
+def scope(hardware_enabled: str) -> Iterator[DPO4054]:
+    """Open one real scope session for the hardware test module."""
+    instrument = DPO4054(hardware_enabled, auto_connect=False)
+    instrument.connect()
+
+    timeout_ms = int(os.getenv("DPO4000_TIMEOUT_MS", "20000"))
+    if instrument.scope is not None:
+        instrument.scope.timeout = timeout_ms
+
+    try:
+        yield instrument
+    finally:
+        instrument.disconnect()
+
+
+@pytest.mark.hardware
+def test_hardware_connects_and_identifies_scope(scope: DPO4054) -> None:
+    """Verify that the configured VISA resource responds to *IDN?."""
+    assert scope.scope is not None
+    idn = scope.scope.query("*IDN?").strip()
+
+    expected = os.getenv("DPO4000_EXPECT_IDN", "TEKTRONIX").strip()
+    assert idn
+    assert expected.upper() in idn.upper()
+
+
+@pytest.mark.hardware
+def test_hardware_reads_all_channel_labels(scope: DPO4054) -> None:
+    """Verify the public channel label read API on CH1..CH4."""
+    labels = scope.get_channel_labels()
+    assert set(labels) == {1, 2, 3, 4}
+    assert all(isinstance(label, str) for label in labels.values())
+
+
+@pytest.mark.hardware
+def test_hardware_reads_trigger_level(scope: DPO4054) -> None:
+    """Verify the public trigger-level read API without changing setup."""
+    value = scope.get_trigger_level(channel=1)
+    assert isinstance(value, float | str)
+    assert str(value).strip()
+
+
+@pytest.mark.hardware
+def test_hardware_standard_event_status_is_readable(scope: DPO4054) -> None:
+    """Verify basic SCPI status access through the active API session."""
+    assert scope.scope is not None
+    scope.scope.write("*CLS")
+    esr = int(scope.scope.query("*ESR?").strip())
+    assert esr == 0
+
+
+@pytest.mark.hardware
+def test_hardware_channel_label_write_round_trip(scope: DPO4054) -> None:
+    """Optional write test: set and restore one channel label."""
+    if not _env_enabled("DPO4000_ENABLE_WRITE_TESTS"):
+        pytest.skip("Set DPO4000_ENABLE_WRITE_TESTS=1 to run label write round-trip test.")
+
+    channel = int(os.getenv("DPO4000_TEST_CHANNEL", "1"))
+    original_label = scope.get_channel_label(channel)
+    test_label = os.getenv("DPO4000_TEST_LABEL", "API_TEST")[:30]
+
+    try:
+        scope.set_channel_label(channel, test_label)
+        assert scope.get_channel_label(channel) == test_label
+    finally:
+        scope.set_channel_label(channel, original_label)
