@@ -32,11 +32,13 @@ pip install -e .
 dpo4000-gui
 ```
 
-or:
+or directly from the repository root:
 
 ```bash
 python -m dpo4000_utils.gui
 ```
+
+The package now uses a root package layout: `dpo4000_utils/` is directly in the repository root. There is no `src/` folder. This keeps direct Windows commands such as `pytest` and `python -m dpo4000_utils.gui` simpler from a checkout.
 
 ## Interaction guide
 
@@ -112,7 +114,15 @@ $env:DPO4000_RESOURCE = "USB0::0x0699::0x0401::C011280::INSTR"
 py -3.13 -m pytest -q -m hardware tests/hardware
 ```
 
-Direct `pytest` from a checkout is also supported by `tests/conftest.py`, which adds `src/` to `sys.path` for test collection. Editable install is still recommended because it also verifies package metadata and console scripts.
+Direct `pytest` from a checkout also works because `dpo4000_utils/` is now a root-level package:
+
+```powershell
+$env:DPO4000_HARDWARE = "1"
+$env:DPO4000_RESOURCE = "USB0::0x0699::0x0401::C011280::INSTR"
+pytest -q -m hardware tests/hardware
+```
+
+Editable install is still recommended before normal development because it also verifies package metadata and console scripts.
 
 Linux/macOS shell equivalent:
 
@@ -217,11 +227,12 @@ The generated EXE includes Python and Python packages, but target PCs still need
 ## Repository layout
 
 ```text
-src/dpo4000_utils/           package code
-src/dpo4000_utils/gui/       active GUI application
+dpo4000_utils/               package code
+dpo4000_utils/gui/           active GUI application
+tektronix_utils.py           legacy compatibility import module
 examples/                    small usage examples
 scripts/                     helper scripts, including PyInstaller build
 docs/                        usage and troubleshooting notes
-tests/                       pure helper tests without hardware dependency
+tests/                       pure and opt-in hardware tests
 archive/gui_versions/        old GUI snapshots kept for reference
 ```
