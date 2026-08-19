@@ -12,12 +12,13 @@ from pathlib import Path
 from typing import Iterable
 
 import tkinter as tk
-from tkinter import filedialog
+from tkinter import filedialog, messagebox
 
 from ..hardcopy import save_screen_png
 from ..settings import apply_scope_settings_file
 from ..waveform import save_enabled_channels_to_single_csv
 from .channels_panel import build_channels_card
+from .clipboard import ClipboardError, copy_image_file_to_clipboard
 from .config import FileNaming, build_output_path as build_config_output_path, resolve_output_folder, safe_filename_part
 from .connection_panel import build_connection_card
 from .connection_ui import (
@@ -153,7 +154,7 @@ class ScopeGui(BaseScopeGui):
         return build_config_output_path(self.output_folder_var.get(), naming)
 
     # ------------------------------------------------------------------
-    # Extracted preview sizing helper
+    # Extracted preview helpers
     # ------------------------------------------------------------------
     def _preview_area_size(self) -> tuple[int, int]:
         width = self.preview_label.winfo_width()
@@ -166,6 +167,44 @@ class ScopeGui(BaseScopeGui):
 
         size = usable_preview_size(width, height)
         return size.width, size.height
+
+    def _load_preview(self, path: Path) -> None:
+        """Load a captured image and focus the preview for Ctrl+C copy."""
+        self._last_image_path = path
+        self._render_preview_to_fit(path)
+        try:
+            self.preview_label.focus_set()
+        except Exception:
+            pass
+
+    def copy_preview_to_clipboard(self, _event=None) -> str:
+        """Copy the latest captured/saved preview PNG to the system clipboard."""
+        path = self._last_image_path
+        if path is None:
+            message = "No preview image is available to copy. Capture or save a PNG first."
+            self.status_var.set(message)
+            self._append_log(message)
+            return "break"
+
+        try:
+            copy_image_file_to_clipboard(path)
+        except ClipboardError as exc:
+            message = f"Could not copy preview image to clipboard: {exc}"
+            self.status_var.set("Clipboard copy failed")
+            self._append_log(message)
+            messagebox.showerror("Copy preview", message)
+            return "break"
+        except Exception as exc:
+            message = f"Unexpected clipboard error: {exc}"
+            self.status_var.set("Clipboard copy failed")
+            self._append_log(message)
+            messagebox.showerror("Copy preview", message)
+            return "break"
+
+        message = f"Copied preview image to clipboard: {path}"
+        self.status_var.set("Preview image copied to clipboard")
+        self._append_log(message)
+        return "break"
 
     # ------------------------------------------------------------------
     # Shared hardcopy / settings / waveform paths
