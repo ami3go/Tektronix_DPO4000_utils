@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dpo4000-utils"
+version = "0.1.0"
+description = "Python utilities and GUI for Tektronix DPO4000/DPO4054 oscilloscopes"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pyvisa",
+    "pillow",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "ruff",
+]
+build = [
+    "pyinstaller",
+]
+
+[project.scripts]
+dpo4000-gui = "dpo4000_utils.gui.runner:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+py-modules = ["tektronix_utils"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"dpo4000_utils.gui" = ["*.ico", "*.png"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
