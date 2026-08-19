@@ -1,9 +1,5 @@
 """Console-script entry point for the Tektronix DPO4000 GUI."""
 
-from .app import ScopeGui
+from .app import main
 
-
-def main() -> None:
-    """Run the GUI application."""
-    app = ScopeGui()
-    app.mainloop()
+__all__ = ["main"]
