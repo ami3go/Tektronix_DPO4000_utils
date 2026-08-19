@@ -216,13 +216,37 @@ The hardware suite checks connection, `*IDN?`, channel-label read API, trigger-l
 
 GitHub Actions runs the pure test suite on Python 3.10, 3.11, 3.12, and 3.13 for pushes and pull requests targeting `main`. Hardware tests are run only by the manual `Hardware API Tests` workflow on a self-hosted runner with access to the oscilloscope.
 
-## Build a Windows executable
+## Build GUI executables
+
+Windows `.exe` from a checkout:
+
+```bat
+scripts\build_windows_exe.bat
+```
+
+Compatibility alias:
 
 ```bat
 scripts\build_exe.bat
 ```
 
-The generated EXE includes Python and Python packages, but target PCs still need a VISA runtime installed to access the oscilloscope.
+Linux one-file executable:
+
+```bash
+chmod +x scripts/build_linux_executable.sh
+./scripts/build_linux_executable.sh
+```
+
+Outputs:
+
+```text
+dist\TektronixScopeGUI.exe   Windows
+dist/TektronixScopeGUI       Linux
+```
+
+There is also a manual GitHub Actions workflow named **Build GUI Executables** that builds and uploads both artifacts without requiring hardware. See `docs/build_executables.md` for details.
+
+The generated executable includes Python and Python packages, but target PCs still need a VISA runtime installed to access the oscilloscope.
 
 ## Repository layout
 
@@ -231,7 +255,7 @@ dpo4000_utils/               package code
 dpo4000_utils/gui/           active GUI application
 tektronix_utils.py           legacy compatibility import module
 examples/                    small usage examples
-scripts/                     helper scripts, including PyInstaller build
+scripts/                     helper scripts, including PyInstaller builds
 docs/                        usage and troubleshooting notes
 tests/                       pure and opt-in hardware tests
 archive/gui_versions/        old GUI snapshots kept for reference
