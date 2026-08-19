@@ -62,6 +62,20 @@ trigger.py      acquisition and A-trigger helpers
 instrument.py   DPO4000Scope / DPO4054 classes composed from mixins
 ```
 
+## GUI modules
+
+The GUI entry point is now separated from the main window implementation:
+
+```text
+gui/app.py          small public GUI entry point
+gui/main_window.py  Tkinter main window implementation
+gui/config.py       testable output-folder and filename helpers
+gui/image_preview.py testable preview sizing helpers
+gui/runner.py       console-script adapter for dpo4000-gui
+```
+
+The next GUI refactor step can migrate logic from `main_window.py` into these helper modules incrementally without changing the public entry point.
+
 ## Tests
 
 Pure helper tests do not require a real oscilloscope:
