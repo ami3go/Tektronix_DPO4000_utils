@@ -29,10 +29,10 @@ from .connection_ui import (
     parse_trigger_level,
     selected_resource_name,
 )
-from .control_panel import CONTROL_TAB_TITLE, build_control_tab
 from .image_preview import usable_preview_size
 from .log_panel import build_log
 from .main_window import DEFAULT_RESTORE_TIMEOUT_MS, ScopeGui as BaseScopeGui
+from .measurement_panel import MEASUREMENT_TAB_TITLE, build_measurement_tab
 from .preferences import GuiPreferences, load_preferences, save_preferences
 from .preview_panel import build_image_preview
 from .settings_panel import build_settings_card
@@ -77,28 +77,28 @@ class ScopeGui(BaseScopeGui):
         self.control_trigger_level_var = tk.StringVar(value="1.0")
 
     def _build_control_tabs(self, parent: tk.Widget) -> None:
-        """Build right-side tabs, including the extended Control tab."""
+        """Build right-side tabs, with Measurement separated from Trigger."""
         notebook = ttk.Notebook(parent)
         notebook.grid(row=0, column=0, sticky="nsew")
 
         connection_tab = ttk.Frame(notebook, padding=8)
         channels_tab = ttk.Frame(notebook, padding=8)
+        measurement_tab = ttk.Frame(notebook, padding=8)
         trigger_tab = ttk.Frame(notebook, padding=8)
-        control_tab = ttk.Frame(notebook, padding=8)
         settings_tab = ttk.Frame(notebook, padding=8)
         log_tab = ttk.Frame(notebook, padding=8)
 
         notebook.add(connection_tab, text="Connection")
         notebook.add(channels_tab, text="Channels")
+        notebook.add(measurement_tab, text=MEASUREMENT_TAB_TITLE)
         notebook.add(trigger_tab, text="Trigger")
-        notebook.add(control_tab, text=CONTROL_TAB_TITLE)
         notebook.add(settings_tab, text="Settings")
         notebook.add(log_tab, text="Log")
 
         self._build_connection_card(connection_tab)
         self._build_channels_card(channels_tab)
+        self._build_measurement_tab(measurement_tab)
         self._build_trigger_card(trigger_tab)
-        self._build_control_tab(control_tab)
         self._build_settings_card(settings_tab)
         self._build_log(log_tab)
 
@@ -111,11 +111,11 @@ class ScopeGui(BaseScopeGui):
     def _build_channels_card(self, parent) -> None:
         build_channels_card(self, parent)
 
+    def _build_measurement_tab(self, parent) -> None:
+        build_measurement_tab(self, parent)
+
     def _build_trigger_card(self, parent) -> None:
         build_trigger_card(self, parent)
-
-    def _build_control_tab(self, parent) -> None:
-        build_control_tab(self, parent)
 
     def _build_settings_card(self, parent) -> None:
         build_settings_card(self, parent)
@@ -256,7 +256,7 @@ class ScopeGui(BaseScopeGui):
         return "break"
 
     # ------------------------------------------------------------------
-    # Control tab actions
+    # Measurement and trigger-control actions
     # ------------------------------------------------------------------
     def _run_scope_control_job(
         self,
