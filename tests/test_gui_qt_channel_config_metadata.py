@@ -3,17 +3,77 @@ from __future__ import annotations
 from pathlib import Path
 
 
-def test_qt_runner_uses_enhanced_channel_window():
+def test_qt_runner_uses_ui_practice_window():
     content = Path("dpo4000_utils/gui_qt/runner.py").read_text(encoding="utf-8")
 
-    assert "from .enhanced_window import QtScopeWindow" in content
+    assert "from .ui_practice_window import QtScopeWindow" in content
     assert "from .main_window import QtScopeWindow" not in content
 
 
-def test_qt_package_exports_enhanced_window_lazily():
+def test_qt_package_exports_ui_practice_window_lazily():
     content = Path("dpo4000_utils/gui_qt/__init__.py").read_text(encoding="utf-8")
 
-    assert "from .enhanced_window import QtScopeWindow" in content
+    assert "from .ui_practice_window import QtScopeWindow" in content
+
+
+def test_qt_ui_practice_window_adds_status_strip_and_recovery_buttons():
+    content = Path("dpo4000_utils/gui_qt/ui_practice_window.py").read_text(encoding="utf-8")
+
+    assert "ScopeStatusStrip" in content
+    assert "connection_badge" in content
+    assert "resource_status" in content
+    assert "idn_status" in content
+    assert "acquisition_status" in content
+    assert "last_action_status" in content
+    assert "Retry" in content
+    assert "Refresh" in content
+    assert "Disconnect" in content
+    assert "retry_connection" in content
+    assert "mark_disconnected" in content
+
+
+def test_qt_ui_practice_window_guards_scope_controls_until_idn():
+    content = Path("dpo4000_utils/gui_qt/ui_practice_window.py").read_text(encoding="utf-8")
+
+    assert "SCOPE_ACTION_CALLBACKS" in content
+    assert "SAFE_UI_CALLBACKS" in content
+    assert "_scope_controls" in content
+    assert "_connection_ok" in content
+    assert "_operation_active" in content
+    assert "_register_button_if_scope_action" in content
+    assert "_update_scope_control_enabled" in content
+    assert "Test IDN first" in content
+    assert "scopeAction" in content
+
+
+def test_qt_ui_practice_window_adds_global_shortcuts():
+    content = Path("dpo4000_utils/gui_qt/ui_practice_window.py").read_text(encoding="utf-8")
+
+    assert "SHORTCUTS" in content
+    assert "PAGE_SHORTCUTS" in content
+    assert "F5" in content
+    assert "Ctrl+S" in content
+    assert "Ctrl+Shift+S" in content
+    assert "F6" in content
+    assert "F7" in content
+    assert "F8" in content
+    assert "Ctrl+L" in content
+    assert "Ctrl+1" in content
+    assert "_install_global_shortcuts" in content
+    assert "_guarded_scope_call" in content
+
+
+def test_qt_status_strip_and_guarded_controls_are_themed():
+    content = Path("dpo4000_utils/gui_qt/theme.qss").read_text(encoding="utf-8")
+
+    assert "QWidget#ScopeStatusStrip" in content
+    assert "QLabel#StatusChip" in content
+    assert "QLabel#StatusBadgeOk" in content
+    assert "QLabel#StatusBadgeWarn" in content
+    assert "QLabel#StatusBadgeBusy" in content
+    assert "QToolButton#StatusActionButton" in content
+    assert 'QPushButton[scopeAction="true"]:disabled' in content
+    assert 'QToolButton[scopeAction="true"]:disabled' in content
 
 
 def test_qt_enhanced_preview_supports_ctrl_c_copy():
