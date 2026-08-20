@@ -5,6 +5,8 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk
 
+from .style import themed_combobox
+
 PREVIEW_TITLE = "Screen preview"
 PREVIEW_EMPTY_TEXT = "Press 'Capture preview' to read the current scope screen."
 PREVIEW_COPY_HINT = "After capture, press Ctrl+C while the preview is focused to copy the image."
@@ -59,11 +61,10 @@ def build_preview_bottom_actions(gui, parent: tk.Widget) -> None:
     ).pack(side=tk.LEFT)
 
     ttk.Label(options_row, text="Trigger channel", style="Card.TLabel").pack(side=tk.LEFT, padx=(18, 8))
-    ttk.Combobox(
+    themed_combobox(
         options_row,
         textvariable=gui.trigger_channel_var,
         width=7,
-        state="readonly",
         values=POST_IMAGE_TRIGGER_VALUES,
     ).pack(side=tk.LEFT)
 
