@@ -9,6 +9,13 @@ from dpo4000_utils.gui.style import (
     COMBOBOX_SELECTED_FOREGROUND,
     COMBOBOX_STYLE_NAME,
     COMBOBOX_STYLE_OPTIONS,
+    RADIOBUTTON_BACKGROUND,
+    RADIOBUTTON_FOREGROUND,
+    RADIOBUTTON_SELECTED_BACKGROUND,
+    RADIOBUTTON_SELECTED_FOREGROUND,
+    RADIOBUTTON_STATE_MAP,
+    RADIOBUTTON_STYLE_NAME,
+    RADIOBUTTON_STYLE_OPTIONS,
     THEMED_SELECTOR_BLOCKED_EVENTS,
 )
 
@@ -39,3 +46,18 @@ def test_combobox_popup_colors_follow_dark_theme_constants():
 def test_selector_combobox_blocks_typing_but_not_mouse_dropdown():
     assert "<KeyPress>" in THEMED_SELECTOR_BLOCKED_EVENTS
     assert "<Button-1>" not in THEMED_SELECTOR_BLOCKED_EVENTS
+
+
+def test_radio_button_style_follows_application_theme():
+    assert RADIOBUTTON_STYLE_NAME == "App.TRadiobutton"
+    assert RADIOBUTTON_STYLE_OPTIONS["background"] == RADIOBUTTON_BACKGROUND
+    assert RADIOBUTTON_STYLE_OPTIONS["foreground"] == RADIOBUTTON_FOREGROUND
+    assert RADIOBUTTON_BACKGROUND == "#1f2937"
+    assert RADIOBUTTON_FOREGROUND == "#e5e7eb"
+
+
+def test_radio_button_selected_state_uses_accent_theme():
+    selected_background = dict(RADIOBUTTON_STATE_MAP["background"])["selected"]
+    selected_foreground = dict(RADIOBUTTON_STATE_MAP["foreground"])["selected"]
+    assert selected_background == RADIOBUTTON_SELECTED_BACKGROUND
+    assert selected_foreground == RADIOBUTTON_SELECTED_FOREGROUND
