@@ -21,9 +21,12 @@ dev = [
 build = [
     "pyinstaller",
 ]
-gtk = [
-    "PyGObject>=3.46",
-]
+# GTK4/PyGObject is intentionally not installed from PyPI here. On Windows,
+# pip will try to build PyGObject from source and fail unless the full native
+# GTK/GObject-Introspection toolchain is already present. Install GTK/PyGObject
+# through MSYS2 or a Linux distribution package manager, then install this
+# project normally.
+gtk = []
 
 [project.scripts]
 dpo4000-gui = "dpo4000_utils.gui.runner:main"
