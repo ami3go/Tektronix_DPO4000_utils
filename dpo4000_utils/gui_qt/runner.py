@@ -15,7 +15,7 @@ def main() -> int:
             "  pip install -e .[qt]\n"
         ) from exc
 
-    from .enhanced_window import QtScopeWindow
+    from .ui_practice_window import QtScopeWindow
 
     app = QApplication(sys.argv)
     window = QtScopeWindow()
