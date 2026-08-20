@@ -50,6 +50,7 @@ TRIGGER_MODES = ("AUTO", "NORMAL")
 TRIGGER_SOURCES = ("CH1", "CH2", "CH3", "CH4", "AUX", "LINE")
 TRIGGER_SLOPES = ("RISE", "FALL", "EITHER")
 TRIGGER_COUPLINGS = ("DC", "AC", "HFREJ", "LFREJ", "NOISEREJ")
+FORCE_TRIGGER_COMMAND = "TRIG FORC"
 
 
 @dataclass(frozen=True)
@@ -247,11 +248,12 @@ class ControlMixin:
         scope.write("ACQUIRE:STATE RUN")
 
     def force_trigger_event(self) -> None:
-        self.ensure_connected().write("TRIGGER FORCE")
+        self.ensure_connected().write(FORCE_TRIGGER_COMMAND)
 
 
 __all__ = [
     "ControlMixin",
+    "FORCE_TRIGGER_COMMAND",
     "MeasurementConfig",
     "MEASUREMENT_SLOTS",
     "MEASUREMENT_SOURCES",
