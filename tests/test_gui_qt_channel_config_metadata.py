@@ -74,11 +74,25 @@ def test_qt_channels_page_is_scrollable_and_cards_keep_natural_height():
     assert "setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)" in content
 
 
-def test_qt_channels_scroll_area_is_themed():
+def test_qt_trigger_page_is_scrollable_and_cards_keep_natural_height():
+    content = Path("dpo4000_utils/gui_qt/enhanced_window.py").read_text(encoding="utf-8")
+
+    assert "def _build_trigger_tab" in content
+    assert "super()._build_trigger_tab()" in content
+    assert 'scroll_name="TriggerScrollArea"' in content
+    assert 'body_name="TriggerScrollBody"' in content
+    assert "_keep_drawer_cards_natural_height" in content
+    assert "findChildren(QGroupBox)" in content
+    assert "QSizePolicy.Fixed" in content
+
+
+def test_qt_scroll_areas_are_themed():
     content = Path("dpo4000_utils/gui_qt/theme.qss").read_text(encoding="utf-8")
 
     assert "QScrollArea#ChannelsScrollArea" in content
+    assert "QScrollArea#TriggerScrollArea" in content
     assert "QWidget#ChannelsScrollBody" in content
+    assert "QWidget#TriggerScrollBody" in content
     assert "QScrollBar:vertical" in content
     assert "QScrollBar::handle:vertical" in content
 
