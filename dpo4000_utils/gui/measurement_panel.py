@@ -6,6 +6,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from ..control import MEASUREMENT_SLOTS, MEASUREMENT_SOURCES, MEASUREMENT_TYPES_BY_GROUP
+from .style import themed_combobox
 
 
 MEASUREMENT_TAB_TITLE = "Measurement"
@@ -35,23 +36,21 @@ def build_measurement_tab(gui, parent: tk.Widget) -> None:
     slot_col = ttk.Frame(row, style="Card.TFrame")
     slot_col.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
     _field_label(slot_col, "Slot")
-    ttk.Combobox(
+    themed_combobox(
         slot_col,
         textvariable=gui.measurement_slot_var,
         values=tuple(str(slot) for slot in MEASUREMENT_SLOTS),
         width=7,
-        state="readonly",
     ).pack(fill=tk.X)
 
     group_col = ttk.Frame(row, style="Card.TFrame")
     group_col.pack(side=tk.LEFT, fill=tk.X, expand=True)
     _field_label(group_col, "Group")
-    group_combo = ttk.Combobox(
+    group_combo = themed_combobox(
         group_col,
         textvariable=gui.measurement_group_var,
         values=tuple(MEASUREMENT_TYPES_BY_GROUP),
         width=16,
-        state="readonly",
     )
     group_combo.pack(fill=tk.X)
     group_combo.bind("<<ComboboxSelected>>", gui._on_measurement_group_changed)
@@ -59,11 +58,11 @@ def build_measurement_tab(gui, parent: tk.Widget) -> None:
     row = ttk.Frame(body, style="Card.TFrame")
     row.pack(fill=tk.X, pady=(0, 8))
     _field_label(row, "Measurement type")
-    measurement_type = ttk.Combobox(
+    measurement_type = themed_combobox(
         row,
         textvariable=gui.measurement_type_var,
         values=MEASUREMENT_TYPES_BY_GROUP[gui.measurement_group_var.get()],
-        state="normal",
+        readonly=False,
     )
     measurement_type.pack(fill=tk.X)
     gui.measurement_type_combo = measurement_type
@@ -78,21 +77,19 @@ def build_measurement_tab(gui, parent: tk.Widget) -> None:
     src1_col = ttk.Frame(row, style="Card.TFrame")
     src1_col.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
     _field_label(src1_col, "Source 1")
-    ttk.Combobox(
+    themed_combobox(
         src1_col,
         textvariable=gui.measurement_source1_var,
         values=MEASUREMENT_SOURCES,
-        state="readonly",
     ).pack(fill=tk.X)
 
     src2_col = ttk.Frame(row, style="Card.TFrame")
     src2_col.pack(side=tk.LEFT, fill=tk.X, expand=True)
     _field_label(src2_col, "Source 2")
-    ttk.Combobox(
+    themed_combobox(
         src2_col,
         textvariable=gui.measurement_source2_var,
         values=("",) + MEASUREMENT_SOURCES,
-        state="readonly",
     ).pack(fill=tk.X)
 
     row = ttk.Frame(body, style="Card.TFrame")
