@@ -1,0 +1,482 @@
+"""Experimental PySide6 main window for the DPO4000 utility."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Callable
+
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QPixmap
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
+    QFormLayout,
+    QFrame,
+    QGridLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMainWindow,
+    QMessageBox,
+    QPushButton,
+    QRadioButton,
+    QSizePolicy,
+    QStatusBar,
+    QTabWidget,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
+
+from ..connection import visaResourceAddr
+from ..instrument import DPO4054
+from ..control import (
+    MEASUREMENT_SLOTS,
+    MEASUREMENT_SOURCES,
+    MEASUREMENT_TYPES_BY_GROUP,
+    TRIGGER_COUPLINGS,
+    TRIGGER_MODES,
+    TRIGGER_SLOPES,
+    TRIGGER_SOURCES,
+    MeasurementConfig,
+)
+from ..hardcopy import save_screen_png
+
+APP_TITLE = "Tektronix DPO4000 Utilities — Qt preview"
+
+
+class QtScopeWindow(QMainWindow):
+    """First-pass PySide6 GUI used for testing a modern replacement UI."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.setWindowTitle(APP_TITLE)
+        self.resize(1280, 780)
+        self._last_image_path: Path | None = None
+
+        self._apply_theme()
+        self._build_ui()
+        self.statusBar().showMessage("Ready. Experimental PySide6 GUI; Tk GUI remains unchanged.")
+
+    # ------------------------------------------------------------------
+    # Theme and layout
+    # ------------------------------------------------------------------
+    def _apply_theme(self) -> None:
+        qss_path = Path(__file__).with_name("theme.qss")
+        if qss_path.exists():
+            self.setStyleSheet(qss_path.read_text(encoding="utf-8"))
+
+    def _build_ui(self) -> None:
+        central = QWidget(self)
+        root = QVBoxLayout(central)
+        root.setContentsMargins(18, 18, 18, 12)
+        root.setSpacing(14)
+        self.setCentralWidget(central)
+
+        header = QHBoxLayout()
+        title = QLabel(APP_TITLE)
+        title.setObjectName("TitleLabel")
+        subtitle = QLabel("PySide6 testing branch · existing Tkinter GUI is still available")
+        subtitle.setObjectName("MutedLabel")
+        subtitle.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        header.addWidget(title, 1)
+        header.addWidget(subtitle, 1)
+        root.addLayout(header)
+
+        main = QHBoxLayout()
+        main.setSpacing(14)
+        root.addLayout(main, 1)
+
+        preview_card = self._build_preview_card()
+        preview_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        main.addWidget(preview_card, 3)
+
+        self.tabs = QTabWidget()
+        self.tabs.setMinimumWidth(420)
+        self.tabs.addTab(self._build_connection_tab(), "Connection")
+        self.tabs.addTab(self._build_channels_tab(), "Channels")
+        self.tabs.addTab(self._build_measurement_tab(), "Measurement")
+        self.tabs.addTab(self._build_trigger_tab(), "Trigger")
+        self.tabs.addTab(self._build_settings_tab(), "Settings")
+        self.tabs.addTab(self._build_log_tab(), "Log")
+        main.addWidget(self.tabs, 1)
+
+        self.setStatusBar(QStatusBar())
+
+    def _card(self, title: str) -> QGroupBox:
+        return QGroupBox(title)
+
+    def _accent_button(self, text: str, callback: Callable[[], None]) -> QPushButton:
+        button = QPushButton(text)
+        button.setObjectName("AccentButton")
+        button.clicked.connect(callback)
+        return button
+
+    def _button(self, text: str, callback: Callable[[], None]) -> QPushButton:
+        button = QPushButton(text)
+        button.clicked.connect(callback)
+        return button
+
+    # ------------------------------------------------------------------
+    # Preview
+    # ------------------------------------------------------------------
+    def _build_preview_card(self) -> QGroupBox:
+        card = self._card("Screen preview")
+        layout = QVBoxLayout(card)
+        layout.setSpacing(10)
+
+        self.preview_label = QLabel("Capture preview to show the scope screen here.")
+        self.preview_label.setObjectName("PreviewLabel")
+        self.preview_label.setAlignment(Qt.AlignCenter)
+        self.preview_label.setMinimumSize(640, 420)
+        self.preview_label.setScaledContents(False)
+        layout.addWidget(self.preview_label, 1)
+
+        options = QHBoxLayout()
+        self.rearm_after_image = QCheckBox("Re-arm trigger after image capture")
+        self.rearm_after_image.setChecked(True)
+        self.trigger_channel_after_image = QComboBox()
+        self.trigger_channel_after_image.addItems(["", "1", "2", "3", "4"])
+        options.addWidget(self.rearm_after_image, 1)
+        options.addWidget(QLabel("Trigger channel"))
+        options.addWidget(self.trigger_channel_after_image)
+        layout.addLayout(options)
+
+        buttons = QHBoxLayout()
+        buttons.addWidget(self._button("Capture preview", self.capture_preview))
+        buttons.addWidget(self._button("Copy preview", self.copy_preview))
+        buttons.addWidget(self._button("Save PNG image...", self.capture_preview))
+        buttons.addWidget(self._accent_button("Save enabled channels to CSV...", self.not_implemented))
+        layout.addLayout(buttons)
+        return card
+
+    # ------------------------------------------------------------------
+    # Tabs
+    # ------------------------------------------------------------------
+    def _build_connection_tab(self) -> QWidget:
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setSpacing(10)
+
+        card = self._card("Connection")
+        form = QFormLayout(card)
+
+        mode_box = QWidget()
+        mode_layout = QHBoxLayout(mode_box)
+        mode_layout.setContentsMargins(0, 0, 0, 0)
+        self.usb_mode = QRadioButton("USB / VISA")
+        self.eth_mode = QRadioButton("Ethernet")
+        self.usb_mode.setChecked(True)
+        mode_layout.addWidget(self.usb_mode)
+        mode_layout.addWidget(self.eth_mode)
+        mode_layout.addStretch(1)
+        form.addRow("Mode", mode_box)
+
+        self.resource = QComboBox()
+        self.resource.setEditable(True)
+        self.resource.addItem(visaResourceAddr)
+        form.addRow("VISA resource", self.resource)
+
+        self.eth_host = QLineEdit()
+        self.eth_port = QLineEdit("4000")
+        self.eth_protocol = QComboBox()
+        self.eth_protocol.addItems(["VXI-11 / INSTR", "Raw SOCKET"])
+        self.timeout_ms = QLineEdit("5000")
+        form.addRow("Ethernet IP/host", self.eth_host)
+        form.addRow("Protocol", self.eth_protocol)
+        form.addRow("Socket port", self.eth_port)
+        form.addRow("Timeout ms", self.timeout_ms)
+
+        form.addRow(self._accent_button("Test IDN", self.test_connection))
+        layout.addWidget(card)
+        layout.addStretch(1)
+        return tab
+
+    def _build_channels_tab(self) -> QWidget:
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        card = self._card("Channels")
+        form = QFormLayout(card)
+        self.channel_labels: dict[int, QLineEdit] = {}
+        for channel in range(1, 5):
+            edit = QLineEdit()
+            self.channel_labels[channel] = edit
+            form.addRow(f"CH{channel} label", edit)
+        form.addRow(self._button("Read labels", self.not_implemented))
+        layout.addWidget(card)
+        layout.addStretch(1)
+        return tab
+
+    def _build_measurement_tab(self) -> QWidget:
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        card = self._card("Measurement")
+        form = QFormLayout(card)
+
+        self.measurement_slot = QComboBox()
+        self.measurement_slot.addItems([str(slot) for slot in MEASUREMENT_SLOTS])
+        self.measurement_group = QComboBox()
+        self.measurement_group.addItems(list(MEASUREMENT_TYPES_BY_GROUP))
+        self.measurement_type = QComboBox()
+        self.measurement_type.setEditable(True)
+        self.measurement_group.currentTextChanged.connect(self._update_measurement_types)
+        self._update_measurement_types(self.measurement_group.currentText())
+        self.measurement_source1 = QComboBox()
+        self.measurement_source1.addItems(MEASUREMENT_SOURCES)
+        self.measurement_source2 = QComboBox()
+        self.measurement_source2.addItems([""] + list(MEASUREMENT_SOURCES))
+        self.measurement_value = QLineEdit()
+        self.measurement_value.setReadOnly(True)
+
+        form.addRow("Slot", self.measurement_slot)
+        form.addRow("Group", self.measurement_group)
+        form.addRow("Measurement type", self.measurement_type)
+        form.addRow("Source 1", self.measurement_source1)
+        form.addRow("Source 2", self.measurement_source2)
+        form.addRow("Last read value", self.measurement_value)
+
+        buttons = QHBoxLayout()
+        buttons.addWidget(self._accent_button("Add / update", self.add_measurement))
+        buttons.addWidget(self._button("Read value", self.read_measurement_value))
+        buttons.addWidget(self._button("Clear slot", self.clear_measurement_slot))
+        form.addRow(buttons)
+        layout.addWidget(card)
+        layout.addStretch(1)
+        return tab
+
+    def _build_trigger_tab(self) -> QWidget:
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.addWidget(self._build_trigger_actions_card())
+        layout.addWidget(self._build_trigger_level_card())
+        layout.addWidget(self._build_edge_trigger_card())
+        layout.addStretch(1)
+        return tab
+
+    def _build_trigger_actions_card(self) -> QGroupBox:
+        card = self._card("Acquisition / trigger actions")
+        grid = QGridLayout(card)
+        grid.addWidget(self._button("Run", self.run_acquisition), 0, 0)
+        grid.addWidget(self._button("Stop", self.stop_acquisition), 0, 1)
+        grid.addWidget(self._button("Single", self.single_acquisition), 0, 2)
+        grid.addWidget(self._button("Continuous", self.continuous_acquisition), 0, 3)
+        grid.addWidget(self._accent_button("Force trigger", self.force_trigger), 1, 0, 1, 4)
+        return card
+
+    def _build_trigger_level_card(self) -> QGroupBox:
+        card = self._card("Trigger level / horizontal position")
+        form = QFormLayout(card)
+        self.trigger_channel = QComboBox()
+        self.trigger_channel.addItems(["1", "2", "3", "4"])
+        self.trigger_level = QLineEdit("1.0")
+        self.trigger_readback = QLineEdit()
+        self.trigger_readback.setReadOnly(True)
+        self.horizontal_position = QLineEdit("0")
+        form.addRow("Source", self.trigger_channel)
+        form.addRow("Level V", self.trigger_level)
+        form.addRow("Readback", self.trigger_readback)
+        form.addRow("Horizontal position", self.horizontal_position)
+        buttons = QHBoxLayout()
+        buttons.addWidget(self._button("Read level", self.not_implemented))
+        buttons.addWidget(self._accent_button("Set level", self.not_implemented))
+        buttons.addWidget(self._button("Set position", self.set_horizontal_position))
+        form.addRow(buttons)
+        return card
+
+    def _build_edge_trigger_card(self) -> QGroupBox:
+        card = self._card("Edge trigger setup")
+        form = QFormLayout(card)
+        self.edge_mode = QComboBox()
+        self.edge_mode.addItems(TRIGGER_MODES)
+        self.edge_source = QComboBox()
+        self.edge_source.addItems(TRIGGER_SOURCES)
+        self.edge_slope = QComboBox()
+        self.edge_slope.addItems(TRIGGER_SLOPES)
+        self.edge_coupling = QComboBox()
+        self.edge_coupling.addItems(TRIGGER_COUPLINGS)
+        self.edge_level = QLineEdit("1.0")
+        form.addRow("Mode", self.edge_mode)
+        form.addRow("Source", self.edge_source)
+        form.addRow("Slope", self.edge_slope)
+        form.addRow("Coupling", self.edge_coupling)
+        form.addRow("Level", self.edge_level)
+        form.addRow(self._accent_button("Apply edge trigger", self.apply_edge_trigger))
+        return card
+
+    def _build_settings_tab(self) -> QWidget:
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        card = self._card("Settings")
+        form = QFormLayout(card)
+        self.output_folder = QLineEdit(str(Path("scope_output")))
+        form.addRow("Output folder", self.output_folder)
+        form.addRow(self._button("Save settings JSON...", self.not_implemented))
+        form.addRow(self._button("Restore settings JSON...", self.not_implemented))
+        layout.addWidget(card)
+        layout.addStretch(1)
+        return tab
+
+    def _build_log_tab(self) -> QWidget:
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        self.log = QTextEdit()
+        self.log.setReadOnly(True)
+        layout.addWidget(self.log)
+        return tab
+
+    # ------------------------------------------------------------------
+    # Scope helpers/actions
+    # ------------------------------------------------------------------
+    def _selected_resource(self) -> str:
+        if self.eth_mode.isChecked():
+            host = self.eth_host.text().strip()
+            if not host:
+                raise ValueError("Ethernet host/IP is empty.")
+            if self.eth_protocol.currentText() == "Raw SOCKET":
+                port = self.eth_port.text().strip() or "4000"
+                return f"TCPIP0::{host}::{port}::SOCKET"
+            return f"TCPIP0::{host}::INSTR"
+        return self.resource.currentText().strip()
+
+    def _timeout(self) -> int:
+        try:
+            return int(self.timeout_ms.text().strip())
+        except ValueError as exc:
+            raise ValueError("Timeout must be an integer in milliseconds.") from exc
+
+    def _with_scope(self, callback: Callable[[DPO4054], object]) -> object:
+        scope = DPO4054(self._selected_resource(), auto_connect=True)
+        try:
+            if getattr(scope, "scope", None) is not None:
+                scope.scope.timeout = self._timeout()
+            return callback(scope)
+        finally:
+            try:
+                scope.close()
+            except Exception:
+                pass
+
+    def test_connection(self) -> None:
+        self._run_action("Testing connection", lambda scope: scope.scope.query("*IDN?").strip())
+
+    def capture_preview(self) -> None:
+        output = Path(self.output_folder.text()).expanduser()
+        output.mkdir(parents=True, exist_ok=True)
+        path = output / "qt_preview.png"
+
+        def action(scope: DPO4054) -> str:
+            saved = save_screen_png(getattr(scope, "scope", None), path)
+            return str(saved)
+
+        result = self._run_action("Capturing preview", action)
+        if isinstance(result, str):
+            self._last_image_path = Path(result)
+            pixmap = QPixmap(result)
+            if not pixmap.isNull():
+                self.preview_label.setPixmap(
+                    pixmap.scaled(
+                        self.preview_label.size(),
+                        Qt.KeepAspectRatio,
+                        Qt.SmoothTransformation,
+                    )
+                )
+
+    def copy_preview(self) -> None:
+        if self._last_image_path is None or not self._last_image_path.exists():
+            self._message("Copy preview", "No captured preview image is available yet.")
+            return
+        pixmap = QPixmap(str(self._last_image_path))
+        if pixmap.isNull():
+            self._message("Copy preview", "Captured image could not be loaded.")
+            return
+        from PySide6.QtWidgets import QApplication
+
+        QApplication.clipboard().setPixmap(pixmap)
+        self._append_log(f"Copied preview to clipboard: {self._last_image_path}")
+        self.statusBar().showMessage("Preview copied to clipboard")
+
+    def add_measurement(self) -> None:
+        config = MeasurementConfig(
+            slot=int(self.measurement_slot.currentText()),
+            measurement_type=self.measurement_type.currentText(),
+            source1=self.measurement_source1.currentText(),
+            source2=self.measurement_source2.currentText() or None,
+        )
+        self._run_action("Adding measurement", lambda scope: scope.add_measurement(config))
+
+    def read_measurement_value(self) -> None:
+        slot = int(self.measurement_slot.currentText())
+        result = self._run_action("Reading measurement", lambda scope: scope.read_measurement_value(slot))
+        if result is not None:
+            self.measurement_value.setText(str(result))
+
+    def clear_measurement_slot(self) -> None:
+        slot = int(self.measurement_slot.currentText())
+        self._run_action("Clearing measurement slot", lambda scope: scope.disable_measurement(slot))
+
+    def run_acquisition(self) -> None:
+        self._run_action("Starting acquisition", lambda scope: scope.run_acquisition())
+
+    def stop_acquisition(self) -> None:
+        self._run_action("Stopping acquisition", lambda scope: scope.stop_acquisition())
+
+    def single_acquisition(self) -> None:
+        self._run_action("Starting single acquisition", lambda scope: scope.single_acquisition())
+
+    def continuous_acquisition(self) -> None:
+        self._run_action("Returning to continuous acquisition", lambda scope: scope.continuous_acquisition())
+
+    def force_trigger(self) -> None:
+        self._run_action("Forcing trigger", lambda scope: scope.force_trigger_event())
+
+    def set_horizontal_position(self) -> None:
+        value = self.horizontal_position.text().strip()
+        self._run_action("Setting horizontal position", lambda scope: scope.set_horizontal_position(value))
+
+    def apply_edge_trigger(self) -> None:
+        self._run_action(
+            "Applying edge trigger",
+            lambda scope: scope.configure_edge_trigger(
+                source=self.edge_source.currentText(),
+                slope=self.edge_slope.currentText(),
+                coupling=self.edge_coupling.currentText(),
+                mode=self.edge_mode.currentText(),
+                level=self.edge_level.text().strip(),
+            ),
+        )
+
+    def _run_action(self, description: str, callback: Callable[[DPO4054], object]) -> object | None:
+        self.statusBar().showMessage(description)
+        self._append_log(description)
+        try:
+            result = self._with_scope(callback)
+        except Exception as exc:
+            self.statusBar().showMessage(f"Failed: {description}")
+            self._append_log(f"ERROR: {exc}")
+            self._message(description, str(exc), error=True)
+            return None
+        self.statusBar().showMessage(f"Done: {description}")
+        if result is not None:
+            self._append_log(str(result))
+        return result
+
+    def _update_measurement_types(self, group: str) -> None:
+        self.measurement_type.clear()
+        self.measurement_type.addItems(MEASUREMENT_TYPES_BY_GROUP.get(group, ()))
+
+    def not_implemented(self) -> None:
+        self._message("PySide6 preview", "This action is not implemented in the first Qt testing pass yet.")
+
+    def _message(self, title: str, text: str, *, error: bool = False) -> None:
+        box = QMessageBox(self)
+        box.setWindowTitle(title)
+        box.setText(text)
+        box.setIcon(QMessageBox.Critical if error else QMessageBox.Information)
+        box.exec()
+
+    def _append_log(self, text: str) -> None:
+        self.log.append(text)
+
+
+__all__ = ["APP_TITLE", "QtScopeWindow"]
