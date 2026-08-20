@@ -17,7 +17,7 @@ def main() -> int:
             "  python -m pip install -r requirements-pyside6.txt\n"
         ) from exc
 
-    from .ui_practice_window import QtScopeWindow
+    from .acquisition_window import QtScopeWindow
 
     app = QApplication(sys.argv)
     window = QtScopeWindow()
