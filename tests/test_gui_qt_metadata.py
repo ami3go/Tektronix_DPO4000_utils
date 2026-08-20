@@ -81,6 +81,24 @@ def test_qt_drawer_navigation_is_right_rail_with_top_controls():
     assert 'nav.setMaximumWidth(190)' in content
 
 
+def test_qt_rearm_options_live_in_trigger_drawer_page_not_preview_card():
+    content = Path("dpo4000_utils/gui_qt/main_window.py").read_text(encoding="utf-8")
+
+    preview_start = content.index("def _build_preview_card")
+    drawer_start = content.index("# Resizable control drawer")
+    preview_section = content[preview_start:drawer_start]
+    trigger_start = content.index("def _build_trigger_tab")
+    trigger_section = content[trigger_start:content.index("def _build_trigger_actions_card")]
+
+    assert "rearm_after_image" not in preview_section
+    assert "trigger_channel_after_image" not in preview_section
+    assert "_build_trigger_capture_options_card" in trigger_section
+    assert "Image capture re-arm" in content
+    assert "Re-arm trigger after image capture" in content
+    assert "Trigger channel" in content
+    assert content.index("_build_trigger_capture_options_card") < content.index("_build_trigger_actions_card")
+
+
 def test_qt_drawer_theme_has_right_navigation_styles():
     content = Path("dpo4000_utils/gui_qt/theme.qss").read_text(encoding="utf-8")
 
