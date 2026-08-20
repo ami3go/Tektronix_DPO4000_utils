@@ -24,6 +24,20 @@ def test_qt_theme_keeps_text_widget_backgrounds_transparent():
     assert "background: transparent;" in content
 
 
+def test_qt_theme_has_visible_radio_and_checkbox_indicators():
+    content = Path("dpo4000_utils/gui_qt/theme.qss").read_text(encoding="utf-8")
+
+    assert "QRadioButton::indicator {" in content
+    assert "QRadioButton::indicator:checked" in content
+    assert "QCheckBox::indicator {" in content
+    assert "QCheckBox::indicator:checked" in content
+    assert "border: 2px solid #9ca3af;" in content
+    assert "background: #2563eb;" in content
+    assert "border: 2px solid #bfdbfe;" in content
+    assert "height: 16px;" in content
+    assert "width: 16px;" in content
+
+
 def test_qt_main_window_uses_resizable_drawer_instead_of_tabs():
     content = Path("dpo4000_utils/gui_qt/main_window.py").read_text(encoding="utf-8")
 
