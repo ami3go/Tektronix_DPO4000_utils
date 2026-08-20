@@ -91,7 +91,7 @@ class QtScopeWindow(BaseQtScopeWindow):
         self.channel_config_coupling.addItems(["DC", "AC", "GND"])
         self.channel_config_bandwidth = QComboBox()
         self.channel_config_bandwidth.setEditable(True)
-        self.channel_config_bandwidth.addItems(["FULL", "20E6", "250E6"])
+        self.channel_config_bandwidth.addItems(["", "FULL", "20E6", "250E6"])
         self.channel_config_invert = QCheckBox("Invert waveform")
         self.channel_config_probe_gain = QLineEdit("")
 
@@ -150,7 +150,10 @@ class QtScopeWindow(BaseQtScopeWindow):
 
     @staticmethod
     def _bool_from_scope_response(text: str) -> bool:
-        return str(text).strip().upper().split()[-1:] not in (["0"], ["OFF"], ["FALSE"])
+        tokens = str(text).strip().upper().split()
+        if not tokens:
+            return False
+        return tokens[-1] not in {"0", "OFF", "FALSE"}
 
     @staticmethod
     def _query_optional(instrument: Any, command: str) -> str:
