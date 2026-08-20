@@ -81,24 +81,6 @@ def test_qt_drawer_navigation_is_right_rail_with_top_controls():
     assert 'nav.setMaximumWidth(190)' in content
 
 
-def test_qt_rearm_options_live_in_trigger_drawer_page_not_preview_card():
-    content = Path("dpo4000_utils/gui_qt/main_window.py").read_text(encoding="utf-8")
-
-    preview_start = content.index("def _build_preview_card")
-    drawer_start = content.index("# Resizable control drawer")
-    preview_section = content[preview_start:drawer_start]
-    trigger_start = content.index("def _build_trigger_tab")
-    trigger_section = content[trigger_start:content.index("def _build_trigger_actions_card")]
-
-    assert "rearm_after_image" not in preview_section
-    assert "trigger_channel_after_image" not in preview_section
-    assert "_build_trigger_capture_options_card" in trigger_section
-    assert "Image capture re-arm" in content
-    assert "Re-arm trigger after image capture" in content
-    assert "Trigger channel" in content
-    assert content.index("_build_trigger_capture_options_card") < content.index("_build_trigger_actions_card")
-
-
 def test_qt_drawer_theme_has_right_navigation_styles():
     content = Path("dpo4000_utils/gui_qt/theme.qss").read_text(encoding="utf-8")
 
@@ -111,6 +93,66 @@ def test_qt_drawer_theme_has_right_navigation_styles():
     assert "QToolButton#DrawerNavButton:checked" in content
     assert "QSplitter#MainSplitter::handle" in content
     assert "QPushButton#DrawerShowButton" in content
+
+
+def test_qt_rearm_option_lives_in_trigger_page_not_preview_card():
+    content = Path("dpo4000_utils/gui_qt/main_window.py").read_text(encoding="utf-8")
+
+    preview_start = content.index("def _build_preview_card")
+    drawer_start = content.index("def _build_control_drawer")
+    preview_block = content[preview_start:drawer_start]
+    assert "rearm_after_image" not in preview_block
+    assert "trigger_channel_after_image" not in preview_block
+    assert "def _build_image_rearm_card" in content
+    assert "Image capture re-arm" in content
+    trigger_start = content.index("def _build_trigger_tab")
+    rearm_call = content.index("self._build_image_rearm_card()")
+    actions_call = content.index("self._build_trigger_actions_card()")
+    assert trigger_start < rearm_call < actions_call
+
+
+def test_qt_main_window_ports_main_gui_actions():
+    content = Path("dpo4000_utils/gui_qt/main_window.py").read_text(encoding="utf-8")
+
+    required_methods = [
+        "refresh_visa_resources",
+        "apply_ethernet_resource",
+        "read_labels",
+        "apply_labels",
+        "capture_preview",
+        "save_png_image",
+        "save_csv",
+        "save_settings",
+        "restore_settings",
+        "add_measurement",
+        "read_measurement_value",
+        "clear_measurement_slot",
+        "clear_all_measurements",
+        "read_trigger_level",
+        "apply_trigger_level",
+        "read_horizontal_position",
+        "set_horizontal_position",
+        "nudge_horizontal_position",
+        "set_horizontal_position_to_zero",
+        "apply_edge_trigger",
+        "run_acquisition",
+        "stop_acquisition",
+        "single_acquisition",
+        "continuous_acquisition",
+        "force_trigger",
+    ]
+    for method in required_methods:
+        assert f"def {method}" in content
+
+    assert "list_visa_resources" in content
+    assert "save_enabled_channels_to_single_csv" in content
+    assert "apply_scope_settings_file" in content
+    assert "save_scope_settings" in content
+    assert "FileNaming" in content
+    assert "load_preferences" in content
+    assert "save_preferences" in content
+    assert "QFileDialog.getExistingDirectory" in content
+    assert "QFileDialog.getOpenFileName" in content
 
 
 def test_qt_runner_has_clear_missing_dependency_message(monkeypatch):
