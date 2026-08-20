@@ -14,6 +14,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from ..connection import visaResourceAddr
+from .style import themed_combobox
 
 
 CONNECTION_HINT_TEXT = "VXI-11: TCPIP0::<ip>::INSTR. Socket: TCPIP0::<ip>::4000::SOCKET."
@@ -56,10 +57,10 @@ def build_connection_card(window: Any, parent: tk.Widget) -> None:
 
     visa_row = ttk.Frame(card, style="Card.TFrame")
     visa_row.pack(fill=tk.X, padx=14, pady=(0, 8))
-    window.resource_combo = ttk.Combobox(
+    window.resource_combo = themed_combobox(
         visa_row,
         textvariable=window.resource_var,
-        state="normal",
+        readonly=False,
         values=(visaResourceAddr,),
     )
     window.resource_combo.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
@@ -76,11 +77,10 @@ def build_connection_card(window: Any, parent: tk.Widget) -> None:
     eth_protocol_row = ttk.Frame(eth_box, style="Card.TFrame")
     eth_protocol_row.pack(fill=tk.X, pady=(0, 6))
     ttk.Label(eth_protocol_row, text="Protocol", style="Card.TLabel").pack(side=tk.LEFT)
-    ttk.Combobox(
+    themed_combobox(
         eth_protocol_row,
         textvariable=window.eth_protocol_var,
         width=17,
-        state="readonly",
         values=ETHERNET_PROTOCOLS,
     ).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(8, 0))
 
