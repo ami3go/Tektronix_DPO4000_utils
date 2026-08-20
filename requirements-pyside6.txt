@@ -1,0 +1,4 @@
+# Install the editable package plus the experimental PySide6/Qt GUI dependencies.
+# Run from the repository root:
+#   python -m pip install -r requirements-pyside6.txt
+-e .[pyside6]
