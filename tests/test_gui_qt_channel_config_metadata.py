@@ -27,6 +27,31 @@ def test_qt_enhanced_preview_supports_ctrl_c_copy():
     assert "Ctrl+C" in content
 
 
+def test_qt_preview_has_quick_control_toolbar():
+    content = Path("dpo4000_utils/gui_qt/enhanced_window.py").read_text(encoding="utf-8")
+
+    assert "_build_quick_control_bar" in content
+    assert 'toolbar.setObjectName("QuickControlBar")' in content
+    assert "QuickControlButton" in content
+    assert "QuickAccentButton" in content
+    assert "self.test_connection" in content
+    assert "self.capture_preview" in content
+    assert "self.save_csv" in content
+    assert "self.run_acquisition" in content
+    assert "self.force_trigger" in content
+
+
+def test_qt_drawer_has_compact_advanced_mode():
+    content = Path("dpo4000_utils/gui_qt/enhanced_window.py").read_text(encoding="utf-8")
+
+    assert "compact_mode" in content
+    assert "compact_mode_button" in content
+    assert "toggle_compact_mode" in content
+    assert "_apply_compact_mode" in content
+    assert "_register_advanced_widget" in content
+    assert "CompactModeButton" in content
+
+
 def test_qt_drawer_uses_compact_icon_navigation():
     content = Path("dpo4000_utils/gui_qt/enhanced_window.py").read_text(encoding="utf-8")
 
@@ -40,13 +65,19 @@ def test_qt_drawer_uses_compact_icon_navigation():
     assert "setMaximumWidth(108)" in content
 
 
-def test_qt_drawer_icon_rail_is_themed():
+def test_qt_drawer_icon_rail_and_compact_controls_are_themed():
     content = Path("dpo4000_utils/gui_qt/theme.qss").read_text(encoding="utf-8")
 
     assert "QToolButton#DrawerNavButton" in content
     assert "text-align: center" in content
     assert "padding: 7px 4px" in content
     assert "QLabel#PreviewLabel:focus" in content
+    assert "QWidget#QuickControlBar" in content
+    assert "QToolButton#QuickControlButton" in content
+    assert "QToolButton#QuickAccentButton" in content
+    assert "QToolButton#CompactModeButton" in content
+    assert "QToolButton#CollapsibleHeader" in content
+    assert "QGroupBox#CollapsibleContent" in content
 
 
 def test_qt_channels_tab_has_full_channel_and_math_configuration():
@@ -62,28 +93,35 @@ def test_qt_channels_tab_has_full_channel_and_math_configuration():
     assert "apply_math_configuration" in content
 
 
-def test_qt_channels_page_is_scrollable_and_cards_keep_natural_height():
+def test_qt_channels_page_is_scrollable_and_advanced_sections_are_collapsible():
     content = Path("dpo4000_utils/gui_qt/enhanced_window.py").read_text(encoding="utf-8")
 
     assert "QScrollArea" in content
-    assert 'scroll.setObjectName("ChannelsScrollArea")' in content
-    assert 'body.setObjectName("ChannelsScrollBody")' in content
+    assert 'scroll_name="ChannelsScrollArea"' in content
+    assert 'body_name="ChannelsScrollBody"' in content
     assert "scroll.setWidgetResizable(True)" in content
+    assert "_collapsible_section" in content
+    assert "CollapsibleSection" in content
+    assert "CollapsibleHeader" in content
     assert "QSizePolicy.Fixed" in content
     assert "setRowWrapPolicy(QFormLayout.WrapLongRows)" in content
     assert "setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)" in content
 
 
-def test_qt_trigger_page_is_scrollable_and_cards_keep_natural_height():
+def test_qt_trigger_page_has_quick_card_and_collapsible_advanced_sections():
     content = Path("dpo4000_utils/gui_qt/enhanced_window.py").read_text(encoding="utf-8")
 
     assert "def _build_trigger_tab" in content
-    assert "super()._build_trigger_tab()" in content
+    assert "Trigger quick" in content
+    assert "_build_trigger_quick_card" in content
+    assert "_build_horizontal_position_card" in content
+    assert "Horizontal position" in content
+    assert "Edge trigger setup" in content
+    assert "Image capture re-arm" in content
     assert 'scroll_name="TriggerScrollArea"' in content
     assert 'body_name="TriggerScrollBody"' in content
     assert "_keep_drawer_cards_natural_height" in content
     assert "findChildren(QGroupBox)" in content
-    assert "QSizePolicy.Fixed" in content
 
 
 def test_qt_scroll_areas_are_themed():
