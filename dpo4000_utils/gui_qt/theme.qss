@@ -72,9 +72,13 @@ QWidget#DrawerNav {
     border-radius: 8px;
 }
 
+QWidget#DrawerControls {
+    background: transparent;
+}
+
 QWidget#DrawerContent {
     background: #111827;
-    border-left: 1px solid #374151;
+    border-right: 1px solid #374151;
 }
 
 QWidget#DrawerHeader {
