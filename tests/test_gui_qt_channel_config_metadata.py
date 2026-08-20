@@ -32,6 +32,22 @@ def test_qt_ui_practice_window_adds_status_strip_and_recovery_buttons():
     assert "mark_disconnected" in content
 
 
+def test_qt_ui_practice_window_uses_tabs_instead_of_launched_drawer():
+    content = Path("dpo4000_utils/gui_qt/ui_practice_window.py").read_text(encoding="utf-8")
+    theme = Path("dpo4000_utils/gui_qt/theme.qss").read_text(encoding="utf-8")
+
+    assert "QTabWidget" in content
+    assert "ControlTabs" in content
+    assert "def _build_control_tabs" in content
+    assert "tabs.addTab" in content
+    assert "def _build_ui" in content
+    assert "the remote drawer is not used" in content
+    assert "Control drawer removed" in content
+    assert "QTabWidget#ControlTabs" in theme
+    assert "QTabWidget#ControlTabs::pane" in theme
+    assert "QTabWidget#ControlTabs QTabBar::tab:selected" in theme
+
+
 def test_qt_ui_practice_window_guards_scope_controls_until_idn():
     content = Path("dpo4000_utils/gui_qt/ui_practice_window.py").read_text(encoding="utf-8")
 
