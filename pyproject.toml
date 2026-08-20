@@ -24,6 +24,9 @@ build = [
 qt = [
     "PySide6>=6.7",
 ]
+pyside6 = [
+    "PySide6>=6.7",
+]
 
 [project.scripts]
 dpo4000-gui = "dpo4000_utils.gui.runner:main"
