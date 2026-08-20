@@ -18,6 +18,31 @@ COMBOBOX_POPUP_FOREGROUND = "#f9fafb"
 COMBOBOX_POPUP_ACTIVE_BACKGROUND = "#2563eb"
 COMBOBOX_POPUP_ACTIVE_FOREGROUND = "#ffffff"
 
+RADIOBUTTON_STYLE_NAME = "App.TRadiobutton"
+RADIOBUTTON_BACKGROUND = "#1f2937"
+RADIOBUTTON_ACTIVE_BACKGROUND = "#374151"
+RADIOBUTTON_SELECTED_BACKGROUND = "#2563eb"
+RADIOBUTTON_FOREGROUND = "#e5e7eb"
+RADIOBUTTON_SELECTED_FOREGROUND = "#ffffff"
+RADIOBUTTON_DISABLED_FOREGROUND = "#6b7280"
+RADIOBUTTON_STYLE_OPTIONS = {
+    "background": RADIOBUTTON_BACKGROUND,
+    "foreground": RADIOBUTTON_FOREGROUND,
+    "padding": (8, 5),
+    "font": ("Segoe UI", 10),
+}
+RADIOBUTTON_STATE_MAP = {
+    "background": [
+        ("active", RADIOBUTTON_ACTIVE_BACKGROUND),
+        ("selected", RADIOBUTTON_SELECTED_BACKGROUND),
+    ],
+    "foreground": [
+        ("disabled", RADIOBUTTON_DISABLED_FOREGROUND),
+        ("selected", RADIOBUTTON_SELECTED_FOREGROUND),
+        ("active", RADIOBUTTON_SELECTED_FOREGROUND),
+    ],
+}
+
 # Keep ttk styling deliberately simple. A previous full state-map override made
 # Windows/Tk combobox popups unreliable. The app now uses normal combobox state
 # for themed selector fields and locks keyboard editing where selection-only
@@ -44,10 +69,12 @@ THEMED_SELECTOR_BLOCKED_EVENTS = (
 
 
 def apply_readable_combobox_style(widget) -> None:
-    """Apply the dark application combobox field style."""
+    """Apply the dark application combobox and mode-selector styles."""
     style = ttk.Style(widget)
     style.configure("TCombobox", **COMBOBOX_STYLE_OPTIONS)
     style.configure(COMBOBOX_STYLE_NAME, **COMBOBOX_STYLE_OPTIONS)
+    style.configure(RADIOBUTTON_STYLE_NAME, **RADIOBUTTON_STYLE_OPTIONS)
+    style.map(RADIOBUTTON_STYLE_NAME, **RADIOBUTTON_STATE_MAP)
 
 
 def themed_combobox(
@@ -89,6 +116,27 @@ def themed_combobox(
 
     combo.configure(postcommand=_post_dropdown)
     return combo
+
+
+def themed_radiobutton(
+    parent: tk.Widget,
+    *,
+    text: str,
+    value: str,
+    variable: tk.Variable,
+    command: Callable[[], None] | None = None,
+    **kwargs,
+) -> ttk.Radiobutton:
+    """Create a radio button that matches the dark application theme."""
+    return ttk.Radiobutton(
+        parent,
+        text=text,
+        value=value,
+        variable=variable,
+        command=command,
+        style=RADIOBUTTON_STYLE_NAME,
+        **kwargs,
+    )
 
 
 def _block_keyboard_edit(_event=None) -> str:
@@ -134,7 +182,17 @@ __all__ = [
     "COMBOBOX_SELECTED_FOREGROUND",
     "COMBOBOX_STYLE_NAME",
     "COMBOBOX_STYLE_OPTIONS",
+    "RADIOBUTTON_ACTIVE_BACKGROUND",
+    "RADIOBUTTON_BACKGROUND",
+    "RADIOBUTTON_DISABLED_FOREGROUND",
+    "RADIOBUTTON_FOREGROUND",
+    "RADIOBUTTON_SELECTED_BACKGROUND",
+    "RADIOBUTTON_SELECTED_FOREGROUND",
+    "RADIOBUTTON_STATE_MAP",
+    "RADIOBUTTON_STYLE_NAME",
+    "RADIOBUTTON_STYLE_OPTIONS",
     "THEMED_SELECTOR_BLOCKED_EVENTS",
     "apply_readable_combobox_style",
     "themed_combobox",
+    "themed_radiobutton",
 ]
