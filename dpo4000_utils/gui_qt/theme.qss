@@ -15,6 +15,42 @@ QFrame, QStackedWidget, QScrollArea, QScrollArea > QWidget > QWidget {
     background: #111827;
 }
 
+QScrollArea#ChannelsScrollArea {
+    background: #111827;
+    border: 0;
+}
+
+QWidget#ChannelsScrollBody {
+    background: #111827;
+}
+
+QScrollBar:vertical {
+    background: #0f172a;
+    border: 0;
+    border-radius: 5px;
+    margin: 0;
+    width: 10px;
+}
+
+QScrollBar::handle:vertical {
+    background: #374151;
+    border-radius: 5px;
+    min-height: 28px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background: #4b5563;
+}
+
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical,
+QScrollBar::add-page:vertical,
+QScrollBar::sub-page:vertical {
+    background: transparent;
+    border: 0;
+    height: 0;
+}
+
 QGroupBox {
     background: #1f2937;
     border: 1px solid #374151;
