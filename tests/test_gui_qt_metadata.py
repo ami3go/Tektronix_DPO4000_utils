@@ -24,6 +24,18 @@ def test_qt_theme_keeps_text_widget_backgrounds_transparent():
     assert "background: transparent;" in content
 
 
+def test_qt_card_titles_are_inside_card_padding():
+    content = Path("dpo4000_utils/gui_qt/theme.qss").read_text(encoding="utf-8")
+
+    assert "QGroupBox {" in content
+    assert "margin-top: 0;" in content
+    assert "padding: 36px 14px 14px 14px;" in content
+    assert "QGroupBox::title" in content
+    assert "subcontrol-origin: padding;" in content
+    assert "subcontrol-position: top left;" in content
+    assert "top: 2px;" in content
+
+
 def test_qt_theme_has_visible_radio_and_checkbox_indicators():
     content = Path("dpo4000_utils/gui_qt/theme.qss").read_text(encoding="utf-8")
 
