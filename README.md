@@ -66,18 +66,22 @@ The package now uses a root package layout: `dpo4000_utils/` is directly in the 
    - Click **Save CSV** to export all enabled channel waveforms into one CSV file.
    - The CSV path uses the shared waveform driver helpers, including enabled-channel detection and voltage scaling.
 
-4. **Use trigger controls**
-   - Read or set A trigger level from the Trigger tab.
-   - Trigger level accepts numeric volts and supported presets such as `TTL` or `ECL`.
-   - Optional re-arm behavior after image capture can be enabled in the settings.
+4. **Use the Measurement tab**
+   - Add or update displayed `MEAS1..MEAS8` slots.
+   - Select measurement groups that mirror common scope submenus: **Amplitude**, **Timing**, and **Area / count**.
+   - Keep the measurement type field editable so exact firmware-specific SCPI names can be typed manually.
+   - Select Source 1 and optional Source 2.
+   - Read the selected measurement value, clear one slot, or clear all displayed measurements.
+   - Measurement actions are direct SCPI writes to the oscilloscope display setup.
 
-5. **Use the Control tab**
-   - The **Measurements** section can add/update displayed `MEAS1..MEAS8` slots, read the selected slot value, clear one slot, or clear all measurement slots.
-   - Measurement groups expose common scope submenus: **Amplitude**, **Timing**, and **Area / count**. The measurement type field remains editable so exact firmware-specific SCPI names can be typed manually.
-   - The **Horizontal / trigger position** section writes `HORIZONTAL:POSITION`, reads the current value, nudges it left/right, or centers it to `0`.
-   - The **Trigger control** section applies common A edge-trigger settings: mode, source, slope, coupling, and level.
-   - The acquisition buttons provide **Run**, **Stop**, **Single**, **Continuous**, and **Force trigger** actions.
-   - These controls are direct SCPI writes to the oscilloscope; use them only when it is acceptable for the GUI to change the active scope setup.
+5. **Use the Trigger tab**
+   - Read or set A trigger level.
+   - Trigger level accepts numeric volts and supported presets such as `TTL` or `ECL`.
+   - Move horizontal trigger position with direct `HORIZONTAL:POSITION` set/read/nudge controls.
+   - Apply common A edge-trigger settings: mode, source, slope, coupling, and level.
+   - Use acquisition buttons for **Run**, **Stop**, **Single**, **Continuous**, and **Force trigger**.
+   - Optional re-arm behavior after image capture can still be enabled in the Settings tab.
+   - Trigger controls are direct SCPI writes to the active scope setup.
 
 6. **Save and restore scope setup**
    - Click **Save settings** to store the current scope setup as JSON.
@@ -191,7 +195,7 @@ control.py      displayed measurement, horizontal position, and trigger/acquisit
 instrument.py   DPO4000Scope / DPO4054 classes composed from mixins
 ```
 
-The GUI screenshot path uses `hardcopy.py`, the GUI settings restore path uses `settings.py`, the GUI CSV export path uses `waveform.py`, and the Control tab uses `control.py`, so transfer, validation, scaling, and diagnostic behavior are shared between scripts and the GUI.
+The GUI screenshot path uses `hardcopy.py`, the GUI settings restore path uses `settings.py`, the GUI CSV export path uses `waveform.py`, and the Measurement/Trigger tabs use `control.py`, so transfer, validation, scaling, and diagnostic behavior are shared between scripts and the GUI.
 
 ## GUI modules
 
@@ -205,8 +209,8 @@ gui/main_window.py      compatibility shim for older imports
 gui/clipboard.py        platform image clipboard helpers for preview copy
 gui/connection_panel.py extracted Connection tab builder
 gui/channels_panel.py   extracted Channels tab builder
-gui/trigger_panel.py    extracted Trigger tab builder
-gui/control_panel.py    extracted Control tab builder
+gui/measurement_panel.py extracted Measurement tab builder
+gui/trigger_panel.py    extracted Trigger tab builder with horizontal/edge/acquisition controls
 gui/settings_panel.py   extracted Settings tab builder
 gui/preview_panel.py    extracted preview and image/CSV action builder
 gui/log_panel.py        extracted Log tab builder
