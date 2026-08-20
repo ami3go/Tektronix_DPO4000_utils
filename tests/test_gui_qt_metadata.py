@@ -40,12 +40,29 @@ def test_qt_main_window_uses_resizable_drawer_instead_of_tabs():
     assert "toggle_drawer_pin" in content
 
 
-def test_qt_drawer_theme_has_vertical_navigation_styles():
+def test_qt_drawer_navigation_is_right_rail_with_top_controls():
+    content = Path("dpo4000_utils/gui_qt/main_window.py").read_text(encoding="utf-8")
+
+    content_index = content.index('content.setObjectName("DrawerContent")')
+    nav_index = content.index('nav.setObjectName("DrawerNav")')
+    assert content_index < nav_index
+    assert 'layout.addWidget(content, 1)' in content
+    assert 'layout.addWidget(nav)' in content
+    assert 'nav_controls.setObjectName("DrawerControls")' in content
+    assert 'nav_layout.addWidget(nav_controls)' in content
+    assert content.index('nav_layout.addWidget(nav_controls)') < content.index('for index, title in enumerate(DRAWER_PAGE_TITLES):')
+    assert 'nav.setMinimumWidth(156)' in content
+    assert 'nav.setMaximumWidth(190)' in content
+
+
+def test_qt_drawer_theme_has_right_navigation_styles():
     content = Path("dpo4000_utils/gui_qt/theme.qss").read_text(encoding="utf-8")
 
     assert "QWidget#ControlDrawer" in content
     assert "QWidget#DrawerNav" in content
+    assert "QWidget#DrawerControls" in content
     assert "QWidget#DrawerContent" in content
+    assert "border-right: 1px solid #374151;" in content
     assert "QToolButton#DrawerNavButton" in content
     assert "QToolButton#DrawerNavButton:checked" in content
     assert "QSplitter#MainSplitter::handle" in content
