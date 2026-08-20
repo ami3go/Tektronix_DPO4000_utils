@@ -14,11 +14,12 @@ import tkinter as tk
 from tkinter import ttk
 
 from ..connection import visaResourceAddr
-from .style import themed_combobox
+from .style import themed_combobox, themed_radiobutton
 
 
 CONNECTION_HINT_TEXT = "VXI-11: TCPIP0::<ip>::INSTR. Socket: TCPIP0::<ip>::4000::SOCKET."
 ETHERNET_PROTOCOLS = ("VXI-11 / INSTR", "Raw SOCKET")
+CONNECTION_MODE_LABELS = ("USB / VISA", "Ethernet")
 
 
 def build_connection_card(window: Any, parent: tk.Widget) -> None:
@@ -36,14 +37,14 @@ def build_connection_card(window: Any, parent: tk.Widget) -> None:
     mode_row = ttk.Frame(card, style="Card.TFrame")
     mode_row.pack(fill=tk.X, padx=14, pady=(8, 6))
     ttk.Label(mode_row, text="Mode", style="Card.TLabel").pack(side=tk.LEFT, padx=(0, 10))
-    ttk.Radiobutton(
+    themed_radiobutton(
         mode_row,
         text="USB / VISA",
         value="visa",
         variable=window.connection_mode_var,
         command=window._on_connection_mode_changed,
-    ).pack(side=tk.LEFT, padx=(0, 16))
-    ttk.Radiobutton(
+    ).pack(side=tk.LEFT, padx=(0, 10))
+    themed_radiobutton(
         mode_row,
         text="Ethernet",
         value="ethernet",
@@ -122,4 +123,4 @@ def build_connection_card(window: Any, parent: tk.Widget) -> None:
     ).pack(fill=tk.X, padx=14, pady=(0, 14))
 
 
-__all__ = ["CONNECTION_HINT_TEXT", "ETHERNET_PROTOCOLS", "build_connection_card"]
+__all__ = ["CONNECTION_HINT_TEXT", "CONNECTION_MODE_LABELS", "ETHERNET_PROTOCOLS", "build_connection_card"]
