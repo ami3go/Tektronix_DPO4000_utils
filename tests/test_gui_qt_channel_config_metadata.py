@@ -29,6 +29,27 @@ def test_qt_channels_tab_has_full_channel_and_math_configuration():
     assert "apply_math_configuration" in content
 
 
+def test_qt_channels_page_is_scrollable_and_cards_keep_natural_height():
+    content = Path("dpo4000_utils/gui_qt/enhanced_window.py").read_text(encoding="utf-8")
+
+    assert "QScrollArea" in content
+    assert 'scroll.setObjectName("ChannelsScrollArea")' in content
+    assert 'body.setObjectName("ChannelsScrollBody")' in content
+    assert "scroll.setWidgetResizable(True)" in content
+    assert "QSizePolicy.Fixed" in content
+    assert "setRowWrapPolicy(QFormLayout.WrapLongRows)" in content
+    assert "setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)" in content
+
+
+def test_qt_channels_scroll_area_is_themed():
+    content = Path("dpo4000_utils/gui_qt/theme.qss").read_text(encoding="utf-8")
+
+    assert "QScrollArea#ChannelsScrollArea" in content
+    assert "QWidget#ChannelsScrollBody" in content
+    assert "QScrollBar:vertical" in content
+    assert "QScrollBar::handle:vertical" in content
+
+
 def test_qt_channel_config_contains_expected_scpi_commands():
     content = Path("dpo4000_utils/gui_qt/enhanced_window.py").read_text(encoding="utf-8")
 
