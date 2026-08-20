@@ -148,16 +148,6 @@ class QtScopeWindow(QMainWindow):
         self.preview_label.setScaledContents(False)
         layout.addWidget(self.preview_label, 1)
 
-        options = QHBoxLayout()
-        self.rearm_after_image = QCheckBox("Re-arm trigger after image capture")
-        self.rearm_after_image.setChecked(True)
-        self.trigger_channel_after_image = QComboBox()
-        self.trigger_channel_after_image.addItems(["", "1", "2", "3", "4"])
-        options.addWidget(self.rearm_after_image, 1)
-        options.addWidget(QLabel("Trigger channel"))
-        options.addWidget(self.trigger_channel_after_image)
-        layout.addLayout(options)
-
         buttons = QHBoxLayout()
         buttons.addWidget(self._button("Capture preview", self.capture_preview))
         buttons.addWidget(self._button("Copy preview", self.copy_preview))
@@ -376,11 +366,23 @@ class QtScopeWindow(QMainWindow):
     def _build_trigger_tab(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
+        layout.addWidget(self._build_trigger_capture_options_card())
         layout.addWidget(self._build_trigger_actions_card())
         layout.addWidget(self._build_trigger_level_card())
         layout.addWidget(self._build_edge_trigger_card())
         layout.addStretch(1)
         return page
+
+    def _build_trigger_capture_options_card(self) -> QGroupBox:
+        card = self._card("Image capture re-arm")
+        form = QFormLayout(card)
+        self.rearm_after_image = QCheckBox("Re-arm trigger after image capture")
+        self.rearm_after_image.setChecked(True)
+        self.trigger_channel_after_image = QComboBox()
+        self.trigger_channel_after_image.addItems(["", "1", "2", "3", "4"])
+        form.addRow(self.rearm_after_image)
+        form.addRow("Trigger channel", self.trigger_channel_after_image)
+        return card
 
     def _build_trigger_actions_card(self) -> QGroupBox:
         card = self._card("Acquisition / trigger actions")
