@@ -11,11 +11,17 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QSizePolicy,
+    QSplitter,
+    QStatusBar,
+    QTabWidget,
     QToolButton,
+    QVBoxLayout,
     QWidget,
 )
 
 from .enhanced_window import QtScopeWindow as CompactQtScopeWindow
+from .main_window import APP_TITLE, DEFAULT_DRAWER_WIDTH, DRAWER_PAGE_TITLES
 
 SCOPE_ACTION_CALLBACKS = {
     "capture_preview",
@@ -88,7 +94,7 @@ QUICK_TOOLTIPS = {
 
 
 class QtScopeWindow(CompactQtScopeWindow):
-    """Qt window with status strip, recovery buttons, and guarded scope actions."""
+    """Qt window with status strip, recovery buttons, guarded actions, and tabs."""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         self._scope_controls: list[QWidget] = []
@@ -102,6 +108,89 @@ class QtScopeWindow(CompactQtScopeWindow):
         self._install_global_shortcuts()
         self._update_scope_control_enabled()
         self._update_status_strip()
+
+    # ------------------------------------------------------------------
+    # Tabbed top-level layout
+    # ------------------------------------------------------------------
+    def _build_ui(self) -> None:
+        """Build preview plus tabbed controls; the remote drawer is not used."""
+        central = QWidget(self)
+        root = QVBoxLayout(central)
+        root.setContentsMargins(18, 18, 18, 12)
+        root.setSpacing(14)
+        self.setCentralWidget(central)
+
+        header = QHBoxLayout()
+        title = QLabel(APP_TITLE)
+        title.setObjectName("TitleLabel")
+        subtitle = QLabel("PySide6 testing branch · tabbed controls · Tkinter GUI remains available")
+        subtitle.setObjectName("MutedLabel")
+        subtitle.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.compact_mode_button = QToolButton()
+        self.compact_mode_button.setObjectName("CompactModeButton")
+        self.compact_mode_button.setCheckable(True)
+        self.compact_mode_button.setChecked(True)
+        self.compact_mode_button.setText("Compact")
+        self.compact_mode_button.setToolTip("Hide advanced tab sections")
+        self.compact_mode_button.clicked.connect(self.toggle_compact_mode)
+        header.addWidget(title, 1)
+        header.addWidget(subtitle, 1)
+        header.addWidget(self.compact_mode_button)
+        root.addLayout(header)
+
+        self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.main_splitter.setObjectName("MainSplitter")
+        root.addWidget(self.main_splitter, 1)
+
+        preview_card = self._build_preview_card()
+        preview_card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.main_splitter.addWidget(preview_card)
+
+        self.control_tabs = self._build_control_tabs()
+        self.control_tabs.setMinimumWidth(420)
+        self.control_tabs.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
+        self.main_splitter.addWidget(self.control_tabs)
+        self.main_splitter.setStretchFactor(0, 3)
+        self.main_splitter.setStretchFactor(1, 1)
+        self.main_splitter.setSizes([810, DEFAULT_DRAWER_WIDTH])
+
+        self.setStatusBar(QStatusBar())
+
+    def _build_control_tabs(self) -> QTabWidget:
+        tabs = QTabWidget()
+        tabs.setObjectName("ControlTabs")
+        tabs.setDocumentMode(True)
+        tabs.setTabPosition(QTabWidget.TabPosition.North)
+        tabs.addTab(self._build_connection_tab(), DRAWER_PAGE_TITLES[0])
+        tabs.addTab(self._build_channels_tab(), DRAWER_PAGE_TITLES[1])
+        tabs.addTab(self._build_measurement_tab(), DRAWER_PAGE_TITLES[2])
+        tabs.addTab(self._build_trigger_tab(), DRAWER_PAGE_TITLES[3])
+        tabs.addTab(self._build_settings_tab(), DRAWER_PAGE_TITLES[4])
+        tabs.addTab(self._build_log_tab(), DRAWER_PAGE_TITLES[5])
+        return tabs
+
+    def _select_drawer_page(self, index: int) -> None:
+        """Keep old page-switch callers working after replacing the drawer with tabs."""
+        tabs = getattr(self, "control_tabs", None)
+        if tabs is None or index < 0 or index >= tabs.count():
+            return
+        tabs.setCurrentIndex(index)
+        self.statusBar().showMessage(f"Selected {tabs.tabText(index)} tab")
+
+    def show_control_drawer(self) -> None:
+        """Compatibility no-op: controls are tabs now, not a hideable drawer."""
+        tabs = getattr(self, "control_tabs", None)
+        if tabs is not None:
+            tabs.setVisible(True)
+        self.statusBar().showMessage("Controls are shown as tabs")
+
+    def hide_control_drawer(self) -> None:
+        """Compatibility no-op: the drawer has been removed from the launched UI."""
+        self.statusBar().showMessage("Control drawer removed; use the tabs")
+
+    def toggle_drawer_pin(self) -> None:
+        """Compatibility no-op for callers from older drawer code."""
+        self.statusBar().showMessage("Control drawer removed; tabs are always available")
 
     # ------------------------------------------------------------------
     # Button registration and status shell
