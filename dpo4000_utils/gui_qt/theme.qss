@@ -111,6 +111,56 @@ QLabel#DrawerTitle {
     font-weight: 700;
 }
 
+QWidget#ScopeStatusStrip {
+    background: #0f172a;
+    border: 1px solid #1f2937;
+    border-radius: 8px;
+}
+
+QLabel#StatusChip,
+QLabel#StatusBadgeOk,
+QLabel#StatusBadgeWarn,
+QLabel#StatusBadgeBusy {
+    background: #111827;
+    border: 1px solid #374151;
+    border-radius: 10px;
+    color: #d1d5db;
+    padding: 4px 8px;
+}
+
+QLabel#StatusBadgeOk {
+    background: #064e3b;
+    border-color: #10b981;
+    color: #d1fae5;
+    font-weight: 700;
+}
+
+QLabel#StatusBadgeWarn {
+    background: #451a03;
+    border-color: #f59e0b;
+    color: #fde68a;
+    font-weight: 700;
+}
+
+QLabel#StatusBadgeBusy {
+    background: #172554;
+    border-color: #60a5fa;
+    color: #bfdbfe;
+    font-weight: 700;
+}
+
+QToolButton#StatusActionButton {
+    background: #1f2937;
+    border: 1px solid #374151;
+    border-radius: 6px;
+    color: #e5e7eb;
+    padding: 5px 8px;
+}
+
+QToolButton#StatusActionButton:hover {
+    background: #374151;
+}
+
 QWidget#QuickControlBar {
     background: #0f172a;
     border: 1px solid #1f2937;
@@ -139,6 +189,15 @@ QToolButton#QuickAccentButton {
 
 QToolButton#QuickAccentButton:hover {
     background: #1d4ed8;
+}
+
+QToolButton#QuickControlButton:disabled,
+QToolButton#QuickAccentButton:disabled,
+QPushButton[scopeAction="true"]:disabled,
+QToolButton[scopeAction="true"]:disabled {
+    background: #111827;
+    border-color: #1f2937;
+    color: #6b7280;
 }
 
 QWidget#ControlDrawer {
