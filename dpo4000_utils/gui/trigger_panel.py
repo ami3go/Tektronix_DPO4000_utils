@@ -6,6 +6,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from ..control import TRIGGER_COUPLINGS, TRIGGER_MODES, TRIGGER_SLOPES, TRIGGER_SOURCES
+from .style import themed_combobox
 
 
 TRIGGER_CHANNELS = ("1", "2", "3", "4")
@@ -95,11 +96,10 @@ def build_quick_trigger_level_section(gui, parent: tk.Widget) -> None:
     row.pack(fill=tk.X, pady=(0, 8))
 
     ttk.Label(row, text="Source", style="Card.TLabel").pack(side=tk.LEFT)
-    ttk.Combobox(
+    themed_combobox(
         row,
         textvariable=gui.trigger_setup_channel_var,
         width=7,
-        state="readonly",
         values=TRIGGER_CHANNELS,
     ).pack(side=tk.LEFT, padx=(8, 14))
 
@@ -179,23 +179,23 @@ def build_edge_trigger_section(gui, parent: tk.Widget) -> None:
     mode_col = ttk.Frame(row, style="Card.TFrame")
     mode_col.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
     _field_label(mode_col, "Mode")
-    ttk.Combobox(mode_col, textvariable=gui.control_trigger_mode_var, values=TRIGGER_MODES, state="readonly").pack(fill=tk.X)
+    themed_combobox(mode_col, textvariable=gui.control_trigger_mode_var, values=TRIGGER_MODES).pack(fill=tk.X)
 
     source_col = ttk.Frame(row, style="Card.TFrame")
     source_col.pack(side=tk.LEFT, fill=tk.X, expand=True)
     _field_label(source_col, "Source")
-    ttk.Combobox(source_col, textvariable=gui.control_trigger_source_var, values=TRIGGER_SOURCES, state="readonly").pack(fill=tk.X)
+    themed_combobox(source_col, textvariable=gui.control_trigger_source_var, values=TRIGGER_SOURCES).pack(fill=tk.X)
 
     row = _row(card)
     slope_col = ttk.Frame(row, style="Card.TFrame")
     slope_col.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
     _field_label(slope_col, "Slope")
-    ttk.Combobox(slope_col, textvariable=gui.control_trigger_slope_var, values=TRIGGER_SLOPES, state="readonly").pack(fill=tk.X)
+    themed_combobox(slope_col, textvariable=gui.control_trigger_slope_var, values=TRIGGER_SLOPES).pack(fill=tk.X)
 
     coupling_col = ttk.Frame(row, style="Card.TFrame")
     coupling_col.pack(side=tk.LEFT, fill=tk.X, expand=True)
     _field_label(coupling_col, "Coupling")
-    ttk.Combobox(coupling_col, textvariable=gui.control_trigger_coupling_var, values=TRIGGER_COUPLINGS, state="readonly").pack(fill=tk.X)
+    themed_combobox(coupling_col, textvariable=gui.control_trigger_coupling_var, values=TRIGGER_COUPLINGS).pack(fill=tk.X)
 
     row = _row(card)
     _field_label(row, "Level")
