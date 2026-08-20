@@ -23,22 +23,47 @@ def test_qt_acquisition_window_adds_dedicated_tab():
     assert "CONTROL_TAB_TITLES" in content
     assert '"Acquisition"' in content
     assert "def _build_acquisition_tab" in content
-    assert "_build_acquisition_actions_card" in content
+    assert "_build_acquisition_setup_card" in content
     assert 'scroll_name="AcquisitionScrollArea"' in content
     assert 'body_name="AcquisitionScrollBody"' in content
     assert "tabs.addTab(self._build_acquisition_tab(), CONTROL_TAB_TITLES[4])" in content
 
 
-def test_qt_acquisition_tab_contains_acquisition_controls_and_rearm():
+def test_qt_acquisition_tab_is_tektronix_setup_focused():
     content = Path("dpo4000_utils/gui_qt/acquisition_window.py").read_text(encoding="utf-8")
 
-    assert "Acquisition controls" in content
-    assert "self.run_acquisition" in content
-    assert "self.stop_acquisition" in content
-    assert "self.single_acquisition" in content
-    assert "self.continuous_acquisition" in content
-    assert "self.force_trigger" in content
-    assert "_build_image_rearm_card" in content
+    assert "Acquisition setup" in content
+    assert "ACQUISITION_MODES" in content
+    assert "AVERAGE_COUNTS" in content
+    assert "RECORD_LENGTHS" in content
+    assert "ACQUISITION_SETUP_QUERIES" in content
+    assert "HIRES" in content
+    assert "AVERAGE" in content
+    assert "read_acquisition_setup" in content
+    assert "apply_acquisition_setup" in content
+    assert "Read acquisition setup" in content
+    assert "Apply acquisition setup" in content
+    assert "Manual acquisition buttons" in content
+    assert "Image capture re-arm" in content
+
+
+def test_qt_acquisition_setup_contains_expected_scpi_commands():
+    content = Path("dpo4000_utils/gui_qt/acquisition_window.py").read_text(encoding="utf-8")
+
+    assert "ACQUIRE:MODE?" in content
+    assert "ACQUIRE:NUMAVG?" in content
+    assert "HORIZONTAL:RECORDLENGTH?" in content
+    assert "ACQUIRE:MODE" in content
+    assert "ACQUIRE:NUMAVG" in content
+    assert "HORIZONTAL:RECORDLENGTH" in content
+
+
+def test_qt_acquisition_setup_actions_are_guarded_until_idn():
+    content = Path("dpo4000_utils/gui_qt/ui_practice_window.py").read_text(encoding="utf-8")
+
+    assert '"read_acquisition_setup"' in content
+    assert '"apply_acquisition_setup"' in content
+    assert "SCOPE_ACTION_CALLBACKS" in content
 
 
 def test_qt_trigger_tab_is_trigger_focused_after_acquisition_split():
@@ -96,6 +121,17 @@ def test_qt_ui_practice_window_still_uses_tabs_not_launched_drawer():
     assert "QTabWidget#ControlTabs" in theme
     assert "QTabWidget#ControlTabs::pane" in theme
     assert "QTabWidget#ControlTabs QTabBar::tab:selected" in theme
+
+
+def test_qt_scroll_areas_include_acquisition_page():
+    content = Path("dpo4000_utils/gui_qt/theme.qss").read_text(encoding="utf-8")
+
+    assert "QScrollArea#ChannelsScrollArea" in content
+    assert "QScrollArea#TriggerScrollArea" in content
+    assert "QScrollArea#AcquisitionScrollArea" in content
+    assert "QWidget#ChannelsScrollBody" in content
+    assert "QWidget#TriggerScrollBody" in content
+    assert "QWidget#AcquisitionScrollBody" in content
 
 
 def test_qt_enhanced_preview_supports_ctrl_c_copy_and_quick_toolbar():
