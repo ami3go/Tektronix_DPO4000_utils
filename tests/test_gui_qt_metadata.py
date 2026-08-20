@@ -8,9 +8,19 @@ from pathlib import Path
 def test_pyproject_exposes_optional_qt_dependency_and_script():
     data = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
 
-    assert "qt" in data["project"]["optional-dependencies"]
-    assert any(dep.startswith("PySide6") for dep in data["project"]["optional-dependencies"]["qt"])
+    optional = data["project"]["optional-dependencies"]
+    assert "qt" in optional
+    assert "pyside6" in optional
+    assert any(dep.startswith("PySide6") for dep in optional["qt"])
+    assert optional["pyside6"] == optional["qt"]
     assert data["project"]["scripts"]["dpo4000-gui-qt"] == "dpo4000_utils.gui_qt.runner:main"
+
+
+def test_pyside6_requirements_file_installs_package_extra():
+    content = Path("requirements-pyside6.txt").read_text(encoding="utf-8")
+
+    assert "-e .[pyside6]" in content
+    assert "requirements-pyside6.txt" in content
 
 
 def test_qt_theme_keeps_text_widget_backgrounds_transparent():
@@ -169,6 +179,8 @@ def test_qt_runner_has_clear_missing_dependency_message(monkeypatch):
     try:
         runner.main()
     except SystemExit as exc:
-        assert "pip install -e .[qt]" in str(exc)
+        text = str(exc)
+        assert "pip install -e .[pyside6]" in text
+        assert "requirements-pyside6.txt" in text
     else:
         raise AssertionError("runner.main() should exit with a PySide6 install hint")
