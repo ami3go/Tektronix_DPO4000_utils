@@ -5,6 +5,7 @@ from dpo4000_utils.gui.trigger_panel import (
     HORIZONTAL_TRIGGER_HINT,
     TRIGGER_CHANNELS,
     TRIGGER_LEVEL_HINT,
+    TRIGGER_SECTION_ORDER,
 )
 
 
@@ -15,6 +16,10 @@ def test_trigger_panel_exports_expected_channels():
 def test_trigger_panel_hint_mentions_supported_presets():
     assert "TTL" in TRIGGER_LEVEL_HINT
     assert "ECL" in TRIGGER_LEVEL_HINT
+
+
+def test_trigger_actions_section_is_first():
+    assert TRIGGER_SECTION_ORDER[0] == "Acquisition / trigger actions"
 
 
 def test_trigger_panel_includes_horizontal_and_acquisition_controls():
