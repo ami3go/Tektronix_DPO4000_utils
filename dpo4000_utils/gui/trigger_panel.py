@@ -13,6 +13,12 @@ TRIGGER_LEVEL_HINT = "Numeric volts, or Tektronix presets TTL/ECL."
 HORIZONTAL_TRIGGER_HINT = "Move horizontal trigger position. Values use the scope SCPI HORIZONTAL:POSITION units."
 EDGE_TRIGGER_HINT = "Common A edge-trigger setup: mode, source, slope, coupling, and level."
 ACQUISITION_HINT = "Run, stop, single-shot, continuous acquisition, or force one trigger event."
+TRIGGER_SECTION_ORDER = (
+    "Acquisition / trigger actions",
+    "Trigger level",
+    "Horizontal trigger position",
+    "Edge trigger setup",
+)
 
 
 def build_trigger_card(gui, parent: tk.Widget) -> None:
@@ -32,10 +38,10 @@ def build_trigger_card(gui, parent: tk.Widget) -> None:
     canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
     scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
+    build_acquisition_section(gui, body)
     build_quick_trigger_level_section(gui, body)
     build_horizontal_position_section(gui, body)
     build_edge_trigger_section(gui, body)
-    build_acquisition_section(gui, body)
 
 
 def _card(gui, parent: tk.Widget, title: str, help_text: str | None = None) -> ttk.Frame:
@@ -61,6 +67,22 @@ def _row(parent: tk.Widget) -> ttk.Frame:
 
 def _field_label(parent: tk.Widget, text: str) -> None:
     ttk.Label(parent, text=text, style="Card.TLabel").pack(anchor="w", pady=(0, 2))
+
+
+def build_acquisition_section(gui, parent: tk.Widget) -> None:
+    card = _card(gui, parent, "Acquisition / trigger actions", ACQUISITION_HINT)
+
+    row = _row(card)
+    for text, command in (
+        ("Run", gui.run_acquisition),
+        ("Stop", gui.stop_acquisition),
+        ("Single", gui.single_acquisition),
+        ("Continuous", gui.continuous_acquisition),
+    ):
+        ttk.Button(row, text=text, command=command).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 4))
+
+    row = _row(card)
+    ttk.Button(row, text="Force trigger", style="Accent.TButton", command=gui.force_trigger_event).pack(fill=tk.X)
 
 
 def build_quick_trigger_level_section(gui, parent: tk.Widget) -> None:
@@ -188,27 +210,12 @@ def build_edge_trigger_section(gui, parent: tk.Widget) -> None:
     ).pack(fill=tk.X)
 
 
-def build_acquisition_section(gui, parent: tk.Widget) -> None:
-    card = _card(gui, parent, "Acquisition / trigger actions", ACQUISITION_HINT)
-
-    row = _row(card)
-    for text, command in (
-        ("Run", gui.run_acquisition),
-        ("Stop", gui.stop_acquisition),
-        ("Single", gui.single_acquisition),
-        ("Continuous", gui.continuous_acquisition),
-    ):
-        ttk.Button(row, text=text, command=command).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 4))
-
-    row = _row(card)
-    ttk.Button(row, text="Force trigger", style="Accent.TButton", command=gui.force_trigger_event).pack(fill=tk.X)
-
-
 __all__ = [
     "ACQUISITION_HINT",
     "EDGE_TRIGGER_HINT",
     "HORIZONTAL_TRIGGER_HINT",
     "TRIGGER_CHANNELS",
     "TRIGGER_LEVEL_HINT",
+    "TRIGGER_SECTION_ORDER",
     "build_trigger_card",
 ]
