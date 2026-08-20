@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFormLayout,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -184,6 +185,46 @@ class QtScopeWindow(BaseQtScopeWindow):
         message = "Control drawer pinned open" if self.drawer_pinned else "Control drawer can now be hidden"
         self.statusBar().showMessage(message)
 
+    @staticmethod
+    def _prepare_drawer_card(card: QGroupBox) -> QGroupBox:
+        """Keep cards at natural height inside drawer scroll pages."""
+        card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        return card
+
+    @staticmethod
+    def _keep_drawer_cards_natural_height(container: QWidget) -> None:
+        """Prevent nested cards from being vertically compressed."""
+        for card in container.findChildren(QGroupBox):
+            QtScopeWindow._prepare_drawer_card(card)
+
+    def _wrap_scrollable_drawer_page(
+        self,
+        body: QWidget,
+        *,
+        scroll_name: str,
+        body_name: str,
+    ) -> QScrollArea:
+        body.setObjectName(body_name)
+        if body.layout() is not None:
+            body.layout().setContentsMargins(0, 0, 8, 0)
+            body.layout().setSpacing(12)
+        self._keep_drawer_cards_natural_height(body)
+
+        scroll = QScrollArea()
+        scroll.setObjectName(scroll_name)
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(body)
+        return scroll
+
+    def _build_trigger_tab(self) -> QWidget:
+        """Build trigger page inside a scroll area so cards never collapse."""
+        body = super()._build_trigger_tab()
+        return self._wrap_scrollable_drawer_page(
+            body,
+            scroll_name="TriggerScrollArea",
+            body_name="TriggerScrollBody",
+        )
+
     def _build_channels_tab(self) -> QWidget:
         body = QWidget()
         body.setObjectName("ChannelsScrollBody")
@@ -211,8 +252,7 @@ class QtScopeWindow(BaseQtScopeWindow):
 
     @staticmethod
     def _prepare_channels_card(card):
-        card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        return card
+        return QtScopeWindow._prepare_drawer_card(card)
 
     def _build_channel_labels_card(self):
         card = self._card("Channel labels")
