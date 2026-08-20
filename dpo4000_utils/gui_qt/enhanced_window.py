@@ -11,6 +11,8 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QScrollArea,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -50,19 +52,39 @@ class QtScopeWindow(BaseQtScopeWindow):
     """Qt window variant with full CH1..CH4 and MATH setup in Channels."""
 
     def _build_channels_tab(self) -> QWidget:
-        page = QWidget()
-        layout = QVBoxLayout(page)
-        layout.setSpacing(10)
+        body = QWidget()
+        body.setObjectName("ChannelsScrollBody")
+        layout = QVBoxLayout(body)
+        layout.setContentsMargins(0, 0, 8, 0)
+        layout.setSpacing(12)
 
         layout.addWidget(self._build_channel_labels_card())
         layout.addWidget(self._build_channel_configuration_card())
         layout.addWidget(self._build_math_configuration_card())
         layout.addStretch(1)
-        return page
+
+        scroll = QScrollArea()
+        scroll.setObjectName("ChannelsScrollArea")
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(body)
+        return scroll
+
+    @staticmethod
+    def _prepare_form(form: QFormLayout) -> None:
+        form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+        form.setRowWrapPolicy(QFormLayout.WrapLongRows)
+        form.setVerticalSpacing(10)
+        form.setHorizontalSpacing(12)
+
+    @staticmethod
+    def _prepare_channels_card(card):
+        card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        return card
 
     def _build_channel_labels_card(self):
         card = self._card("Channel labels")
         form = QFormLayout(card)
+        self._prepare_form(form)
         self.channel_labels: dict[int, QLineEdit] = {}
         for channel in range(1, 5):
             edit = QLineEdit()
@@ -73,11 +95,12 @@ class QtScopeWindow(BaseQtScopeWindow):
         buttons.addWidget(self._button("Read labels", self.read_labels))
         buttons.addWidget(self._accent_button("Apply labels", self.apply_labels))
         form.addRow(buttons)
-        return card
+        return self._prepare_channels_card(card)
 
     def _build_channel_configuration_card(self):
         card = self._card("Full channel configuration")
         form = QFormLayout(card)
+        self._prepare_form(form)
 
         self.channel_config_channel = QComboBox()
         self.channel_config_channel.addItems(["1", "2", "3", "4"])
@@ -116,11 +139,12 @@ class QtScopeWindow(BaseQtScopeWindow):
         buttons.addWidget(self._button("Read channel config", self.read_channel_configuration))
         buttons.addWidget(self._accent_button("Apply channel config", self.apply_channel_configuration))
         form.addRow(buttons)
-        return card
+        return self._prepare_channels_card(card)
 
     def _build_math_configuration_card(self):
         card = self._card("Math channel configuration")
         form = QFormLayout(card)
+        self._prepare_form(form)
 
         self.math_config_display = QCheckBox("Show MATH waveform")
         self.math_config_define = QLineEdit("CH1+CH2")
@@ -143,7 +167,7 @@ class QtScopeWindow(BaseQtScopeWindow):
         buttons.addWidget(self._button("Read math config", self.read_math_configuration))
         buttons.addWidget(self._accent_button("Apply math config", self.apply_math_configuration))
         form.addRow(buttons)
-        return card
+        return self._prepare_channels_card(card)
 
     def _selected_config_channel(self) -> int:
         return int(self.channel_config_channel.currentText())
