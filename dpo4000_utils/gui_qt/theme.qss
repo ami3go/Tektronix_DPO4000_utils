@@ -16,13 +16,15 @@ QFrame, QStackedWidget, QScrollArea, QScrollArea > QWidget > QWidget {
 }
 
 QScrollArea#ChannelsScrollArea,
-QScrollArea#TriggerScrollArea {
+QScrollArea#TriggerScrollArea,
+QScrollArea#AcquisitionScrollArea {
     background: #111827;
     border: 0;
 }
 
 QWidget#ChannelsScrollBody,
-QWidget#TriggerScrollBody {
+QWidget#TriggerScrollBody,
+QWidget#AcquisitionScrollBody {
     background: #111827;
 }
 
