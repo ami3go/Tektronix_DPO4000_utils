@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from PySide6.QtCore import QSize, Qt
+from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
+    QButtonGroup,
     QCheckBox,
     QComboBox,
     QFormLayout,
@@ -13,11 +16,14 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QScrollArea,
     QSizePolicy,
+    QStackedWidget,
+    QStyle,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
-from .main_window import QtScopeWindow as BaseQtScopeWindow
+from .main_window import DRAWER_PAGE_TITLES, QtScopeWindow as BaseQtScopeWindow
 
 CHANNEL_CONFIG_FIELDS = (
     "display",
@@ -46,10 +52,137 @@ MATH_CONFIG_QUERIES = {
     "scale": "MATH:VERTICAL:SCALE?",
     "position": "MATH:VERTICAL:POSITION?",
 }
+DRAWER_NAV_LABELS = {
+    "Connection": "Conn",
+    "Channels": "Ch",
+    "Measurement": "Meas",
+    "Trigger": "Trig",
+    "Settings": "Set",
+    "Log": "Log",
+}
+DRAWER_PAGE_ICON_NAMES = {
+    "Connection": "SP_DriveNetIcon",
+    "Channels": "SP_ComputerIcon",
+    "Measurement": "SP_FileDialogDetailedView",
+    "Trigger": "SP_MediaPlay",
+    "Settings": "SP_FileDialogInfoView",
+    "Log": "SP_FileIcon",
+}
+DRAWER_NAV_ICON_SIZE = QSize(24, 24)
 
 
 class QtScopeWindow(BaseQtScopeWindow):
     """Qt window variant with full CH1..CH4 and MATH setup in Channels."""
+
+    def _build_preview_card(self):
+        """Build preview card and restore Ctrl+C copy behavior when preview has focus."""
+        card = super()._build_preview_card()
+        card.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        card.setToolTip("Click the screen preview, then press Ctrl+C to copy the current image.")
+        self.preview_label.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.preview_label.setToolTip("Click here, then press Ctrl+C to copy the current image.")
+        self.preview_copy_shortcut = QShortcut(QKeySequence.StandardKey.Copy, card)
+        self.preview_copy_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        self.preview_copy_shortcut.activated.connect(self.copy_preview)
+        return card
+
+    def _drawer_icon_for_page(self, title: str):
+        icon_name = DRAWER_PAGE_ICON_NAMES.get(title, "SP_FileIcon")
+        standard_icon = getattr(QStyle.StandardPixmap, icon_name, QStyle.StandardPixmap.SP_FileIcon)
+        return self.style().standardIcon(standard_icon)
+
+    def _build_control_drawer(self) -> QWidget:
+        """Build a resizable drawer with compact icon navigation on the far right."""
+        drawer = QWidget()
+        drawer.setObjectName("ControlDrawer")
+        layout = QHBoxLayout(drawer)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
+
+        content = QWidget()
+        content.setObjectName("DrawerContent")
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(12, 10, 12, 12)
+        content_layout.setSpacing(10)
+
+        header = QWidget()
+        header.setObjectName("DrawerHeader")
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        self.drawer_title = QLabel(DRAWER_PAGE_TITLES[0])
+        self.drawer_title.setObjectName("DrawerTitle")
+        header_layout.addWidget(self.drawer_title, 1)
+        content_layout.addWidget(header)
+
+        self.drawer_stack = QStackedWidget()
+        self.drawer_stack.setObjectName("DrawerStack")
+        self.drawer_stack.addWidget(self._build_connection_tab())
+        self.drawer_stack.addWidget(self._build_channels_tab())
+        self.drawer_stack.addWidget(self._build_measurement_tab())
+        self.drawer_stack.addWidget(self._build_trigger_tab())
+        self.drawer_stack.addWidget(self._build_settings_tab())
+        self.drawer_stack.addWidget(self._build_log_tab())
+        content_layout.addWidget(self.drawer_stack, 1)
+        layout.addWidget(content, 1)
+
+        nav = QWidget()
+        nav.setObjectName("DrawerNav")
+        nav.setMinimumWidth(88)
+        nav.setMaximumWidth(108)
+        nav.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+        nav_layout = QVBoxLayout(nav)
+        nav_layout.setContentsMargins(6, 8, 6, 8)
+        nav_layout.setSpacing(6)
+
+        nav_controls = QWidget()
+        nav_controls.setObjectName("DrawerControls")
+        nav_controls_layout = QHBoxLayout(nav_controls)
+        nav_controls_layout.setContentsMargins(0, 0, 0, 0)
+        nav_controls_layout.setSpacing(4)
+        self.pin_drawer_button = self._drawer_utility_button("Pin", self.toggle_drawer_pin)
+        self.pin_drawer_button.setCheckable(True)
+        self.pin_drawer_button.setChecked(True)
+        self.pin_drawer_button.setToolTip("Keep control drawer pinned open")
+        self.hide_drawer_button = self._drawer_utility_button("Hide", self.hide_control_drawer)
+        self.hide_drawer_button.setEnabled(False)
+        self.hide_drawer_button.setToolTip("Hide control drawer after unpinning")
+        nav_controls_layout.addWidget(self.pin_drawer_button, 1)
+        nav_controls_layout.addWidget(self.hide_drawer_button, 1)
+        nav_layout.addWidget(nav_controls)
+
+        self.drawer_buttons = QButtonGroup(self)
+        self.drawer_buttons.setExclusive(True)
+        for index, title in enumerate(DRAWER_PAGE_TITLES):
+            button = QToolButton()
+            button.setText(DRAWER_NAV_LABELS.get(title, title))
+            button.setToolTip(title)
+            button.setIcon(self._drawer_icon_for_page(title))
+            button.setIconSize(DRAWER_NAV_ICON_SIZE)
+            button.setCheckable(True)
+            button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
+            button.setObjectName("DrawerNavButton")
+            button.setMinimumHeight(64)
+            button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            button.clicked.connect(lambda checked=False, page=index: self._select_drawer_page(page))
+            self.drawer_buttons.addButton(button, index)
+            nav_layout.addWidget(button)
+        nav_layout.addStretch(1)
+        layout.addWidget(nav)
+
+        first_button = self.drawer_buttons.button(0)
+        if first_button is not None:
+            first_button.setChecked(True)
+        return drawer
+
+    def toggle_drawer_pin(self) -> None:
+        self.drawer_pinned = self.pin_drawer_button.isChecked()
+        self.pin_drawer_button.setText("Pin" if self.drawer_pinned else "Free")
+        self.pin_drawer_button.setToolTip(
+            "Keep control drawer pinned open" if self.drawer_pinned else "Drawer can now be hidden"
+        )
+        self.hide_drawer_button.setEnabled(not self.drawer_pinned)
+        message = "Control drawer pinned open" if self.drawer_pinned else "Control drawer can now be hidden"
+        self.statusBar().showMessage(message)
 
     def _build_channels_tab(self) -> QWidget:
         body = QWidget()
@@ -291,6 +424,9 @@ class QtScopeWindow(BaseQtScopeWindow):
 __all__ = [
     "CHANNEL_CONFIG_FIELDS",
     "CHANNEL_CONFIG_QUERIES",
+    "DRAWER_NAV_ICON_SIZE",
+    "DRAWER_NAV_LABELS",
+    "DRAWER_PAGE_ICON_NAMES",
     "MATH_CONFIG_FIELDS",
     "MATH_CONFIG_QUERIES",
     "QtScopeWindow",
