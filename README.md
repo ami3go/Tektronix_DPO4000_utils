@@ -11,6 +11,9 @@ Python utilities and a Tkinter GUI for Tektronix DPO4000-family oscilloscopes, d
 - Export enabled channel waveform data to CSV.
 - Save and restore oscilloscope settings through Tektronix SCPI setup strings.
 - Set and read A trigger level from the GUI.
+- Add, read, and clear displayed measurement slots from the GUI.
+- Move horizontal trigger position from the GUI.
+- Configure common A edge-trigger options and run/stop/single/force acquisition controls.
 - Short-lived VISA sessions in the GUI so other scope software is not blocked while idle.
 - Persistent GUI preferences for last-used resources, output folders, naming settings, and trigger options.
 
@@ -68,12 +71,20 @@ The package now uses a root package layout: `dpo4000_utils/` is directly in the 
    - Trigger level accepts numeric volts and supported presets such as `TTL` or `ECL`.
    - Optional re-arm behavior after image capture can be enabled in the settings.
 
-5. **Save and restore scope setup**
+5. **Use the Control tab**
+   - The **Measurements** section can add/update displayed `MEAS1..MEAS8` slots, read the selected slot value, clear one slot, or clear all measurement slots.
+   - Measurement groups expose common scope submenus: **Amplitude**, **Timing**, and **Area / count**. The measurement type field remains editable so exact firmware-specific SCPI names can be typed manually.
+   - The **Horizontal / trigger position** section writes `HORIZONTAL:POSITION`, reads the current value, nudges it left/right, or centers it to `0`.
+   - The **Trigger control** section applies common A edge-trigger settings: mode, source, slope, coupling, and level.
+   - The acquisition buttons provide **Run**, **Stop**, **Single**, **Continuous**, and **Force trigger** actions.
+   - These controls are direct SCPI writes to the oscilloscope; use them only when it is acceptable for the GUI to change the active scope setup.
+
+6. **Save and restore scope setup**
    - Click **Save settings** to store the current scope setup as JSON.
    - Click **Restore settings** to apply a saved JSON setup file back to the scope.
    - Restore can optionally wait for `*OPC?`, but this may time out on some older DPO4000 firmware even when the setup has applied.
 
-6. **Configure output and preferences**
+7. **Configure output and preferences**
    - Choose the output folder and filename prefixes/base names in the Settings tab.
    - GUI preferences are persisted automatically after edits and again on window close.
    - Stored preferences include resource selection, Ethernet settings, timeout, output folder, naming options, and trigger options.
@@ -84,11 +95,15 @@ Use the driver directly when you want automation without the GUI:
 
 ```python
 from dpo4000_utils import DPO4054
+from dpo4000_utils.control import MeasurementConfig
 
 with DPO4054("USB0::0x0699::0x0401::C011280::INSTR", auto_connect=True) as scope:
     print(scope.scope.query("*IDN?").strip())
     print(scope.get_channel_labels())
     print(scope.get_trigger_level(channel=1))
+    scope.add_measurement(MeasurementConfig(slot=1, measurement_type="FREQUENCY", source1="CH1"))
+    scope.set_horizontal_position(0)
+    scope.configure_edge_trigger(source="CH1", slope="RISE", coupling="DC", mode="AUTO", level="1.0")
 ```
 
 Common API interactions:
@@ -100,6 +115,10 @@ scope.save_scope_settings("setup.json", ask_before_overwrite=False)
 scope.apply_scope_settings("setup.json", wait_complete=False)
 scope.set_channel_label(1, "INPUT")
 scope.set_trigger_level(1.0, channel=1)
+scope.read_measurement_value(1)
+scope.disable_all_measurements()
+scope.single_acquisition()
+scope.force_trigger_event()
 ```
 
 ### Hardware test interaction flow
@@ -168,10 +187,11 @@ hardcopy.py     PNG screen capture, SCPI block cleanup, validation, and file sav
 waveform.py     waveform acquisition, scaling, enabled-channel discovery, and CSV export
 channels.py     channel labels and simple measurements
 trigger.py      acquisition and A-trigger helpers
+control.py      displayed measurement, horizontal position, and trigger/acquisition controls
 instrument.py   DPO4000Scope / DPO4054 classes composed from mixins
 ```
 
-The GUI screenshot path uses `hardcopy.py`, the GUI settings restore path uses `settings.py`, and the GUI CSV export path uses `waveform.py`, so transfer, validation, scaling, and diagnostic behavior are shared between scripts and the GUI.
+The GUI screenshot path uses `hardcopy.py`, the GUI settings restore path uses `settings.py`, the GUI CSV export path uses `waveform.py`, and the Control tab uses `control.py`, so transfer, validation, scaling, and diagnostic behavior are shared between scripts and the GUI.
 
 ## GUI modules
 
@@ -186,6 +206,7 @@ gui/clipboard.py        platform image clipboard helpers for preview copy
 gui/connection_panel.py extracted Connection tab builder
 gui/channels_panel.py   extracted Channels tab builder
 gui/trigger_panel.py    extracted Trigger tab builder
+gui/control_panel.py    extracted Control tab builder
 gui/settings_panel.py   extracted Settings tab builder
 gui/preview_panel.py    extracted preview and image/CSV action builder
 gui/log_panel.py        extracted Log tab builder
