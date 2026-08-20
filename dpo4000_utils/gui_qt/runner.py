@@ -11,8 +11,10 @@ def main() -> int:
         from PySide6.QtWidgets import QApplication
     except ModuleNotFoundError as exc:
         raise SystemExit(
-            "PySide6 is not installed. Install the optional Qt GUI dependencies with:\n"
-            "  pip install -e .[qt]\n"
+            "PySide6 is not installed. Install the optional PySide6 GUI dependencies with:\n"
+            "  python -m pip install -e .[pyside6]\n"
+            "or:\n"
+            "  python -m pip install -r requirements-pyside6.txt\n"
         ) from exc
 
     from .ui_practice_window import QtScopeWindow
