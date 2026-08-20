@@ -81,7 +81,7 @@ class QtScopeWindow(BaseQtScopeWindow):
         card.setToolTip("Click the screen preview, then press Ctrl+C to copy the current image.")
         self.preview_label.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.preview_label.setToolTip("Click here, then press Ctrl+C to copy the current image.")
-        self.preview_copy_shortcut = QShortcut(QKeySequence.StandardKey.Copy, card)
+        self.preview_copy_shortcut = QShortcut(QKeySequence(QKeySequence.StandardKey.Copy), card)
         self.preview_copy_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         self.preview_copy_shortcut.activated.connect(self.copy_preview)
         return card
