@@ -9,11 +9,12 @@ CSV/image/settings helpers, and persistent preferences.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Iterable
+from typing import Callable, Iterable
 
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, ttk
 
+from ..control import MEASUREMENT_TYPES_BY_GROUP, MeasurementConfig
 from ..hardcopy import save_screen_png
 from ..settings import apply_scope_settings_file
 from ..waveform import save_enabled_channels_to_single_csv
@@ -28,6 +29,7 @@ from .connection_ui import (
     parse_trigger_level,
     selected_resource_name,
 )
+from .control_panel import CONTROL_TAB_TITLE, build_control_tab
 from .image_preview import usable_preview_size
 from .log_panel import build_log
 from .main_window import DEFAULT_RESTORE_TIMEOUT_MS, ScopeGui as BaseScopeGui
@@ -54,8 +56,52 @@ class ScopeGui(BaseScopeGui):
         self.protocol("WM_DELETE_WINDOW", self._on_window_close)
 
     # ------------------------------------------------------------------
-    # Extracted UI panels
+    # Variables and extracted UI panels
     # ------------------------------------------------------------------
+    def _build_variables(self) -> None:
+        super()._build_variables()
+
+        self.measurement_slot_var = tk.StringVar(value="1")
+        self.measurement_group_var = tk.StringVar(value="Amplitude")
+        self.measurement_type_var = tk.StringVar(value=MEASUREMENT_TYPES_BY_GROUP["Amplitude"][0])
+        self.measurement_source1_var = tk.StringVar(value="CH1")
+        self.measurement_source2_var = tk.StringVar(value="")
+        self.measurement_value_var = tk.StringVar(value="")
+
+        self.horizontal_position_var = tk.StringVar(value="0")
+
+        self.control_trigger_mode_var = tk.StringVar(value="AUTO")
+        self.control_trigger_source_var = tk.StringVar(value="CH1")
+        self.control_trigger_slope_var = tk.StringVar(value="RISE")
+        self.control_trigger_coupling_var = tk.StringVar(value="DC")
+        self.control_trigger_level_var = tk.StringVar(value="1.0")
+
+    def _build_control_tabs(self, parent: tk.Widget) -> None:
+        """Build right-side tabs, including the extended Control tab."""
+        notebook = ttk.Notebook(parent)
+        notebook.grid(row=0, column=0, sticky="nsew")
+
+        connection_tab = ttk.Frame(notebook, padding=8)
+        channels_tab = ttk.Frame(notebook, padding=8)
+        trigger_tab = ttk.Frame(notebook, padding=8)
+        control_tab = ttk.Frame(notebook, padding=8)
+        settings_tab = ttk.Frame(notebook, padding=8)
+        log_tab = ttk.Frame(notebook, padding=8)
+
+        notebook.add(connection_tab, text="Connection")
+        notebook.add(channels_tab, text="Channels")
+        notebook.add(trigger_tab, text="Trigger")
+        notebook.add(control_tab, text=CONTROL_TAB_TITLE)
+        notebook.add(settings_tab, text="Settings")
+        notebook.add(log_tab, text="Log")
+
+        self._build_connection_card(connection_tab)
+        self._build_channels_card(channels_tab)
+        self._build_trigger_card(trigger_tab)
+        self._build_control_tab(control_tab)
+        self._build_settings_card(settings_tab)
+        self._build_log(log_tab)
+
     def _build_image_preview(self, parent) -> None:
         build_image_preview(self, parent)
 
@@ -67,6 +113,9 @@ class ScopeGui(BaseScopeGui):
 
     def _build_trigger_card(self, parent) -> None:
         build_trigger_card(self, parent)
+
+    def _build_control_tab(self, parent) -> None:
+        build_control_tab(self, parent)
 
     def _build_settings_card(self, parent) -> None:
         build_settings_card(self, parent)
@@ -205,6 +254,145 @@ class ScopeGui(BaseScopeGui):
         self.status_var.set("Preview image copied to clipboard")
         self._append_log(message)
         return "break"
+
+    # ------------------------------------------------------------------
+    # Control tab actions
+    # ------------------------------------------------------------------
+    def _run_scope_control_job(
+        self,
+        description: str,
+        operation: Callable[[object], object],
+        ui_update: Callable[[object], None] | None = None,
+    ) -> None:
+        def job():
+            def action(scope):
+                return operation(scope)
+
+            result = self._new_scope_session(action)
+            if ui_update is not None:
+                self.after(0, lambda: ui_update(result))
+            return {"control_result": result}
+
+        self._run_job(description, job)
+
+    def _on_measurement_group_changed(self, _event=None) -> None:
+        group = self.measurement_group_var.get()
+        choices = MEASUREMENT_TYPES_BY_GROUP.get(group, ())
+        if not choices:
+            return
+        self.measurement_type_var.set(choices[0])
+        combo = getattr(self, "measurement_type_combo", None)
+        if combo is not None:
+            combo.configure(values=choices)
+
+    def _selected_measurement_config(self) -> MeasurementConfig:
+        return MeasurementConfig(
+            slot=int(self.measurement_slot_var.get()),
+            measurement_type=self.measurement_type_var.get(),
+            source1=self.measurement_source1_var.get(),
+            source2=self.measurement_source2_var.get().strip() or None,
+        )
+
+    def add_measurement_to_display(self) -> None:
+        config = self._selected_measurement_config()
+
+        def operation(scope):
+            scope.add_measurement(config)
+            return f"MEAS{config.slot} {config.measurement_type.upper()}"
+
+        self._run_scope_control_job(
+            f"Adding {config.measurement_type.upper()} measurement to MEAS{config.slot}",
+            operation,
+        )
+
+    def read_measurement_value(self) -> None:
+        slot = int(self.measurement_slot_var.get())
+
+        def operation(scope):
+            return scope.read_measurement_value(slot)
+
+        self._run_scope_control_job(
+            f"Reading MEAS{slot} value",
+            operation,
+            lambda value: self.measurement_value_var.set(str(value)),
+        )
+
+    def clear_measurement_slot(self) -> None:
+        slot = int(self.measurement_slot_var.get())
+
+        def operation(scope):
+            scope.disable_measurement(slot)
+            return f"MEAS{slot} disabled"
+
+        self._run_scope_control_job(f"Clearing MEAS{slot}", operation)
+
+    def clear_all_measurements(self) -> None:
+        def operation(scope):
+            scope.disable_all_measurements()
+            return "All measurement slots disabled"
+
+        self._run_scope_control_job("Clearing all measurement slots", operation)
+
+    def set_horizontal_position(self) -> None:
+        position = self.horizontal_position_var.get()
+
+        def operation(scope):
+            scope.set_horizontal_position(position)
+            return position
+
+        self._run_scope_control_job(f"Setting horizontal position to {position}", operation)
+
+    def read_horizontal_position(self) -> None:
+        self._run_scope_control_job(
+            "Reading horizontal position",
+            lambda scope: scope.get_horizontal_position(),
+            lambda value: self.horizontal_position_var.set(f"{float(value):g}"),
+        )
+
+    def nudge_horizontal_position(self, delta: int | float) -> None:
+        self._run_scope_control_job(
+            f"Nudging horizontal position by {delta:g}",
+            lambda scope: scope.nudge_horizontal_position(delta),
+            lambda value: self.horizontal_position_var.set(f"{float(value):g}"),
+        )
+
+    def set_horizontal_position_to_zero(self) -> None:
+        self.horizontal_position_var.set("0")
+        self.set_horizontal_position()
+
+    def apply_edge_trigger_controls(self) -> None:
+        source = self.control_trigger_source_var.get()
+        slope = self.control_trigger_slope_var.get()
+        coupling = self.control_trigger_coupling_var.get()
+        mode = self.control_trigger_mode_var.get()
+        level = self.control_trigger_level_var.get()
+
+        def operation(scope):
+            scope.configure_edge_trigger(
+                source=source,
+                slope=slope,
+                coupling=coupling,
+                mode=mode,
+                level=level,
+            )
+            return f"{mode} edge trigger on {source}"
+
+        self._run_scope_control_job("Applying edge trigger setup", operation)
+
+    def run_acquisition(self) -> None:
+        self._run_scope_control_job("Starting acquisition", lambda scope: scope.run_acquisition())
+
+    def stop_acquisition(self) -> None:
+        self._run_scope_control_job("Stopping acquisition", lambda scope: scope.stop_acquisition())
+
+    def single_acquisition(self) -> None:
+        self._run_scope_control_job("Starting single acquisition", lambda scope: scope.single_acquisition())
+
+    def continuous_acquisition(self) -> None:
+        self._run_scope_control_job("Returning acquisition to continuous mode", lambda scope: scope.continuous_acquisition())
+
+    def force_trigger_event(self) -> None:
+        self._run_scope_control_job("Forcing trigger event", lambda scope: scope.force_trigger_event())
 
     # ------------------------------------------------------------------
     # Shared hardcopy / settings / waveform paths
