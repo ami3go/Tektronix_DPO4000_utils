@@ -1,4 +1,4 @@
-"""PySide6 launched window with a dedicated Acquisition tab."""
+"""PySide6 launched window with a dedicated Tektronix Acquisition setup tab."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
+    QLabel,
     QLineEdit,
     QTabWidget,
     QVBoxLayout,
@@ -35,10 +36,40 @@ PAGE_SHORTCUTS = (
     ("Ctrl+6", 5, "Settings"),
     ("Ctrl+7", 6, "Log"),
 )
+ACQUISITION_MODES = (
+    "SAMPLE",
+    "PEAKDETECT",
+    "HIRES",
+    "AVERAGE",
+    "ENVELOPE",
+)
+AVERAGE_COUNTS = (
+    "2",
+    "4",
+    "8",
+    "16",
+    "32",
+    "64",
+    "128",
+    "256",
+    "512",
+)
+RECORD_LENGTHS = (
+    "1000",
+    "10000",
+    "100000",
+    "1000000",
+    "10000000",
+)
+ACQUISITION_SETUP_QUERIES = {
+    "mode": "ACQUIRE:MODE?",
+    "average_count": "ACQUIRE:NUMAVG?",
+    "record_length": "HORIZONTAL:RECORDLENGTH?",
+}
 
 
 class QtScopeWindow(TabbedQtScopeWindow):
-    """Tabbed Qt window with acquisition controls split out of Trigger."""
+    """Tabbed Qt window with Tektronix acquisition setup split out of Trigger."""
 
     def _build_control_tabs(self) -> QTabWidget:
         tabs = QTabWidget()
@@ -98,7 +129,7 @@ class QtScopeWindow(TabbedQtScopeWindow):
         return self._prepare_drawer_card(card)
 
     # ------------------------------------------------------------------
-    # Acquisition tab
+    # Acquisition tab: Tektronix acquisition setup, not only run controls
     # ------------------------------------------------------------------
     def _build_acquisition_tab(self) -> QWidget:
         body = QWidget()
@@ -106,8 +137,19 @@ class QtScopeWindow(TabbedQtScopeWindow):
         layout.setContentsMargins(0, 0, 8, 0)
         layout.setSpacing(12)
 
-        layout.addWidget(self._build_acquisition_actions_card())
-        layout.addWidget(self._build_image_rearm_card())
+        layout.addWidget(self._build_acquisition_setup_card())
+        layout.addWidget(
+            self._collapsible_section(
+                "Manual acquisition buttons",
+                self._build_acquisition_actions_card(),
+            )
+        )
+        layout.addWidget(
+            self._collapsible_section(
+                "Image capture re-arm",
+                self._build_image_rearm_card(),
+            )
+        )
         layout.addStretch(1)
         return self._wrap_scrollable_drawer_page(
             body,
@@ -115,8 +157,45 @@ class QtScopeWindow(TabbedQtScopeWindow):
             body_name="AcquisitionScrollBody",
         )
 
+    def _build_acquisition_setup_card(self) -> QGroupBox:
+        card = self._card("Acquisition setup")
+        form = QFormLayout(card)
+        self._prepare_form(form)
+
+        self.acquisition_mode = QComboBox()
+        self.acquisition_mode.setEditable(True)
+        self.acquisition_mode.addItems(ACQUISITION_MODES)
+        self.acquisition_mode.setCurrentText("SAMPLE")
+
+        self.acquisition_average_count = QComboBox()
+        self.acquisition_average_count.setEditable(True)
+        self.acquisition_average_count.addItems(AVERAGE_COUNTS)
+        self.acquisition_average_count.setCurrentText("16")
+
+        self.acquisition_record_length = QComboBox()
+        self.acquisition_record_length.setEditable(True)
+        self.acquisition_record_length.addItems(RECORD_LENGTHS)
+
+        form.addRow("Mode", self.acquisition_mode)
+        form.addRow("Average count", self.acquisition_average_count)
+        form.addRow("Record length", self.acquisition_record_length)
+
+        hint = QLabel(
+            "Tektronix acquisition setup: HIRES is high-resolution mode; "
+            "AVERAGE uses ACQUIRE:NUMAVG; record length uses HORIZONTAL:RECORDLENGTH."
+        )
+        hint.setObjectName("MutedLabel")
+        hint.setWordWrap(True)
+        form.addRow(hint)
+
+        buttons = QHBoxLayout()
+        buttons.addWidget(self._button("Read acquisition setup", self.read_acquisition_setup))
+        buttons.addWidget(self._accent_button("Apply acquisition setup", self.apply_acquisition_setup))
+        form.addRow(buttons)
+        return self._prepare_drawer_card(card)
+
     def _build_acquisition_actions_card(self) -> QGroupBox:
-        card = self._card("Acquisition controls")
+        card = self._card("Manual acquisition buttons")
         grid = QGridLayout(card)
         grid.setHorizontalSpacing(8)
         grid.setVerticalSpacing(8)
@@ -126,6 +205,56 @@ class QtScopeWindow(TabbedQtScopeWindow):
         grid.addWidget(self._button("Continuous", self.continuous_acquisition), 1, 0)
         grid.addWidget(self._accent_button("Force trigger", self.force_trigger), 1, 1, 1, 2)
         return self._prepare_drawer_card(card)
+
+    def read_acquisition_setup(self) -> None:
+        def action(scope):
+            instrument = getattr(scope, "scope", None)
+            if instrument is None:
+                raise ConnectionError("Oscilloscope is not connected.")
+            return {
+                name: self._query_optional(instrument, query)
+                for name, query in ACQUISITION_SETUP_QUERIES.items()
+            }
+
+        result = self._run_action("Reading acquisition setup", action)
+        if isinstance(result, dict):
+            self._set_combo_text(self.acquisition_mode, result.get("mode", ""))
+            self._set_combo_text(self.acquisition_average_count, result.get("average_count", ""))
+            self._set_combo_text(self.acquisition_record_length, result.get("record_length", ""))
+            mode = self.acquisition_mode.currentText().strip() or "Unknown"
+            length = self.acquisition_record_length.currentText().strip() or "Unknown length"
+            self._acquisition_state = f"{mode}, {length} pts"
+            self._update_status_strip()
+
+    def apply_acquisition_setup(self) -> None:
+        mode = self.acquisition_mode.currentText().strip().upper()
+        average_count = self.acquisition_average_count.currentText().strip()
+        record_length = self.acquisition_record_length.currentText().strip()
+
+        def action(scope):
+            instrument = getattr(scope, "scope", None)
+            if instrument is None:
+                raise ConnectionError("Oscilloscope is not connected.")
+            if mode:
+                instrument.write(f"ACQUIRE:MODE {mode}")
+            self._write_if_text(instrument, "ACQUIRE:NUMAVG", average_count)
+            self._write_if_text(instrument, "HORIZONTAL:RECORDLENGTH", record_length)
+            readback = {
+                name: self._query_optional(instrument, query)
+                for name, query in ACQUISITION_SETUP_QUERIES.items()
+            }
+            return (
+                "Acquisition setup applied: "
+                f"mode={readback.get('mode', mode)}, "
+                f"average_count={readback.get('average_count', average_count)}, "
+                f"record_length={readback.get('record_length', record_length)}"
+            )
+
+        result = self._run_action("Applying acquisition setup", action)
+        if result is not None:
+            length = record_length or self.acquisition_record_length.currentText().strip() or "Unknown length"
+            self._acquisition_state = f"{mode or 'Unknown'}, {length} pts"
+            self._update_status_strip()
 
     # ------------------------------------------------------------------
     # Keyboard shortcuts
@@ -144,4 +273,12 @@ class QtScopeWindow(TabbedQtScopeWindow):
             self._make_shortcut(key, lambda checked=False, index=page: self._select_drawer_page(index))
 
 
-__all__ = ["CONTROL_TAB_TITLES", "PAGE_SHORTCUTS", "QtScopeWindow"]
+__all__ = [
+    "ACQUISITION_MODES",
+    "ACQUISITION_SETUP_QUERIES",
+    "AVERAGE_COUNTS",
+    "CONTROL_TAB_TITLES",
+    "PAGE_SHORTCUTS",
+    "RECORD_LENGTHS",
+    "QtScopeWindow",
+]
