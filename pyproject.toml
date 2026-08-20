@@ -21,9 +21,13 @@ dev = [
 build = [
     "pyinstaller",
 ]
+qt = [
+    "PySide6>=6.7",
+]
 
 [project.scripts]
 dpo4000-gui = "dpo4000_utils.gui.runner:main"
+dpo4000-gui-qt = "dpo4000_utils.gui_qt.runner:main"
 
 [tool.setuptools]
 py-modules = ["tektronix_utils"]
@@ -34,6 +38,7 @@ include = ["dpo4000_utils*"]
 
 [tool.setuptools.package-data]
 "dpo4000_utils.gui" = ["*.ico", "*.png"]
+"dpo4000_utils.gui_qt" = ["*.qss"]
 
 [tool.pytest.ini_options]
 markers = [
