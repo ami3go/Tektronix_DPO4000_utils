@@ -6,6 +6,13 @@ existing Tkinter GUI remains stable while the Qt interface is tested.
 
 from __future__ import annotations
 
-from .main_window import QtScopeWindow
-
 __all__ = ["QtScopeWindow"]
+
+
+def __getattr__(name: str):
+    """Load Qt classes lazily so importing the package does not require PySide6."""
+    if name == "QtScopeWindow":
+        from .main_window import QtScopeWindow
+
+        return QtScopeWindow
+    raise AttributeError(name)
