@@ -19,15 +19,17 @@ QGroupBox {
     background: #1f2937;
     border: 1px solid #374151;
     border-radius: 8px;
-    margin-top: 14px;
-    padding: 12px;
+    margin-top: 0;
+    padding: 36px 14px 14px 14px;
     font-weight: 600;
 }
 
 QGroupBox::title {
-    subcontrol-origin: margin;
+    subcontrol-origin: padding;
     subcontrol-position: top left;
-    padding: 0 6px;
+    left: 0;
+    top: 2px;
+    padding: 0 0 10px 0;
     color: #ffffff;
     background: transparent;
 }
