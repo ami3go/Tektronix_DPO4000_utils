@@ -1,0 +1,92 @@
+/* Experimental GTK4 dark theme for the DPO4000 prototype. */
+
+window {
+  background: #111827;
+  color: #e5e7eb;
+}
+
+.header-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.muted {
+  color: #9ca3af;
+}
+
+.card {
+  background: #1f2937;
+  border-radius: 12px;
+  padding: 14px;
+  border: 1px solid #263244;
+}
+
+.section-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.preview-box {
+  background: #0f172a;
+  border-radius: 12px;
+  border: 1px solid #374151;
+  color: #9ca3af;
+}
+
+button {
+  background: #374151;
+  color: #f9fafb;
+  border-radius: 8px;
+  border: 0;
+  padding: 8px 10px;
+}
+
+button:hover {
+  background: #4b5563;
+}
+
+button.suggested-action {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+button.suggested-action:hover {
+  background: #1d4ed8;
+}
+
+entry, spinbutton, dropdown, combobox {
+  background: #0f172a;
+  color: #f9fafb;
+  border-radius: 8px;
+  border: 1px solid #374151;
+}
+
+notebook > header {
+  background: #111827;
+}
+
+notebook tab {
+  background: #374151;
+  color: #e5e7eb;
+  border-radius: 8px 8px 0 0;
+  padding: 8px 12px;
+}
+
+notebook tab:checked {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.status-bar {
+  background: #0f172a;
+  color: #93c5fd;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.log-view text {
+  background: #0f172a;
+  color: #e5e7eb;
+}
