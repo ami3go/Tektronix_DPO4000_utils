@@ -16,6 +16,39 @@ def test_qt_package_exports_enhanced_window_lazily():
     assert "from .enhanced_window import QtScopeWindow" in content
 
 
+def test_qt_enhanced_preview_supports_ctrl_c_copy():
+    content = Path("dpo4000_utils/gui_qt/enhanced_window.py").read_text(encoding="utf-8")
+
+    assert "QShortcut" in content
+    assert "QKeySequence.StandardKey.Copy" in content
+    assert "preview_copy_shortcut" in content
+    assert "WidgetWithChildrenShortcut" in content
+    assert "self.copy_preview" in content
+    assert "Ctrl+C" in content
+
+
+def test_qt_drawer_uses_compact_icon_navigation():
+    content = Path("dpo4000_utils/gui_qt/enhanced_window.py").read_text(encoding="utf-8")
+
+    assert "DRAWER_NAV_LABELS" in content
+    assert "DRAWER_PAGE_ICON_NAMES" in content
+    assert "DRAWER_NAV_ICON_SIZE" in content
+    assert "button.setIcon(" in content
+    assert "button.setIconSize(DRAWER_NAV_ICON_SIZE)" in content
+    assert "ToolButtonTextUnderIcon" in content
+    assert "setMinimumWidth(88)" in content
+    assert "setMaximumWidth(108)" in content
+
+
+def test_qt_drawer_icon_rail_is_themed():
+    content = Path("dpo4000_utils/gui_qt/theme.qss").read_text(encoding="utf-8")
+
+    assert "QToolButton#DrawerNavButton" in content
+    assert "text-align: center" in content
+    assert "padding: 7px 4px" in content
+    assert "QLabel#PreviewLabel:focus" in content
+
+
 def test_qt_channels_tab_has_full_channel_and_math_configuration():
     content = Path("dpo4000_utils/gui_qt/enhanced_window.py").read_text(encoding="utf-8")
 
