@@ -1,4 +1,4 @@
-"""Enhanced PySide6 window with full channel and math configuration controls."""
+"""Enhanced PySide6 window with compact controls, channel, and math configuration."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFormLayout,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -73,10 +74,19 @@ DRAWER_NAV_ICON_SIZE = QSize(24, 24)
 
 
 class QtScopeWindow(BaseQtScopeWindow):
-    """Qt window variant with full CH1..CH4 and MATH setup in Channels."""
+    """Qt window variant with compact access to common controls."""
 
+    def __init__(self, *args, **kwargs) -> None:
+        self._advanced_widgets: list[QWidget] = []
+        self.compact_mode = True
+        super().__init__(*args, **kwargs)
+        self._apply_compact_mode()
+
+    # ------------------------------------------------------------------
+    # Space-saving shell controls
+    # ------------------------------------------------------------------
     def _build_preview_card(self):
-        """Build preview card and restore Ctrl+C copy behavior when preview has focus."""
+        """Build preview card with always-visible quick controls and Ctrl+C copy."""
         card = super()._build_preview_card()
         card.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         card.setToolTip("Click the screen preview, then press Ctrl+C to copy the current image.")
@@ -85,7 +95,42 @@ class QtScopeWindow(BaseQtScopeWindow):
         self.preview_copy_shortcut = QShortcut(QKeySequence(QKeySequence.StandardKey.Copy), card)
         self.preview_copy_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         self.preview_copy_shortcut.activated.connect(self.copy_preview)
+
+        layout = card.layout()
+        if layout is not None:
+            layout.insertWidget(0, self._build_quick_control_bar())
         return card
+
+    def _quick_button(self, text: str, callback, *, accent: bool = False) -> QToolButton:
+        button = QToolButton()
+        button.setText(text)
+        button.setObjectName("QuickAccentButton" if accent else "QuickControlButton")
+        button.clicked.connect(callback)
+        button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        return button
+
+    def _build_quick_control_bar(self) -> QWidget:
+        toolbar = QWidget()
+        toolbar.setObjectName("QuickControlBar")
+        layout = QHBoxLayout(toolbar)
+        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setSpacing(6)
+
+        quick_actions = (
+            ("IDN", self.test_connection, False),
+            ("Capture", self.capture_preview, False),
+            ("Copy", self.copy_preview, False),
+            ("PNG", self.save_png_image, False),
+            ("CSV", self.save_csv, False),
+            ("Run", self.run_acquisition, False),
+            ("Stop", self.stop_acquisition, False),
+            ("Single", self.single_acquisition, False),
+            ("Force", self.force_trigger, True),
+        )
+        for text, callback, accent in quick_actions:
+            layout.addWidget(self._quick_button(text, callback, accent=accent))
+        layout.addStretch(1)
+        return toolbar
 
     def _drawer_icon_for_page(self, title: str):
         icon_name = DRAWER_PAGE_ICON_NAMES.get(title, "SP_FileIcon")
@@ -112,7 +157,15 @@ class QtScopeWindow(BaseQtScopeWindow):
         header_layout.setContentsMargins(0, 0, 0, 0)
         self.drawer_title = QLabel(DRAWER_PAGE_TITLES[0])
         self.drawer_title.setObjectName("DrawerTitle")
+        self.compact_mode_button = QToolButton()
+        self.compact_mode_button.setObjectName("CompactModeButton")
+        self.compact_mode_button.setCheckable(True)
+        self.compact_mode_button.setChecked(True)
+        self.compact_mode_button.setText("Compact")
+        self.compact_mode_button.setToolTip("Hide advanced drawer sections")
+        self.compact_mode_button.clicked.connect(self.toggle_compact_mode)
         header_layout.addWidget(self.drawer_title, 1)
+        header_layout.addWidget(self.compact_mode_button)
         content_layout.addWidget(header)
 
         self.drawer_stack = QStackedWidget()
@@ -185,6 +238,27 @@ class QtScopeWindow(BaseQtScopeWindow):
         message = "Control drawer pinned open" if self.drawer_pinned else "Control drawer can now be hidden"
         self.statusBar().showMessage(message)
 
+    def toggle_compact_mode(self) -> None:
+        self.compact_mode = self.compact_mode_button.isChecked()
+        self._apply_compact_mode()
+        mode = "Compact" if self.compact_mode else "Advanced"
+        self.statusBar().showMessage(f"{mode} drawer mode")
+
+    def _apply_compact_mode(self) -> None:
+        for widget in getattr(self, "_advanced_widgets", []):
+            widget.setVisible(not self.compact_mode)
+        button = getattr(self, "compact_mode_button", None)
+        if button is not None:
+            button.setText("Compact" if self.compact_mode else "Advanced")
+            button.setToolTip(
+                "Hide advanced drawer sections" if self.compact_mode else "Show advanced drawer sections"
+            )
+
+    def _register_advanced_widget(self, widget: QWidget) -> QWidget:
+        self._advanced_widgets.append(widget)
+        widget.setVisible(not self.compact_mode)
+        return widget
+
     @staticmethod
     def _prepare_drawer_card(card: QGroupBox) -> QGroupBox:
         """Keep cards at natural height inside drawer scroll pages."""
@@ -196,6 +270,36 @@ class QtScopeWindow(BaseQtScopeWindow):
         """Prevent nested cards from being vertically compressed."""
         for card in container.findChildren(QGroupBox):
             QtScopeWindow._prepare_drawer_card(card)
+
+    def _collapsible_section(self, title: str, content: QWidget, *, expanded: bool = False) -> QWidget:
+        section = QWidget()
+        section.setObjectName("CollapsibleSection")
+        layout = QVBoxLayout(section)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+
+        header = QToolButton()
+        header.setObjectName("CollapsibleHeader")
+        header.setCheckable(True)
+        header.setChecked(expanded)
+        header.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        header.setText(("▾ " if expanded else "▸ ") + title)
+        header.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+
+        if isinstance(content, QGroupBox):
+            content.setTitle("")
+            content.setObjectName("CollapsibleContent")
+            self._prepare_drawer_card(content)
+        content.setVisible(expanded)
+
+        def update_expanded(checked: bool) -> None:
+            content.setVisible(checked)
+            header.setText(("▾ " if checked else "▸ ") + title)
+
+        header.toggled.connect(update_expanded)
+        layout.addWidget(header)
+        layout.addWidget(content)
+        return self._register_advanced_widget(section)
 
     def _wrap_scrollable_drawer_page(
         self,
@@ -216,32 +320,94 @@ class QtScopeWindow(BaseQtScopeWindow):
         scroll.setWidget(body)
         return scroll
 
+    # ------------------------------------------------------------------
+    # Compact Trigger page
+    # ------------------------------------------------------------------
     def _build_trigger_tab(self) -> QWidget:
-        """Build trigger page inside a scroll area so cards never collapse."""
-        body = super()._build_trigger_tab()
+        body = QWidget()
+        layout = QVBoxLayout(body)
+        layout.setContentsMargins(0, 0, 8, 0)
+        layout.setSpacing(12)
+
+        layout.addWidget(self._build_trigger_quick_card())
+        layout.addWidget(self._collapsible_section("Horizontal position", self._build_horizontal_position_card()))
+        layout.addWidget(self._collapsible_section("Edge trigger setup", self._build_edge_trigger_card()))
+        layout.addWidget(self._collapsible_section("Image capture re-arm", self._build_image_rearm_card()))
+        layout.addStretch(1)
         return self._wrap_scrollable_drawer_page(
             body,
             scroll_name="TriggerScrollArea",
             body_name="TriggerScrollBody",
         )
 
+    def _build_trigger_quick_card(self) -> QGroupBox:
+        card = self._card("Trigger quick")
+        form = QFormLayout(card)
+        self._prepare_form(form)
+
+        self.trigger_channel = QComboBox()
+        self.trigger_channel.addItems(["1", "2", "3", "4"])
+        self.trigger_level = QLineEdit("1.0")
+        self.trigger_set_source = QCheckBox("Set edge trigger source to selected channel")
+        self.trigger_set_source.setChecked(True)
+        self.trigger_readback = QLineEdit()
+        self.trigger_readback.setReadOnly(True)
+
+        form.addRow("Source", self.trigger_channel)
+        form.addRow("Level V", self.trigger_level)
+        form.addRow(self.trigger_set_source)
+        form.addRow("Readback", self.trigger_readback)
+
+        level_buttons = QHBoxLayout()
+        level_buttons.addWidget(self._button("Read level", self.read_trigger_level))
+        level_buttons.addWidget(self._accent_button("Set level", self.apply_trigger_level))
+        form.addRow(level_buttons)
+
+        action_grid = QGridLayout()
+        action_grid.addWidget(self._button("Run", self.run_acquisition), 0, 0)
+        action_grid.addWidget(self._button("Stop", self.stop_acquisition), 0, 1)
+        action_grid.addWidget(self._button("Single", self.single_acquisition), 0, 2)
+        action_grid.addWidget(self._button("Continuous", self.continuous_acquisition), 1, 0)
+        action_grid.addWidget(self._accent_button("Force", self.force_trigger), 1, 1, 1, 2)
+        form.addRow(action_grid)
+        return self._prepare_drawer_card(card)
+
+    def _build_horizontal_position_card(self) -> QGroupBox:
+        card = self._card("Horizontal position")
+        form = QFormLayout(card)
+        self._prepare_form(form)
+        self.horizontal_position = QLineEdit("0")
+        form.addRow("Position", self.horizontal_position)
+
+        buttons = QHBoxLayout()
+        buttons.addWidget(self._button("Read", self.read_horizontal_position))
+        buttons.addWidget(self._button("-10", lambda: self.nudge_horizontal_position(-10)))
+        buttons.addWidget(self._button("-1", lambda: self.nudge_horizontal_position(-1)))
+        buttons.addWidget(self._button("0", self.set_horizontal_position_to_zero))
+        buttons.addWidget(self._button("+1", lambda: self.nudge_horizontal_position(1)))
+        buttons.addWidget(self._button("+10", lambda: self.nudge_horizontal_position(10)))
+        form.addRow(buttons)
+        form.addRow(self._accent_button("Set position", self.set_horizontal_position))
+        return self._prepare_drawer_card(card)
+
+    # ------------------------------------------------------------------
+    # Compact Channels page
+    # ------------------------------------------------------------------
     def _build_channels_tab(self) -> QWidget:
         body = QWidget()
-        body.setObjectName("ChannelsScrollBody")
         layout = QVBoxLayout(body)
         layout.setContentsMargins(0, 0, 8, 0)
         layout.setSpacing(12)
 
         layout.addWidget(self._build_channel_labels_card())
-        layout.addWidget(self._build_channel_configuration_card())
-        layout.addWidget(self._build_math_configuration_card())
+        layout.addWidget(self._collapsible_section("Full channel configuration", self._build_channel_configuration_card()))
+        layout.addWidget(self._collapsible_section("Math channel configuration", self._build_math_configuration_card()))
         layout.addStretch(1)
-
-        scroll = QScrollArea()
-        scroll.setObjectName("ChannelsScrollArea")
-        scroll.setWidgetResizable(True)
-        scroll.setWidget(body)
-        return scroll
+        return self._wrap_scrollable_drawer_page(
+            body,
+            scroll_name="ChannelsScrollArea",
+            body_name="ChannelsScrollBody",
+        )
 
     @staticmethod
     def _prepare_form(form: QFormLayout) -> None:
@@ -342,6 +508,9 @@ class QtScopeWindow(BaseQtScopeWindow):
         form.addRow(buttons)
         return self._prepare_channels_card(card)
 
+    # ------------------------------------------------------------------
+    # SCPI channel and math actions
+    # ------------------------------------------------------------------
     def _selected_config_channel(self) -> int:
         return int(self.channel_config_channel.currentText())
 
