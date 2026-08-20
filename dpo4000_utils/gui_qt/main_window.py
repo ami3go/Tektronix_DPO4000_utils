@@ -8,10 +8,10 @@ from typing import Callable
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
+    QButtonGroup,
     QCheckBox,
     QComboBox,
     QFormLayout,
-    QFrame,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -22,9 +22,11 @@ from PySide6.QtWidgets import (
     QPushButton,
     QRadioButton,
     QSizePolicy,
+    QSplitter,
+    QStackedWidget,
     QStatusBar,
-    QTabWidget,
     QTextEdit,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -44,6 +46,8 @@ from ..control import (
 from ..hardcopy import save_screen_png
 
 APP_TITLE = "Tektronix DPO4000 Utilities — Qt preview"
+DRAWER_PAGE_TITLES = ("Connection", "Channels", "Measurement", "Trigger", "Settings", "Log")
+DEFAULT_DRAWER_WIDTH = 470
 
 
 class QtScopeWindow(QMainWindow):
@@ -54,6 +58,8 @@ class QtScopeWindow(QMainWindow):
         self.setWindowTitle(APP_TITLE)
         self.resize(1280, 780)
         self._last_image_path: Path | None = None
+        self.drawer_pinned = True
+        self._last_drawer_width = DEFAULT_DRAWER_WIDTH
 
         self._apply_theme()
         self._build_ui()
@@ -80,27 +86,29 @@ class QtScopeWindow(QMainWindow):
         subtitle = QLabel("PySide6 testing branch · existing Tkinter GUI is still available")
         subtitle.setObjectName("MutedLabel")
         subtitle.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.show_drawer_button = self._button("Show controls", self.show_control_drawer)
+        self.show_drawer_button.setObjectName("DrawerShowButton")
+        self.show_drawer_button.setVisible(False)
         header.addWidget(title, 1)
         header.addWidget(subtitle, 1)
+        header.addWidget(self.show_drawer_button)
         root.addLayout(header)
 
-        main = QHBoxLayout()
-        main.setSpacing(14)
-        root.addLayout(main, 1)
+        self.main_splitter = QSplitter(Qt.Horizontal)
+        self.main_splitter.setObjectName("MainSplitter")
+        root.addWidget(self.main_splitter, 1)
 
         preview_card = self._build_preview_card()
         preview_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        main.addWidget(preview_card, 3)
+        self.main_splitter.addWidget(preview_card)
 
-        self.tabs = QTabWidget()
-        self.tabs.setMinimumWidth(420)
-        self.tabs.addTab(self._build_connection_tab(), "Connection")
-        self.tabs.addTab(self._build_channels_tab(), "Channels")
-        self.tabs.addTab(self._build_measurement_tab(), "Measurement")
-        self.tabs.addTab(self._build_trigger_tab(), "Trigger")
-        self.tabs.addTab(self._build_settings_tab(), "Settings")
-        self.tabs.addTab(self._build_log_tab(), "Log")
-        main.addWidget(self.tabs, 1)
+        self.drawer = self._build_control_drawer()
+        self.drawer.setMinimumWidth(360)
+        self.drawer.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+        self.main_splitter.addWidget(self.drawer)
+        self.main_splitter.setStretchFactor(0, 3)
+        self.main_splitter.setStretchFactor(1, 1)
+        self.main_splitter.setSizes([810, DEFAULT_DRAWER_WIDTH])
 
         self.setStatusBar(QStatusBar())
 
@@ -115,6 +123,13 @@ class QtScopeWindow(QMainWindow):
 
     def _button(self, text: str, callback: Callable[[], None]) -> QPushButton:
         button = QPushButton(text)
+        button.clicked.connect(callback)
+        return button
+
+    def _drawer_utility_button(self, text: str, callback: Callable[[], None]) -> QToolButton:
+        button = QToolButton()
+        button.setText(text)
+        button.setObjectName("DrawerUtilityButton")
         button.clicked.connect(callback)
         return button
 
@@ -152,11 +167,114 @@ class QtScopeWindow(QMainWindow):
         return card
 
     # ------------------------------------------------------------------
-    # Tabs
+    # Resizable control drawer
+    # ------------------------------------------------------------------
+    def _build_control_drawer(self) -> QWidget:
+        drawer = QWidget()
+        drawer.setObjectName("ControlDrawer")
+        layout = QHBoxLayout(drawer)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
+
+        nav = QWidget()
+        nav.setObjectName("DrawerNav")
+        nav_layout = QVBoxLayout(nav)
+        nav_layout.setContentsMargins(8, 8, 8, 8)
+        nav_layout.setSpacing(6)
+
+        self.drawer_buttons = QButtonGroup(self)
+        self.drawer_buttons.setExclusive(True)
+        for index, title in enumerate(DRAWER_PAGE_TITLES):
+            button = QToolButton()
+            button.setText(title)
+            button.setCheckable(True)
+            button.setToolButtonStyle(Qt.ToolButtonTextOnly)
+            button.setObjectName("DrawerNavButton")
+            button.setMinimumHeight(42)
+            button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            button.clicked.connect(lambda checked=False, page=index: self._select_drawer_page(page))
+            self.drawer_buttons.addButton(button, index)
+            nav_layout.addWidget(button)
+        nav_layout.addStretch(1)
+        layout.addWidget(nav)
+
+        content = QWidget()
+        content.setObjectName("DrawerContent")
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(12, 10, 12, 12)
+        content_layout.setSpacing(10)
+
+        header = QWidget()
+        header.setObjectName("DrawerHeader")
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        self.drawer_title = QLabel(DRAWER_PAGE_TITLES[0])
+        self.drawer_title.setObjectName("DrawerTitle")
+        self.pin_drawer_button = self._drawer_utility_button("Pinned", self.toggle_drawer_pin)
+        self.pin_drawer_button.setCheckable(True)
+        self.pin_drawer_button.setChecked(True)
+        self.hide_drawer_button = self._drawer_utility_button("Hide", self.hide_control_drawer)
+        self.hide_drawer_button.setEnabled(False)
+        header_layout.addWidget(self.drawer_title, 1)
+        header_layout.addWidget(self.pin_drawer_button)
+        header_layout.addWidget(self.hide_drawer_button)
+        content_layout.addWidget(header)
+
+        self.drawer_stack = QStackedWidget()
+        self.drawer_stack.setObjectName("DrawerStack")
+        self.drawer_stack.addWidget(self._build_connection_tab())
+        self.drawer_stack.addWidget(self._build_channels_tab())
+        self.drawer_stack.addWidget(self._build_measurement_tab())
+        self.drawer_stack.addWidget(self._build_trigger_tab())
+        self.drawer_stack.addWidget(self._build_settings_tab())
+        self.drawer_stack.addWidget(self._build_log_tab())
+        content_layout.addWidget(self.drawer_stack, 1)
+        layout.addWidget(content, 1)
+
+        first_button = self.drawer_buttons.button(0)
+        if first_button is not None:
+            first_button.setChecked(True)
+        return drawer
+
+    def _select_drawer_page(self, index: int) -> None:
+        self.show_control_drawer()
+        self.drawer_stack.setCurrentIndex(index)
+        self.drawer_title.setText(DRAWER_PAGE_TITLES[index])
+        button = self.drawer_buttons.button(index)
+        if button is not None:
+            button.setChecked(True)
+
+    def toggle_drawer_pin(self) -> None:
+        self.drawer_pinned = self.pin_drawer_button.isChecked()
+        self.pin_drawer_button.setText("Pinned" if self.drawer_pinned else "Hideable")
+        self.hide_drawer_button.setEnabled(not self.drawer_pinned)
+        message = "Control drawer pinned open" if self.drawer_pinned else "Control drawer can now be hidden"
+        self.statusBar().showMessage(message)
+
+    def hide_control_drawer(self) -> None:
+        if self.drawer_pinned:
+            self.statusBar().showMessage("Unpin the control drawer before hiding it")
+            return
+        self._last_drawer_width = max(self.drawer.width(), 360)
+        self.drawer.setVisible(False)
+        self.show_drawer_button.setVisible(True)
+        self.statusBar().showMessage("Control drawer hidden")
+
+    def show_control_drawer(self) -> None:
+        if self.drawer.isVisible():
+            return
+        self.drawer.setVisible(True)
+        self.show_drawer_button.setVisible(False)
+        preview_width = max(self.width() - self._last_drawer_width - 80, 520)
+        self.main_splitter.setSizes([preview_width, self._last_drawer_width])
+        self.statusBar().showMessage("Control drawer shown")
+
+    # ------------------------------------------------------------------
+    # Drawer pages
     # ------------------------------------------------------------------
     def _build_connection_tab(self) -> QWidget:
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
+        page = QWidget()
+        layout = QVBoxLayout(page)
         layout.setSpacing(10)
 
         card = self._card("Connection")
@@ -191,11 +309,11 @@ class QtScopeWindow(QMainWindow):
         form.addRow(self._accent_button("Test IDN", self.test_connection))
         layout.addWidget(card)
         layout.addStretch(1)
-        return tab
+        return page
 
     def _build_channels_tab(self) -> QWidget:
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
+        page = QWidget()
+        layout = QVBoxLayout(page)
         card = self._card("Channels")
         form = QFormLayout(card)
         self.channel_labels: dict[int, QLineEdit] = {}
@@ -206,11 +324,11 @@ class QtScopeWindow(QMainWindow):
         form.addRow(self._button("Read labels", self.not_implemented))
         layout.addWidget(card)
         layout.addStretch(1)
-        return tab
+        return page
 
     def _build_measurement_tab(self) -> QWidget:
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
+        page = QWidget()
+        layout = QVBoxLayout(page)
         card = self._card("Measurement")
         form = QFormLayout(card)
 
@@ -243,16 +361,16 @@ class QtScopeWindow(QMainWindow):
         form.addRow(buttons)
         layout.addWidget(card)
         layout.addStretch(1)
-        return tab
+        return page
 
     def _build_trigger_tab(self) -> QWidget:
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
+        page = QWidget()
+        layout = QVBoxLayout(page)
         layout.addWidget(self._build_trigger_actions_card())
         layout.addWidget(self._build_trigger_level_card())
         layout.addWidget(self._build_edge_trigger_card())
         layout.addStretch(1)
-        return tab
+        return page
 
     def _build_trigger_actions_card(self) -> QGroupBox:
         card = self._card("Acquisition / trigger actions")
@@ -305,8 +423,8 @@ class QtScopeWindow(QMainWindow):
         return card
 
     def _build_settings_tab(self) -> QWidget:
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
+        page = QWidget()
+        layout = QVBoxLayout(page)
         card = self._card("Settings")
         form = QFormLayout(card)
         self.output_folder = QLineEdit(str(Path("scope_output")))
@@ -315,15 +433,15 @@ class QtScopeWindow(QMainWindow):
         form.addRow(self._button("Restore settings JSON...", self.not_implemented))
         layout.addWidget(card)
         layout.addStretch(1)
-        return tab
+        return page
 
     def _build_log_tab(self) -> QWidget:
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
+        page = QWidget()
+        layout = QVBoxLayout(page)
         self.log = QTextEdit()
         self.log.setReadOnly(True)
         layout.addWidget(self.log)
-        return tab
+        return page
 
     # ------------------------------------------------------------------
     # Scope helpers/actions
@@ -479,4 +597,4 @@ class QtScopeWindow(QMainWindow):
         self.log.append(text)
 
 
-__all__ = ["APP_TITLE", "QtScopeWindow"]
+__all__ = ["APP_TITLE", "DEFAULT_DRAWER_WIDTH", "DRAWER_PAGE_TITLES", "QtScopeWindow"]
