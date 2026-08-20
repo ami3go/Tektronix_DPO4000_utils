@@ -1,10 +1,12 @@
 # Tektronix DPO4000 Utilities
 
-Python utilities and a Tkinter GUI for Tektronix DPO4000-family oscilloscopes, developed around the DPO4054.
+Python utilities plus Tkinter and experimental PySide6 GUIs for Tektronix DPO4000-family oscilloscopes, developed around the DPO4054.
 
 ## Features
 
 - USB/VISA and Ethernet VISA resource support.
+- Stable Tkinter GUI through `dpo4000-gui`.
+- Experimental PySide6/Qt GUI through `dpo4000-gui-qt`.
 - Read and write CH1..CH4 channel labels.
 - Capture the scope screen as PNG and preview it in the GUI.
 - Copy the latest captured preview image to the system clipboard with `Ctrl+C`.
@@ -19,30 +21,146 @@ Python utilities and a Tkinter GUI for Tektronix DPO4000-family oscilloscopes, d
 
 ## Requirements
 
-Python dependencies are installed by the package:
+The project uses Python package metadata in `pyproject.toml` as the source of truth.
+
+Minimum Python:
 
 ```bash
-pip install -e .
+python >= 3.10
+```
+
+Core driver plus Tkinter GUI dependencies:
+
+```bash
+python -m pip install -e .
+```
+
+Experimental PySide6/Qt GUI dependencies:
+
+```bash
+python -m pip install -e .[pyside6]
+```
+
+Equivalent requirements-file install for the PySide6 GUI:
+
+```bash
+python -m pip install -r requirements-pyside6.txt
+```
+
+Development dependencies:
+
+```bash
+python -m pip install -e .[dev]
 ```
 
 For real instrument communication, the PC still needs a VISA runtime/driver installed, for example NI-VISA, TekVISA, or Keysight VISA. PyVISA is the Python frontend; it does not replace the instrument USB/Ethernet driver stack.
 
+Windows notes:
+
+- Install a VISA runtime before trying USB/VISA communication.
+- Use PowerShell or Windows Terminal from the repository root.
+- The PySide6 GUI can be installed into a normal Python virtual environment.
+
+Linux notes:
+
+- Ethernet/VXI-11 is usually the simplest first test because it avoids USB permissions.
+- For USB/VISA, install a VISA runtime that supports Linux and configure any required udev/device permissions.
+- PySide6 wheels include Qt, but some distributions may still need system XCB/OpenGL runtime libraries if Qt reports a platform-plugin error.
+
 ## Run the GUI
+
+### Stable Tkinter GUI
 
 From a checkout:
 
 ```bash
-pip install -e .
+python -m pip install -e .
 dpo4000-gui
 ```
 
-or directly from the repository root:
+or directly from the repository root after installing dependencies:
 
 ```bash
 python -m dpo4000_utils.gui
 ```
 
-The package now uses a root package layout: `dpo4000_utils/` is directly in the repository root. There is no `src/` folder. This keeps direct Windows commands such as `pytest` and `python -m dpo4000_utils.gui` simpler from a checkout.
+### Experimental PySide6 GUI on Windows
+
+PowerShell from a checkout:
+
+```powershell
+git checkout testing-pyside6
+py -3.13 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements-pyside6.txt
+dpo4000-gui-qt
+```
+
+Alternative install without the requirements file:
+
+```powershell
+python -m pip install -e .[pyside6]
+dpo4000-gui-qt
+```
+
+Direct module launch also works after install:
+
+```powershell
+python -m dpo4000_utils.gui_qt.runner
+```
+
+### Experimental PySide6 GUI on Linux
+
+Shell from a checkout:
+
+```bash
+git checkout testing-pyside6
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements-pyside6.txt
+dpo4000-gui-qt
+```
+
+Alternative install without the requirements file:
+
+```bash
+python -m pip install -e .[pyside6]
+dpo4000-gui-qt
+```
+
+Direct module launch also works after install:
+
+```bash
+python -m dpo4000_utils.gui_qt.runner
+```
+
+### PySide6 first-run flow
+
+1. Start `dpo4000-gui-qt`.
+2. Select **USB/VISA** or **Ethernet**.
+3. Click **IDN** or **Retry** first.
+4. After a successful `*IDN?`, protected scope actions unlock.
+5. Use the quick toolbar for common actions: **Capture**, **Copy**, **PNG**, **CSV**, **Run**, **Stop**, **Single**, and **Force**.
+6. Use the right icon rail for drawer pages.
+7. Use **Compact / Advanced** in the drawer header to hide or show advanced controls.
+
+Useful PySide6 shortcuts:
+
+```text
+F5             Capture preview
+Ctrl+C         Copy preview after clicking the preview area
+Ctrl+S         Save PNG
+Ctrl+Shift+S   Save CSV
+F6             Run acquisition
+F7             Stop acquisition
+F8             Single acquisition
+Ctrl+L         Focus VISA resource field
+Ctrl+1..6      Switch drawer pages
+```
+
+The package uses a root package layout: `dpo4000_utils/` is directly in the repository root. There is no `src/` folder. This keeps direct Windows commands such as `pytest`, `python -m dpo4000_utils.gui`, and `python -m dpo4000_utils.gui_qt.runner` simpler from a checkout.
 
 ## Interaction guide
 
@@ -52,21 +170,22 @@ The package now uses a root package layout: `dpo4000_utils/` is directly in the 
    - Use **USB/VISA** for a discovered local VISA resource such as `USB0::0x0699::0x0401::C011280::INSTR`.
    - Use **Ethernet** for a TCPIP resource generated from host, protocol, and port fields.
    - Click **Refresh resources** to re-scan VISA resources.
-   - Click **Connect / IDN** to open a short-lived session and read `*IDN?`.
+   - Click **Connect / IDN** in the Tkinter GUI, or **IDN / Retry** in the PySide6 GUI, to open a short-lived session and read `*IDN?`.
 
 2. **Work with channel labels**
-   - Use the Channels tab to read CH1..CH4 labels from the scope.
+   - Use the Channels tab/page to read CH1..CH4 labels from the scope.
    - Edit a label field and apply it to write the corresponding `CHn:LABEL` setting.
+   - In the PySide6 GUI, full channel setup and MATH setup are advanced collapsible sections.
    - Label changes are direct hardware writes.
 
 3. **Capture screen and waveform data**
-   - Click **Capture PNG** to read a scope hardcopy and save it to the configured output folder.
+   - Click **Capture PNG** in the Tkinter GUI or **Capture** in the PySide6 quick toolbar to read a scope hardcopy and save it to the configured output folder.
    - The GUI preview updates from the saved PNG and receives keyboard focus.
-   - Press `Ctrl+C` while the preview is focused, or click **Copy preview**, to copy the latest saved PNG image to the system clipboard.
-   - Click **Save CSV** to export all enabled channel waveforms into one CSV file.
+   - Press `Ctrl+C` while the preview is focused, or click **Copy preview / Copy**, to copy the latest saved PNG image to the system clipboard.
+   - Click **Save CSV / CSV** to export all enabled channel waveforms into one CSV file.
    - The CSV path uses the shared waveform driver helpers, including enabled-channel detection and voltage scaling.
 
-4. **Use the Measurement tab**
+4. **Use the Measurement tab/page**
    - Add or update displayed `MEAS1..MEAS8` slots.
    - Select measurement groups that mirror common scope submenus: **Amplitude**, **Timing**, and **Area / count**.
    - Keep the measurement type field editable so exact firmware-specific SCPI names can be typed manually.
@@ -74,13 +193,12 @@ The package now uses a root package layout: `dpo4000_utils/` is directly in the 
    - Read the selected measurement value, clear one slot, or clear all displayed measurements.
    - Measurement actions are direct SCPI writes to the oscilloscope display setup.
 
-5. **Use the Trigger tab**
+5. **Use the Trigger tab/page**
    - Read or set A trigger level.
    - Trigger level accepts numeric volts and supported presets such as `TTL` or `ECL`.
-   - Move horizontal trigger position with direct `HORIZONTAL:POSITION` set/read/nudge controls.
-   - Apply common A edge-trigger settings: mode, source, slope, coupling, and level.
+   - In the PySide6 GUI, common trigger level and acquisition actions are in the compact **Trigger quick** card.
+   - Horizontal position, edge trigger setup, and image capture re-arm are advanced collapsible sections in the PySide6 GUI.
    - Use acquisition buttons for **Run**, **Stop**, **Single**, **Continuous**, and **Force trigger**.
-   - Optional re-arm behavior after image capture can still be enabled in the Settings tab.
    - Trigger controls are direct SCPI writes to the active scope setup.
 
 6. **Save and restore scope setup**
@@ -89,7 +207,7 @@ The package now uses a root package layout: `dpo4000_utils/` is directly in the 
    - Restore can optionally wait for `*OPC?`, but this may time out on some older DPO4000 firmware even when the setup has applied.
 
 7. **Configure output and preferences**
-   - Choose the output folder and filename prefixes/base names in the Settings tab.
+   - Choose the output folder and filename prefixes/base names in the Settings tab/page.
    - GUI preferences are persisted automatically after edits and again on window close.
    - Stored preferences include resource selection, Ethernet settings, timeout, output folder, naming options, and trigger options.
 
@@ -195,11 +313,11 @@ control.py      displayed measurement, horizontal position, and trigger/acquisit
 instrument.py   DPO4000Scope / DPO4054 classes composed from mixins
 ```
 
-The GUI screenshot path uses `hardcopy.py`, the GUI settings restore path uses `settings.py`, the GUI CSV export path uses `waveform.py`, and the Measurement/Trigger tabs use `control.py`, so transfer, validation, scaling, and diagnostic behavior are shared between scripts and the GUI.
+The GUI screenshot path uses `hardcopy.py`, the GUI settings restore path uses `settings.py`, the GUI CSV export path uses `waveform.py`, and the Measurement/Trigger tabs/pages use `control.py`, so transfer, validation, scaling, and diagnostic behavior are shared between scripts and both GUIs.
 
 ## GUI modules
 
-The active GUI now has a flattened public class plus extracted panel builders:
+The stable Tkinter GUI has a flattened public class plus extracted panel builders:
 
 ```text
 gui/app.py              public GUI entry point; exports ScopeGui
@@ -221,15 +339,32 @@ gui/image_preview.py    preview sizing/subsampling helpers
 gui/preferences.py      persistent GUI preference load/save helpers
 ```
 
-Compatibility wrappers from the incremental refactor are still present (`stateful_window.py`, `waveform_window.py`, and `sectioned_window.py`), but the public entry point now imports `scope_gui.ScopeGui` directly. The previous monolithic `main_window.py` has been retired to a compatibility shim; the historical base implementation lives in `base_window.py` until the remaining core window lifecycle and job-running code is slimmed further.
+The experimental PySide6 GUI is under `dpo4000_utils/gui_qt/`:
+
+```text
+gui_qt/runner.py             console-script entry point for dpo4000-gui-qt
+gui_qt/ui_practice_window.py active launched PySide6 window layer
+gui_qt/enhanced_window.py    compact drawer/channel/trigger enhancement layer
+gui_qt/main_window.py        base PySide6 window and hardware action port
+gui_qt/theme.qss            dark Qt stylesheet
+```
+
+Compatibility wrappers from the incremental Tkinter refactor are still present (`stateful_window.py`, `waveform_window.py`, and `sectioned_window.py`), but the public Tkinter entry point now imports `scope_gui.ScopeGui` directly. The previous monolithic Tkinter `main_window.py` has been retired to a compatibility shim; the historical base implementation lives in `base_window.py` until the remaining core window lifecycle and job-running code is slimmed further.
 
 ## Tests
 
 Pure helper tests do not require a real oscilloscope:
 
 ```bash
-pip install -e .[dev]
+python -m pip install -e .[dev]
 pytest -q
+```
+
+PySide6 metadata tests do not require a real oscilloscope. To include optional PySide6 import/runtime checks in local development, install the PySide6 extra first:
+
+```bash
+python -m pip install -e .[dev,pyside6]
+pytest -q tests/test_gui_qt_metadata.py tests/test_gui_qt_channel_config_metadata.py
 ```
 
 Hardware API tests are opt-in and require a connected DPO4000-family scope plus a VISA runtime:
@@ -280,7 +415,8 @@ The generated executable includes Python and Python packages, but target PCs sti
 
 ```text
 dpo4000_utils/               package code
-dpo4000_utils/gui/           active GUI application
+dpo4000_utils/gui/           stable Tkinter GUI application
+dpo4000_utils/gui_qt/        experimental PySide6 GUI application
 tektronix_utils.py           legacy compatibility import module
 examples/                    small usage examples
 scripts/                     helper scripts, including PyInstaller builds
