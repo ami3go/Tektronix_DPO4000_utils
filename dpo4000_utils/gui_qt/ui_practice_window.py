@@ -35,6 +35,8 @@ SCOPE_ACTION_CALLBACKS = {
     "apply_channel_configuration",
     "read_math_configuration",
     "apply_math_configuration",
+    "read_acquisition_setup",
+    "apply_acquisition_setup",
     "add_measurement",
     "read_measurement_value",
     "clear_measurement_slot",
