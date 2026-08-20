@@ -14,18 +14,48 @@ The experimental GTK4 command is:
 dpo4000-gui-gtk
 ```
 
-## Install notes
+## Why `pip install -e .[gtk]` failed on Windows
 
-GTK4/PyGObject usually needs system packages in addition to Python package metadata.
-On Linux, install your distribution's GTK4, GObject introspection, and PyGObject packages first.
-Then install this project with the optional GTK extras:
+PyGObject is a Python binding over native GTK, GLib, GObject-Introspection, and related C libraries. A plain Python-only pip install on Windows often tries to build PyGObject from source and fails unless the full native GTK build/runtime toolchain is already installed.
+
+For this reason the branch keeps the `gtk` extra empty. It is only a marker for this experimental GUI; GTK/PyGObject itself must come from the operating-system environment.
+
+```powershell
+py -3.13 -m pip install -e .[gtk]
+```
+
+This now installs the project and the `dpo4000-gui-gtk` command without trying to build PyGObject. Launching the command still requires a Python environment where `gi.repository.Gtk` is importable.
+
+## Recommended Windows route: MSYS2 UCRT64
+
+Install MSYS2, open the **UCRT64** shell, then install GTK4 and PyGObject from pacman:
 
 ```bash
-pip install -e .[gtk]
+pacman -Syu
+pacman -S mingw-w64-ucrt-x86_64-python mingw-w64-ucrt-x86_64-python-pip mingw-w64-ucrt-x86_64-python-gobject mingw-w64-ucrt-x86_64-gtk4
+```
+
+From the MSYS2 UCRT64 shell, go to the checkout and install the project with the MSYS2 Python:
+
+```bash
+cd /c/Users/achestni/Documents/PycharmProjects/Libraries/Tektronix_DPO4000_utils
+python -m pip install -e .
 dpo4000-gui-gtk
 ```
 
-On Windows, PyGObject/GTK4 is usually easiest through an MSYS2 GTK environment rather than a plain Python-only pip install. Treat this branch primarily as a Linux-native comparison prototype.
+Do not mix this with `C:\Program Files\Python313\python.exe`; use the MSYS2 Python for GTK testing.
+
+## Linux route
+
+On Debian/Ubuntu-style systems, install GTK4 and PyGObject from the distribution first:
+
+```bash
+sudo apt install python3-gi gir1.2-gtk-4.0
+python3 -m pip install -e .
+dpo4000-gui-gtk
+```
+
+Package names vary by distribution.
 
 ## Current GTK4 prototype scope
 
