@@ -1,8 +1,8 @@
 from dpo4000_utils.gui.style import (
     COMBOBOX_FIELD_BACKGROUND,
     COMBOBOX_FIELD_FOREGROUND,
-    COMBOBOX_POPUP_OPTIONS,
-    COMBOBOX_STATE_MAP,
+    COMBOBOX_SELECTED_BACKGROUND,
+    COMBOBOX_SELECTED_FOREGROUND,
     COMBOBOX_STYLE_OPTIONS,
 )
 
@@ -14,13 +14,10 @@ def test_combobox_style_uses_dark_text_on_light_field():
     assert COMBOBOX_FIELD_FOREGROUND == "#111827"
 
 
-def test_combobox_readonly_state_keeps_text_visible():
-    readonly_foreground = dict(COMBOBOX_STATE_MAP["foreground"])["readonly"]
-    readonly_background = dict(COMBOBOX_STATE_MAP["fieldbackground"])["readonly"]
-    assert readonly_foreground == COMBOBOX_FIELD_FOREGROUND
-    assert readonly_background == COMBOBOX_FIELD_BACKGROUND
-
-
-def test_combobox_popup_listbox_uses_matching_visible_colors():
-    assert COMBOBOX_POPUP_OPTIONS["*TCombobox*Listbox.foreground"] == COMBOBOX_FIELD_FOREGROUND
-    assert COMBOBOX_POPUP_OPTIONS["*TCombobox*Listbox.background"] != COMBOBOX_FIELD_FOREGROUND
+def test_combobox_style_keeps_native_popup_behavior():
+    # Do not use ttk state maps or popup Listbox option database overrides here.
+    # They made Windows readonly combobox dropdowns stop behaving normally.
+    assert "map" not in COMBOBOX_STYLE_OPTIONS
+    assert "popdown" not in COMBOBOX_STYLE_OPTIONS
+    assert COMBOBOX_STYLE_OPTIONS["selectbackground"] == COMBOBOX_SELECTED_BACKGROUND
+    assert COMBOBOX_STYLE_OPTIONS["selectforeground"] == COMBOBOX_SELECTED_FOREGROUND
