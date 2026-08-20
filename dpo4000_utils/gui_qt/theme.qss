@@ -1,8 +1,18 @@
-QMainWindow, QWidget {
+QMainWindow {
     background: #111827;
     color: #e5e7eb;
     font-family: Segoe UI, Arial, sans-serif;
     font-size: 10pt;
+}
+
+QWidget {
+    color: #e5e7eb;
+    font-family: Segoe UI, Arial, sans-serif;
+    font-size: 10pt;
+}
+
+QFrame, QTabWidget, QStackedWidget, QScrollArea, QScrollArea > QWidget > QWidget {
+    background: #111827;
 }
 
 QGroupBox {
@@ -19,15 +29,23 @@ QGroupBox::title {
     subcontrol-position: top left;
     padding: 0 6px;
     color: #ffffff;
+    background: transparent;
+}
+
+QLabel {
+    background: transparent;
+    color: #e5e7eb;
 }
 
 QLabel#TitleLabel {
+    background: transparent;
     color: #ffffff;
     font-size: 18pt;
     font-weight: 700;
 }
 
 QLabel#MutedLabel {
+    background: transparent;
     color: #9ca3af;
 }
 
@@ -46,6 +64,11 @@ QLineEdit, QComboBox, QTextEdit {
     padding: 6px;
     selection-background-color: #2563eb;
     selection-color: #ffffff;
+}
+
+QLineEdit:disabled, QComboBox:disabled, QTextEdit:disabled {
+    background: #111827;
+    color: #9ca3af;
 }
 
 QComboBox QAbstractItemView {
@@ -81,6 +104,11 @@ QPushButton#AccentButton:hover {
 QTabWidget::pane {
     border: 1px solid #374151;
     border-radius: 6px;
+    background: #111827;
+}
+
+QTabBar {
+    background: #111827;
 }
 
 QTabBar::tab {
@@ -98,8 +126,13 @@ QTabBar::tab:selected {
 }
 
 QRadioButton, QCheckBox {
+    background: transparent;
     color: #e5e7eb;
     spacing: 8px;
+}
+
+QRadioButton::indicator, QCheckBox::indicator {
+    background: transparent;
 }
 
 QStatusBar {
