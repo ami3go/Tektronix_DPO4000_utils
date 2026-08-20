@@ -86,13 +86,15 @@ def build_measurement_section(gui, parent: tk.Widget) -> None:
     col = ttk.Frame(row, style="Card.TFrame")
     col.pack(side=tk.LEFT, fill=tk.X, expand=True)
     _label(col, "Group")
-    ttk.Combobox(
+    group_combo = ttk.Combobox(
         col,
         textvariable=gui.measurement_group_var,
         values=tuple(MEASUREMENT_TYPES_BY_GROUP),
         width=16,
         state="readonly",
-    ).pack(fill=tk.X)
+    )
+    group_combo.pack(fill=tk.X)
+    group_combo.bind("<<ComboboxSelected>>", gui._on_measurement_group_changed)
 
     row = _row(card)
     _label(row, "Measurement type")
