@@ -1,4 +1,4 @@
-"""Launched PySide6 window with clickable collapsible card headers."""
+"""Launched PySide6 window with compact clickable collapsible cards."""
 
 from __future__ import annotations
 
@@ -9,31 +9,50 @@ from .acquisition_window import QtScopeWindow as AcquisitionQtScopeWindow
 
 
 class CollapsibleCard(QGroupBox):
-    """A compact collapsible card where the card title/header toggles the body."""
+    """A compact collapsible card where the card header itself toggles the body."""
 
     _HEADER_HEIGHT = 34
+    _EXPANDED_OBJECT_NAME = "InlineCollapsibleCard"
+    _COLLAPSED_OBJECT_NAME = "InlineCollapsibleCardCollapsed"
 
     def __init__(self, title: str, content: QWidget, *, expanded: bool = True) -> None:
         super().__init__()
         self._base_title = title
         self._content = content
         self._expanded = False
-        self.setObjectName("InlineCollapsibleCard")
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.setToolTip(f"Click the {title} card header to collapse or expand.")
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 10, 12, 12)
-        layout.setSpacing(10)
-        layout.addWidget(content)
+        self._layout = QVBoxLayout(self)
+        self._layout.setSpacing(0)
+        self._layout.addWidget(content)
 
         self.set_expanded(expanded)
 
+    def _refresh_style(self) -> None:
+        style = self.style()
+        style.unpolish(self)
+        style.polish(self)
+        self.update()
+
     def set_expanded(self, expanded: bool) -> None:
-        """Show or hide the body while keeping the card header visible."""
+        """Show or hide the body; collapsed cards keep only the clickable title strip."""
         self._expanded = expanded
         self._content.setVisible(expanded)
         self.setTitle(("▾ " if expanded else "▸ ") + self._base_title)
+        self.setObjectName(self._EXPANDED_OBJECT_NAME if expanded else self._COLLAPSED_OBJECT_NAME)
+
+        if expanded:
+            self._layout.setContentsMargins(12, 10, 12, 12)
+            self.setMinimumHeight(0)
+            self.setMaximumHeight(16_777_215)
+        else:
+            self._layout.setContentsMargins(0, 0, 0, 0)
+            self.setMinimumHeight(self._HEADER_HEIGHT)
+            self.setMaximumHeight(self._HEADER_HEIGHT)
+
+        self._refresh_style()
+        self.updateGeometry()
 
     def mousePressEvent(self, event) -> None:  # noqa: N802 - Qt override name.
         """Toggle only when the compact card header area is clicked."""
