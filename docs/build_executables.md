@@ -1,6 +1,45 @@
 # Build GUI executables
 
-The GUI can be packaged with PyInstaller for Windows and Linux. The generated executable includes Python and the Python packages, but it does **not** replace the system VISA runtime required to communicate with the oscilloscope.
+The current application package target is the PySide6 GUI:
+
+```text
+dpo4000-gui-qt
+  -> dpo4000_utils.gui_qt.runner.main
+  -> dpo4000_utils.gui_qt.stable_window.QtScopeWindow
+```
+
+The build scripts use PyInstaller and should be run on the same operating system as the artifact you want to distribute:
+
+- build Windows `.exe` artifacts on Windows
+- build Linux artifacts on Linux
+
+PyInstaller cross-compilation is not supported by these scripts.
+
+The generated executable includes Python and collected Python packages, but it does **not** replace the system VISA runtime required to communicate with the oscilloscope.
+
+## Recommended output mode
+
+The default mode is `onedir` because it is more reliable for Qt applications and starts faster than `onefile`.
+
+Default application name:
+
+```text
+TektronixDPO4000
+```
+
+Default outputs:
+
+```text
+Windows: dist\TektronixDPO4000\TektronixDPO4000.exe
+Linux:   dist/TektronixDPO4000/TektronixDPO4000
+```
+
+Optional one-file outputs:
+
+```text
+Windows: dist\TektronixDPO4000.exe
+Linux:   dist/TektronixDPO4000
+```
 
 ## Windows `.exe`
 
@@ -16,19 +55,25 @@ Compatibility alias:
 scripts\build_exe.bat
 ```
 
-Output:
+One-file build:
 
-```text
-dist\TektronixScopeGUI.exe
+```powershell
+$env:BUILD_MODE="onefile"
+scripts\build_windows_exe.bat
 ```
 
-The Windows build script uses:
+Custom app name:
 
-```text
-dpo4000_utils\gui\app.py
+```powershell
+$env:APP_NAME="DPO4000Scope"
+scripts\build_windows_exe.bat
 ```
 
-as the GUI entry point and includes package data from `dpo4000_utils`.
+Console/debug build:
+
+```powershell
+python scripts\build_app.py --mode onedir --console
+```
 
 ## Linux executable
 
@@ -39,32 +84,83 @@ chmod +x scripts/build_linux_executable.sh
 ./scripts/build_linux_executable.sh
 ```
 
-Output:
-
-```text
-dist/TektronixScopeGUI
-```
-
-On Debian/Ubuntu, install Tk support if your Python distribution does not include it:
+One-file build:
 
 ```bash
-sudo apt install python3-tk
+BUILD_MODE=onefile scripts/build_linux_executable.sh
 ```
+
+Custom app name:
+
+```bash
+APP_NAME=DPO4000Scope scripts/build_linux_executable.sh
+```
+
+Console/debug build:
+
+```bash
+python scripts/build_app.py --mode onedir --console
+```
+
+## Shared build helper
+
+Both platform wrappers call:
+
+```bash
+python scripts/build_app.py --mode onedir --app-name TektronixDPO4000
+```
+
+Useful options:
+
+```text
+--mode onedir|onefile
+--app-name NAME
+--console
+--skip-install
+```
+
+`--skip-install` is useful when the virtual environment already has the project and build dependencies installed.
+
+The helper creates a small generated PyInstaller entry file under `build/pyinstaller_entry/` so package-relative imports behave like the installed `dpo4000-gui-qt` console script.
 
 ## Required runtime outside the executable
 
-The executable bundles Python code, but real scope access still requires a VISA backend/runtime on the target PC, for example:
+Real scope access still requires a VISA backend/runtime on the target PC, for example:
 
 - NI-VISA
 - TekVISA
 - Keysight VISA
 - a configured PyVISA backend suitable for your connection method
 
+For USB instruments, install the relevant USB/VISA driver. For Ethernet/VXI-11 or raw socket access, make sure the target PC can reach the oscilloscope IP address.
+
+## Smoke checks
+
+Before packaging, test from source:
+
+```bash
+dpo4000-gui-qt
+```
+
+Run the Qt startup check:
+
+```bash
+python scripts/qt_startup_check.py
+```
+
+Run packaging metadata tests:
+
+```bash
+python -m pytest -q tests/test_build_scripts_metadata.py
+```
+
 ## Manual GitHub Actions artifact build
 
-A manual workflow named **Build GUI Executables** builds both artifacts:
+If a workflow is configured, it should call the same scripts:
 
-- `TektronixScopeGUI-windows`
-- `TektronixScopeGUI-linux`
+```text
+scripts\build_windows_exe.bat
+scripts/build_linux_executable.sh
+```
 
-The workflow does not run hardware tests and does not require a connected oscilloscope.
+Hardware is not required for packaging. VISA runtime is needed only when the generated app is used with a real oscilloscope.
