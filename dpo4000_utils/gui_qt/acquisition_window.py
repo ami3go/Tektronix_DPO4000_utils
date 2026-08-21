@@ -118,7 +118,7 @@ class QtScopeWindow(TabbedQtScopeWindow):
     # Preview toolbar
     # ------------------------------------------------------------------
     def _build_quick_control_bar(self) -> QWidget:
-        """Keep preview/export actions near the preview."""
+        """Keep preview/export and duplicate trigger controls near the preview."""
         toolbar = QWidget()
         toolbar.setObjectName("QuickControlBar")
         layout = QHBoxLayout(toolbar)
@@ -134,6 +134,18 @@ class QtScopeWindow(TabbedQtScopeWindow):
         )
         for text, callback, accent in quick_actions:
             layout.addWidget(self._quick_button(text, callback, accent=accent))
+
+        layout.addSpacing(10)
+        trigger_actions = (
+            ("Run", self.run_acquisition, False),
+            ("Stop", self.stop_acquisition, False),
+            ("Single", self.single_acquisition, False),
+            ("Continuous", self.continuous_acquisition, False),
+            ("Force", self.force_trigger, True),
+        )
+        for text, callback, accent in trigger_actions:
+            layout.addWidget(self._quick_button(text, callback, accent=accent))
+
         layout.addStretch(1)
         return toolbar
 
