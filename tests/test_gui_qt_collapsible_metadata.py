@@ -18,7 +18,10 @@ def test_qt_window_chrome_uses_only_window_title_for_app_name():
     assert "self.setWindowTitle(WINDOW_TITLE)" in content
     assert "def _build_application_menu_bar" in content
     assert 'bar.findChild(QLabel, "ApplicationMenuTitle")' in content
+    assert "layout.removeWidget(title)" in content
+    assert "title.hide()" in content
     assert "title.deleteLater()" in content
+    assert "title.setParent(None)" not in content
     assert "WINDOW_TITLE" in content
 
 
@@ -38,7 +41,9 @@ def test_qt_collapsible_sections_use_lightweight_card_header_not_extra_button():
     assert "QToolButton" not in content
     assert "InlineCollapsibleCard" in content
     assert "InlineCollapsibleContent" in content
-    assert "CollapsibleCard(title, content, expanded=expanded)" in content
+    assert "parent: QWidget | None = None" in content
+    assert "super().__init__(parent)" in content
+    assert "self.setWindowFlags(Qt.WindowType.Widget)" in content
 
 
 def test_qt_lightweight_collapsible_card_styles_are_local_to_launched_window():
@@ -77,15 +82,31 @@ def test_qt_every_direct_card_becomes_collapsible_with_primary_open_by_default()
     assert "self._make_page_cards_collapsible(stack.widget(index))" in content
     assert "def _make_page_cards_collapsible" in content
     assert "page.widget() if isinstance(page, QScrollArea) else page" in content
+    assert "while index < layout.count():" in content
     assert "if not isinstance(widget, QGroupBox) or isinstance(widget, CollapsibleCard):" in content
+    assert "widget.hide()" in content
+    assert "layout.removeWidget(widget)" in content
     assert "replacement = self._wrap_plain_card(" in content
     assert "expanded=plain_card_index == 0" in content
-    assert "layout.removeWidget(widget)" in content
+    assert "parent=body" in content
     assert "layout.insertWidget(index, replacement)" in content
+    assert "replacement.show()" in content
     assert "plain_card_index += 1" in content
     assert "def _wrap_plain_card" in content
     assert "Wrap a normal card so all cards share the same lightweight behavior." in content
-    assert "return CollapsibleCard(title, card, expanded=expanded)" in content
+    assert "return CollapsibleCard(title, card, expanded=expanded, parent=parent)" in content
+
+
+def test_qt_startup_does_not_create_parentless_intermediate_widgets():
+    content = Path("dpo4000_utils/gui_qt/collapsible_window.py").read_text(encoding="utf-8")
+
+    assert "parent: QWidget" in content
+    assert "parent=body" in content
+    assert "super().__init__(parent)" in content
+    assert "self._header = QLabel(self)" in content
+    assert "self._content_shell = QWidget(self)" in content
+    assert "card.setWindowFlags(Qt.WindowType.Widget)" in content
+    assert "setParent(None)" not in content
 
 
 def test_qt_secondary_collapsible_sections_are_collapsed_by_default():
