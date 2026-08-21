@@ -78,6 +78,27 @@ ACQUISITION_SETUP_QUERIES = {
 class QtScopeWindow(TabbedQtScopeWindow):
     """Qt window with application-menu navigation and right-side control pages."""
 
+    def _apply_compact_mode(self) -> None:
+        """Force the launched UI to use advanced mode only."""
+        self.compact_mode = False
+        for widget in getattr(self, "_advanced_widgets", []):
+            widget.setVisible(True)
+
+    def _register_advanced_widget(self, widget: QWidget) -> QWidget:
+        """Keep advanced sections visible in the launched top-menu UI."""
+        self._advanced_widgets.append(widget)
+        widget.setVisible(True)
+        return widget
+
+    def _collapsible_section(self, title: str, content: QWidget, *, expanded: bool = True) -> QWidget:
+        """Open advanced sections by default; no Compact/Advanced toggle is shown."""
+        return super()._collapsible_section(title, content, expanded=True)
+
+    def toggle_compact_mode(self) -> None:
+        """Compatibility no-op: advanced mode is the only launched mode."""
+        self._apply_compact_mode()
+        self.statusBar().showMessage("Advanced controls are always visible")
+
     # ------------------------------------------------------------------
     # Top application menu layout
     # ------------------------------------------------------------------
@@ -148,14 +169,6 @@ class QtScopeWindow(TabbedQtScopeWindow):
             layout.addWidget(button)
 
         layout.addStretch(1)
-        self.compact_mode_button = QToolButton()
-        self.compact_mode_button.setObjectName("CompactModeButton")
-        self.compact_mode_button.setCheckable(True)
-        self.compact_mode_button.setChecked(True)
-        self.compact_mode_button.setText("Compact")
-        self.compact_mode_button.setToolTip("Hide advanced page sections")
-        self.compact_mode_button.clicked.connect(self.toggle_compact_mode)
-        layout.addWidget(self.compact_mode_button)
         return bar
 
     def _build_control_stack(self) -> QStackedWidget:
