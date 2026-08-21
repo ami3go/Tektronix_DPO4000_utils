@@ -34,6 +34,7 @@ def test_qt_acquisition_window_uses_top_menu_for_control_pages():
     assert "QStackedWidget" in content
     assert "stack.setCurrentIndex(index)" in content
     assert "button.setChecked(True)" in content
+    assert "_add_top_acquisition_buttons(layout)" in content
     assert "QWidget#ApplicationMenuBar" in theme
     assert "QToolButton#ApplicationMenuButton" in theme
     assert "QToolButton#ApplicationMenuButton:checked" in theme
@@ -59,6 +60,41 @@ def test_qt_acquisition_window_is_advanced_only_without_compact_button():
     assert "def _collapsible_section" in content
     assert "expanded=True" in content
     assert "Advanced controls are always visible" in content
+
+
+def test_qt_manual_acquisition_buttons_are_persistent_top_row_without_header():
+    content = Path("dpo4000_utils/gui_qt/acquisition_window.py").read_text(encoding="utf-8")
+
+    top_buttons_block = content[
+        content.index("def _add_top_acquisition_buttons"):content.index("    def _build_quick_control_bar")
+    ]
+    assert "Place manual acquisition controls in the top row with no card/header" in top_buttons_block
+    assert '"Run", self.run_acquisition' in top_buttons_block
+    assert '"Stop", self.stop_acquisition' in top_buttons_block
+    assert '"Single", self.single_acquisition' in top_buttons_block
+    assert '"Continuous", self.continuous_acquisition' in top_buttons_block
+    assert '"Force", self.force_trigger' in top_buttons_block
+    assert "Manual acquisition buttons" not in content
+    assert "_build_acquisition_actions_card" not in content
+
+
+def test_qt_launched_preview_toolbar_is_preview_only_no_acquisition_duplicates():
+    content = Path("dpo4000_utils/gui_qt/acquisition_window.py").read_text(encoding="utf-8")
+
+    quick_block = content[
+        content.index("def _build_quick_control_bar"):content.index("    # ------------------------------------------------------------------\n    # Top application menu layout")
+    ]
+    assert "acquisition buttons live in the top row" in quick_block
+    assert '"IDN", self.test_connection' in quick_block
+    assert '"Capture", self.capture_preview' in quick_block
+    assert '"Copy", self.copy_preview' in quick_block
+    assert '"PNG", self.save_png_image' in quick_block
+    assert '"CSV", self.save_csv' in quick_block
+    assert '"Run"' not in quick_block
+    assert '"Stop"' not in quick_block
+    assert '"Single"' not in quick_block
+    assert '"Continuous"' not in quick_block
+    assert '"Force"' not in quick_block
 
 
 def test_qt_acquisition_window_adds_dedicated_setup_page():
@@ -132,7 +168,7 @@ def test_qt_acquisition_average_count_is_conditional_on_average_mode():
     assert "skipped" in content
 
 
-def test_qt_trigger_page_keeps_manual_acquisition_and_rearm_sections():
+def test_qt_trigger_page_keeps_trigger_setup_and_rearm_without_manual_acquisition_card():
     content = Path("dpo4000_utils/gui_qt/acquisition_window.py").read_text(encoding="utf-8")
 
     trigger_block = content[
@@ -142,10 +178,10 @@ def test_qt_trigger_page_keeps_manual_acquisition_and_rearm_sections():
     assert "_build_trigger_level_only_card" in content
     assert "Horizontal position" in trigger_block
     assert "Edge trigger setup" in trigger_block
-    assert "Manual acquisition buttons" in trigger_block
-    assert "_build_acquisition_actions_card" in trigger_block
     assert "Image capture re-arm" in trigger_block
     assert "_build_image_rearm_card" in trigger_block
+    assert "Manual acquisition buttons" not in trigger_block
+    assert "_build_acquisition_actions_card" not in trigger_block
 
 
 def test_qt_acquisition_shortcuts_include_seven_menu_pages():
