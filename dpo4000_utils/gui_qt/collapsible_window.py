@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QScrollArea,
     QSizePolicy,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -21,6 +22,15 @@ from .acquisition_window import QtScopeWindow as AcquisitionQtScopeWindow
 
 WINDOW_TITLE = "Tektronix dpo4000"
 PREVIEW_CONTROL_GUTTER_WIDTH = 12
+CONTROL_PAGE_BUILDERS = (
+    "_build_connection_tab",
+    "_build_channels_tab",
+    "_build_measurement_tab",
+    "_build_trigger_tab",
+    "_build_acquisition_tab",
+    "_build_settings_tab",
+    "_build_log_tab",
+)
 PREVIEW_CONTROL_GUTTER_QSS = """
 QSplitter#MainSplitter::handle {
     background: #111827;
@@ -163,6 +173,8 @@ class QtScopeWindow(AcquisitionQtScopeWindow):
     """Launched Qt window using lightweight card-header collapse."""
 
     def __init__(self, *args, **kwargs) -> None:
+        self._pending_preferences = None
+        self._lazy_control_pages_built: list[bool] = []
         super().__init__(*args, **kwargs)
         self.setWindowTitle(WINDOW_TITLE)
 
@@ -191,17 +203,50 @@ class QtScopeWindow(AcquisitionQtScopeWindow):
             title.deleteLater()
         return bar
 
-    def _build_control_stack(self):
-        """Build pages, then make every direct card collapsible.
+    def _build_control_stack(self) -> QStackedWidget:
+        """Create placeholder pages and build real control pages only when opened.
 
-        The first plain card on each page remains expanded by default because it is
-        the currently-open/primary card for that page. Secondary cards and explicit
-        advanced sections start collapsed and can be opened from their card header.
+        Qt creates hidden top-level popup widgets for every QComboBox. Building all
+        pages at startup therefore creates many popup windows before the main
+        window is visible. Lazy pages keep startup to the preview plus the first
+        selected control page.
         """
-        stack = super()._build_control_stack()
-        for index in range(stack.count()):
-            self._make_page_cards_collapsible(stack.widget(index))
+        stack = QStackedWidget()
+        stack.setObjectName("RightControlStack")
+        self._lazy_control_pages_built = [False for _ in CONTROL_PAGE_BUILDERS]
+        for index, _builder_name in enumerate(CONTROL_PAGE_BUILDERS):
+            placeholder = QWidget()
+            placeholder.setObjectName(f"LazyControlPagePlaceholder{index}")
+            stack.addWidget(placeholder)
         return stack
+
+    def _select_drawer_page(self, index: int) -> None:
+        """Build the selected page on demand, then show it in the right panel."""
+        self._ensure_control_page_built(index)
+        super()._select_drawer_page(index)
+
+    def _ensure_control_page_built(self, index: int) -> None:
+        """Build a right-side control page only once, just before it is shown."""
+        stack = getattr(self, "control_stack", None)
+        if stack is None or index < 0 or index >= len(CONTROL_PAGE_BUILDERS):
+            return
+        if index < len(self._lazy_control_pages_built) and self._lazy_control_pages_built[index]:
+            return
+
+        builder = getattr(self, CONTROL_PAGE_BUILDERS[index])
+        page = builder()
+        page = self._make_page_cards_collapsible(page)
+
+        placeholder = stack.widget(index)
+        stack.removeWidget(placeholder)
+        placeholder.deleteLater()
+        stack.insertWidget(index, page)
+        self._lazy_control_pages_built[index] = True
+
+        self._apply_preferences_to_built_widgets()
+        update_controls = getattr(self, "_update_scope_control_enabled", None)
+        if callable(update_controls):
+            update_controls()
 
     def _make_page_cards_collapsible(self, page: QWidget) -> QWidget:
         """Convert direct plain QGroupBox cards without creating parentless windows."""
@@ -257,6 +302,83 @@ class QtScopeWindow(AcquisitionQtScopeWindow):
         card = CollapsibleCard(title, content, expanded=expanded)
         return self._register_advanced_widget(card)
 
+    # ------------------------------------------------------------------
+    # Preferences and lazy pages
+    # ------------------------------------------------------------------
+    def _apply_preferences(self, preferences) -> None:
+        """Apply preferences only to pages that have already been built."""
+        self._pending_preferences = preferences
+        self._apply_preferences_to_built_widgets()
+
+    def _apply_preferences_to_built_widgets(self) -> None:
+        preferences = getattr(self, "_pending_preferences", None)
+        if preferences is None:
+            return
+
+        if hasattr(self, "eth_host"):
+            self.eth_host.setText(preferences.ethernet_host)
+            self.eth_port.setText(preferences.ethernet_port)
+            self._set_combo_text(self.eth_protocol, preferences.ethernet_protocol)
+            self.timeout_ms.setText(preferences.timeout_ms)
+            self._update_visa_resource_list((preferences.visa_resource,))
+            self._set_combo_text(self.resource, preferences.visa_resource)
+            if preferences.connection_mode == "ethernet":
+                self.eth_mode.setChecked(True)
+            else:
+                self.usb_mode.setChecked(True)
+            self._refresh_generated_ethernet_resource()
+
+        if hasattr(self, "output_folder"):
+            self.output_folder.setText(preferences.output_folder)
+            self.png_prefix.setText(preferences.png_prefix)
+            self.png_base.setText(preferences.png_base)
+            self.png_timestamp.setChecked(preferences.png_add_timestamp)
+            self.csv_prefix.setText(preferences.csv_prefix)
+            self.csv_base.setText(preferences.csv_base)
+            self.csv_timestamp.setChecked(preferences.csv_add_timestamp)
+            self.settings_prefix.setText(preferences.settings_prefix)
+            self.settings_base.setText(preferences.settings_base)
+            self.settings_timestamp.setChecked(preferences.settings_add_timestamp)
+            self.restore_wait_opc.setChecked(preferences.restore_wait_opc)
+
+        if hasattr(self, "rearm_after_image"):
+            self.rearm_after_image.setChecked(preferences.rearm_after_image)
+            self._set_combo_text(self.trigger_channel_after_image, preferences.trigger_channel_after_image)
+
+        if hasattr(self, "trigger_channel"):
+            self._set_combo_text(self.trigger_channel, preferences.trigger_setup_channel)
+            self.trigger_level.setText(preferences.trigger_level)
+            self.trigger_set_source.setChecked(preferences.trigger_set_source)
+
+    def _collect_preferences(self):
+        """Build preference-bearing pages before saving preferences on close."""
+        for index in (0, 3, 5):
+            self._ensure_control_page_built(index)
+        return super()._collect_preferences()
+
+    def capture_preview(self) -> None:
+        self._ensure_control_page_built(3)
+        return super().capture_preview()
+
+    def save_png_image(self) -> None:
+        self._ensure_control_page_built(5)
+        return super().save_png_image()
+
+    def save_csv(self) -> None:
+        self._ensure_control_page_built(5)
+        return super().save_csv()
+
+    def save_settings(self) -> None:
+        self._ensure_control_page_built(5)
+        return super().save_settings()
+
+    def restore_settings(self) -> None:
+        self._ensure_control_page_built(5)
+        return super().restore_settings()
+
+    # ------------------------------------------------------------------
+    # Settings page layout
+    # ------------------------------------------------------------------
     def _build_settings_tab(self) -> QWidget:
         """Build settings with readable full-width naming fields."""
         page = QWidget()
@@ -381,6 +503,7 @@ class QtScopeWindow(AcquisitionQtScopeWindow):
 
 __all__ = [
     "CollapsibleCard",
+    "CONTROL_PAGE_BUILDERS",
     "PREVIEW_CONTROL_GUTTER_QSS",
     "PREVIEW_CONTROL_GUTTER_WIDTH",
     "WINDOW_TITLE",
