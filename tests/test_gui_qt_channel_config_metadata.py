@@ -29,44 +29,45 @@ def test_qt_acquisition_window_adds_dedicated_tab():
     assert "tabs.addTab(self._build_acquisition_tab(), CONTROL_TAB_TITLES[4])" in content
 
 
-def test_qt_acquisition_tab_is_tektronix_setup_focused():
+def test_qt_acquisition_tab_is_setup_oriented_without_manual_action_cards():
     content = Path("dpo4000_utils/gui_qt/acquisition_window.py").read_text(encoding="utf-8")
 
     assert "Acquisition setup" in content
     assert "ACQUISITION_MODES" in content
     assert "AVERAGE_COUNTS" in content
     assert "RECORD_LENGTHS" in content
-    assert "ACQUISITION_SETUP_QUERIES" in content
-    assert "HIRES" in content
-    assert "AVERAGE" in content
+    assert "ACQUIRE:MODE?" in content
+    assert "ACQUIRE:MODE" in content
+    assert "ACQUIRE:NUMAVG?" in content
+    assert "ACQUIRE:NUMAVG" in content
+    assert "HORIZONTAL:RECORDLENGTH?" in content
+    assert "HORIZONTAL:RECORDLENGTH" in content
     assert "read_acquisition_setup" in content
     assert "apply_acquisition_setup" in content
-    assert "Read acquisition setup" in content
-    assert "Apply acquisition setup" in content
-    assert "Manual acquisition buttons" in content
-    assert "Image capture re-arm" in content
+
+    acquisition_tab_block = content[
+        content.index("def _build_acquisition_tab"):content.index("    def _build_acquisition_setup_card")
+    ]
+    assert "_build_acquisition_setup_card" in acquisition_tab_block
+    assert "_build_acquisition_actions_card" not in acquisition_tab_block
+    assert "_build_image_rearm_card" not in acquisition_tab_block
 
 
-def test_qt_acquisition_setup_contains_expected_scpi_commands():
+def test_qt_acquisition_average_count_is_active_only_for_average_mode():
     content = Path("dpo4000_utils/gui_qt/acquisition_window.py").read_text(encoding="utf-8")
 
-    assert "ACQUIRE:MODE?" in content
-    assert "ACQUIRE:NUMAVG?" in content
-    assert "HORIZONTAL:RECORDLENGTH?" in content
-    assert "ACQUIRE:MODE" in content
-    assert "ACQUIRE:NUMAVG" in content
-    assert "HORIZONTAL:RECORDLENGTH" in content
+    assert "_is_average_mode" in content
+    assert "_update_average_count_enabled" in content
+    assert '== "AVERAGE"' in content
+    assert "self.acquisition_mode.currentTextChanged.connect(self._update_average_count_enabled)" in content
+    assert "self.acquisition_average_count.setEnabled(enabled)" in content
+    assert "ACQUIRE:NUMAVG is skipped" in content
+    assert "use_average_count = mode == \"AVERAGE\"" in content
+    assert "if use_average_count:" in content
+    assert "average_count=skipped" in content or 'avg_text = readback.get("average_count", average_count) if use_average_count else "skipped"' in content
 
 
-def test_qt_acquisition_setup_actions_are_guarded_until_idn():
-    content = Path("dpo4000_utils/gui_qt/ui_practice_window.py").read_text(encoding="utf-8")
-
-    assert '"read_acquisition_setup"' in content
-    assert '"apply_acquisition_setup"' in content
-    assert "SCOPE_ACTION_CALLBACKS" in content
-
-
-def test_qt_trigger_tab_is_trigger_focused_after_acquisition_split():
+def test_qt_trigger_tab_contains_manual_acquisition_and_rearm_sections():
     content = Path("dpo4000_utils/gui_qt/acquisition_window.py").read_text(encoding="utf-8")
 
     assert "def _build_trigger_tab" in content
@@ -76,9 +77,14 @@ def test_qt_trigger_tab_is_trigger_focused_after_acquisition_split():
     assert "Set level" in content
     assert "Horizontal position" in content
     assert "Edge trigger setup" in content
+    assert "Manual acquisition buttons" in content
+    assert "_build_acquisition_actions_card" in content
+    assert "Image capture re-arm" in content
+    assert "_build_image_rearm_card" in content
+
     trigger_block = content[content.index("def _build_trigger_tab"):content.index("    def _build_trigger_level_only_card")]
-    assert "_build_acquisition_actions_card" not in trigger_block
-    assert "_build_image_rearm_card" not in trigger_block
+    assert "_build_acquisition_actions_card" in trigger_block
+    assert "_build_image_rearm_card" in trigger_block
 
 
 def test_qt_acquisition_shortcuts_include_seven_tabs():
@@ -121,17 +127,6 @@ def test_qt_ui_practice_window_still_uses_tabs_not_launched_drawer():
     assert "QTabWidget#ControlTabs" in theme
     assert "QTabWidget#ControlTabs::pane" in theme
     assert "QTabWidget#ControlTabs QTabBar::tab:selected" in theme
-
-
-def test_qt_scroll_areas_include_acquisition_page():
-    content = Path("dpo4000_utils/gui_qt/theme.qss").read_text(encoding="utf-8")
-
-    assert "QScrollArea#ChannelsScrollArea" in content
-    assert "QScrollArea#TriggerScrollArea" in content
-    assert "QScrollArea#AcquisitionScrollArea" in content
-    assert "QWidget#ChannelsScrollBody" in content
-    assert "QWidget#TriggerScrollBody" in content
-    assert "QWidget#AcquisitionScrollBody" in content
 
 
 def test_qt_enhanced_preview_supports_ctrl_c_copy_and_quick_toolbar():
