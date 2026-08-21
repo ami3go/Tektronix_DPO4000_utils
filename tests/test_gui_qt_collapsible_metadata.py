@@ -94,19 +94,33 @@ def test_qt_control_pages_are_lazy_built_to_avoid_startup_combo_popups():
     assert "super()._build_control_stack()" not in content
 
 
-def test_qt_lazy_pages_keep_preferences_safe():
+def test_qt_lazy_pages_apply_preferences_once_per_page():
     content = Path("dpo4000_utils/gui_qt/collapsible_window.py").read_text(encoding="utf-8")
 
+    assert "CONNECTION_PAGE_INDEX = 0" in content
+    assert "TRIGGER_PAGE_INDEX = 3" in content
+    assert "SETTINGS_PAGE_INDEX = 5" in content
+    assert "PREFERENCE_PAGE_INDEXES" in content
     assert "self._pending_preferences = None" in content
+    assert "self._lazy_control_pages_preferences_applied: list[bool] = []" in content
+    assert "self._lazy_control_pages_preferences_applied = [False for _ in CONTROL_PAGE_BUILDERS]" in content
     assert "def _apply_preferences(self, preferences)" in content
     assert "self._pending_preferences = preferences" in content
-    assert "def _apply_preferences_to_built_widgets" in content
-    assert "if hasattr(self, \"eth_host\")" in content
-    assert "if hasattr(self, \"output_folder\")" in content
-    assert "if hasattr(self, \"rearm_after_image\")" in content
-    assert "if hasattr(self, \"trigger_channel\")" in content
+    assert "def _apply_preferences_to_unapplied_pages" in content
+    assert "without overwriting live edits" in content
+    assert "def _apply_preferences_to_control_page" in content
+    assert "if index == CONNECTION_PAGE_INDEX" in content
+    assert "elif index == TRIGGER_PAGE_INDEX" in content
+    assert "elif index == SETTINGS_PAGE_INDEX" in content
+    assert "self._lazy_control_pages_preferences_applied[index] = True" in content
+    assert "def _apply_preferences_to_built_widgets" not in content
+
+
+def test_qt_collect_preferences_builds_only_preference_pages():
+    content = Path("dpo4000_utils/gui_qt/collapsible_window.py").read_text(encoding="utf-8")
+
     assert "def _collect_preferences" in content
-    assert "for index in (0, 3, 5):" in content
+    assert "for index in PREFERENCE_PAGE_INDEXES:" in content
     assert "return super()._collect_preferences()" in content
 
 
@@ -114,12 +128,12 @@ def test_qt_lazy_pages_build_required_pages_for_quick_actions():
     content = Path("dpo4000_utils/gui_qt/collapsible_window.py").read_text(encoding="utf-8")
 
     assert "def capture_preview" in content
-    assert "self._ensure_control_page_built(3)" in content
+    assert "self._ensure_control_page_built(TRIGGER_PAGE_INDEX)" in content
     assert "def save_png_image" in content
     assert "def save_csv" in content
     assert "def save_settings" in content
     assert "def restore_settings" in content
-    assert "self._ensure_control_page_built(5)" in content
+    assert "self._ensure_control_page_built(SETTINGS_PAGE_INDEX)" in content
 
 
 def test_qt_every_direct_card_becomes_collapsible_with_primary_open_by_default():
