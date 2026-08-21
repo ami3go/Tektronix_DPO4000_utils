@@ -48,6 +48,26 @@ def test_qt_acquisition_window_uses_top_menu_for_control_pages():
     assert "QLabel#ControlPageTitle" in theme
 
 
+def test_qt_right_panel_resize_is_bounded_and_preview_absorbs_growth():
+    content = Path("dpo4000_utils/gui_qt/acquisition_window.py").read_text(encoding="utf-8")
+
+    assert "PREVIEW_MIN_WIDTH" in content
+    assert "RIGHT_PANEL_MIN_WIDTH" in content
+    assert "RIGHT_PANEL_DEFAULT_WIDTH" in content
+    assert "RIGHT_PANEL_MAX_WIDTH" in content
+    assert "self.main_splitter.setChildrenCollapsible(False)" in content
+    assert "preview_card.setMinimumWidth(PREVIEW_MIN_WIDTH)" in content
+    assert "right_panel.setMinimumWidth(RIGHT_PANEL_MIN_WIDTH)" in content
+    assert "right_panel.setMaximumWidth(RIGHT_PANEL_MAX_WIDTH)" in content
+    assert "self.main_splitter.setCollapsible(0, False)" in content
+    assert "self.main_splitter.setCollapsible(1, False)" in content
+    assert "self.main_splitter.setStretchFactor(0, 1)" in content
+    assert "self.main_splitter.setStretchFactor(1, 0)" in content
+    assert "self.main_splitter.setSizes([900, RIGHT_PANEL_DEFAULT_WIDTH])" in content
+    assert "self.main_splitter.setStretchFactor(0, 3)" not in content
+    assert "self.main_splitter.setStretchFactor(1, 1)" not in content
+
+
 def test_qt_acquisition_window_is_advanced_only_without_compact_button():
     content = Path("dpo4000_utils/gui_qt/acquisition_window.py").read_text(encoding="utf-8")
 
