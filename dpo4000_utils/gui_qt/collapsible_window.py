@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 from ..gui.config import resolve_output_folder
 from .acquisition_window import QtScopeWindow as AcquisitionQtScopeWindow
 
+WINDOW_TITLE = "Tektronix dpo4000"
 PREVIEW_CONTROL_GUTTER_WIDTH = 12
 PREVIEW_CONTROL_GUTTER_QSS = """
 QSplitter#MainSplitter::handle {
@@ -99,6 +100,10 @@ class CollapsibleCard(QGroupBox):
 class QtScopeWindow(AcquisitionQtScopeWindow):
     """Launched Qt window using card-header collapse instead of extra header buttons."""
 
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.setWindowTitle(WINDOW_TITLE)
+
     def _build_ui(self) -> None:
         """Build the UI, then make the preview/control split read as a clean gutter."""
         super()._build_ui()
@@ -111,6 +116,15 @@ class QtScopeWindow(AcquisitionQtScopeWindow):
         right_panel = self.findChild(QWidget, "RightControlPanel")
         if right_panel is not None:
             right_panel.setStyleSheet(PREVIEW_CONTROL_GUTTER_QSS)
+
+    def _build_application_menu_bar(self) -> QWidget:
+        """Build the top menu row without duplicating the application title."""
+        bar = super()._build_application_menu_bar()
+        title = bar.findChild(QLabel, "ApplicationMenuTitle")
+        if title is not None:
+            title.setParent(None)
+            title.deleteLater()
+        return bar
 
     def _build_control_stack(self):
         """Build pages, then make every direct card collapsible.
@@ -295,5 +309,6 @@ __all__ = [
     "CollapsibleCard",
     "PREVIEW_CONTROL_GUTTER_QSS",
     "PREVIEW_CONTROL_GUTTER_WIDTH",
+    "WINDOW_TITLE",
     "QtScopeWindow",
 ]
