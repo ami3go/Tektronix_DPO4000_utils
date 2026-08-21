@@ -31,6 +31,22 @@ def test_qt_collapsible_sections_use_card_header_not_extra_button():
     assert "QGroupBox#InlineCollapsibleContent" in theme
 
 
+def test_qt_preview_and_control_panel_use_sibling_gutter():
+    content = Path("dpo4000_utils/gui_qt/collapsible_window.py").read_text(encoding="utf-8")
+
+    assert "PREVIEW_CONTROL_GUTTER_WIDTH = 12" in content
+    assert "PREVIEW_CONTROL_GUTTER_QSS" in content
+    assert "def _apply_preview_control_gutter" in content
+    assert "self.main_splitter.setHandleWidth(PREVIEW_CONTROL_GUTTER_WIDTH)" in content
+    assert "self.main_splitter.setStyleSheet(PREVIEW_CONTROL_GUTTER_QSS)" in content
+    assert 'self.findChild(QWidget, "RightControlPanel")' in content
+    assert "right_panel.setStyleSheet(PREVIEW_CONTROL_GUTTER_QSS)" in content
+    assert "QSplitter#MainSplitter::handle" in content
+    assert "width: 12px;" in content
+    assert "QSplitter#MainSplitter::handle:hover" in content
+    assert "border: 1px solid #2b3544;" in content
+
+
 def test_qt_every_direct_card_becomes_collapsible_with_primary_open_by_default():
     content = Path("dpo4000_utils/gui_qt/collapsible_window.py").read_text(encoding="utf-8")
 
