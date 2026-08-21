@@ -7,6 +7,8 @@ from PySide6.QtWidgets import QGroupBox, QScrollArea, QSizePolicy, QVBoxLayout, 
 
 from .acquisition_window import QtScopeWindow as AcquisitionQtScopeWindow
 
+PREVIEW_CONTROL_GUTTER_WIDTH = 12
+
 
 class CollapsibleCard(QGroupBox):
     """A compact collapsible card where the card header itself toggles the body."""
@@ -66,6 +68,11 @@ class CollapsibleCard(QGroupBox):
 class QtScopeWindow(AcquisitionQtScopeWindow):
     """Launched Qt window using card-header collapse instead of extra header buttons."""
 
+    def _build_ui(self) -> None:
+        """Build the UI, then make the preview/control split read as a clean gutter."""
+        super()._build_ui()
+        self.main_splitter.setHandleWidth(PREVIEW_CONTROL_GUTTER_WIDTH)
+
     def _build_control_stack(self):
         """Build pages, then make every direct card collapsible.
 
@@ -124,4 +131,4 @@ class QtScopeWindow(AcquisitionQtScopeWindow):
         return self._register_advanced_widget(card)
 
 
-__all__ = ["CollapsibleCard", "QtScopeWindow"]
+__all__ = ["CollapsibleCard", "PREVIEW_CONTROL_GUTTER_WIDTH", "QtScopeWindow"]
