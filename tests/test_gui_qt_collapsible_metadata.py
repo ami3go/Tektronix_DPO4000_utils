@@ -22,24 +22,36 @@ def test_qt_window_chrome_uses_only_window_title_for_app_name():
     assert "WINDOW_TITLE" in content
 
 
-def test_qt_collapsible_sections_use_card_header_not_extra_button():
+def test_qt_collapsible_sections_use_lightweight_card_header_not_extra_button():
     content = Path("dpo4000_utils/gui_qt/collapsible_window.py").read_text(encoding="utf-8")
-    theme = Path("dpo4000_utils/gui_qt/theme.qss").read_text(encoding="utf-8")
 
-    assert "class CollapsibleCard(QGroupBox)" in content
+    assert "class CollapsibleCard(QFrame)" in content
+    assert "A lightweight collapsible card" in content
+    assert "QFrame" in content
+    assert "class CollapsibleCard(QGroupBox)" not in content
+    assert "QGroupBox#InlineCollapsibleCard" not in content
     assert "card header itself toggles the body" in content
     assert "mousePressEvent" in content
-    assert "event.pos().y() <= self._HEADER_HEIGHT" in content
-    assert "self.setTitle((\"▾ \" if expanded else \"▸ \") + self._base_title)" in content
+    assert "self._header.geometry().contains(event.pos())" in content
+    assert "self._header.setText((\"▾ \" if expanded else \"▸ \") + self._base_title)" in content
     assert "CollapsibleHeader" not in content
     assert "QToolButton" not in content
     assert "InlineCollapsibleCard" in content
     assert "InlineCollapsibleContent" in content
     assert "CollapsibleCard(title, content, expanded=expanded)" in content
-    assert "QGroupBox#InlineCollapsibleCard" in theme
-    assert "QGroupBox#InlineCollapsibleCard::title" in theme
-    assert "background: #253142" in theme
-    assert "QGroupBox#InlineCollapsibleContent" in theme
+
+
+def test_qt_lightweight_collapsible_card_styles_are_local_to_launched_window():
+    content = Path("dpo4000_utils/gui_qt/collapsible_window.py").read_text(encoding="utf-8")
+
+    assert "PREVIEW_CONTROL_GUTTER_QSS" in content
+    assert "QFrame#InlineCollapsibleCard," in content
+    assert "QFrame#InlineCollapsibleCardCollapsed" in content
+    assert "QLabel#InlineCollapsibleHeader" in content
+    assert "QWidget#InlineCollapsibleBody" in content
+    assert "QGroupBox#InlineCollapsibleContent" in content
+    assert "background: #253142" in content
+    assert "border-bottom-left-radius: 7px;" in content
 
 
 def test_qt_preview_and_control_panel_use_sibling_gutter():
@@ -72,7 +84,7 @@ def test_qt_every_direct_card_becomes_collapsible_with_primary_open_by_default()
     assert "layout.insertWidget(index, replacement)" in content
     assert "plain_card_index += 1" in content
     assert "def _wrap_plain_card" in content
-    assert "Wrap a normal card so all cards share the same collapsible behavior." in content
+    assert "Wrap a normal card so all cards share the same lightweight behavior." in content
     assert "return CollapsibleCard(title, card, expanded=expanded)" in content
 
 
@@ -86,30 +98,25 @@ def test_qt_secondary_collapsible_sections_are_collapsed_by_default():
 
 def test_qt_collapsed_cards_are_header_only_without_empty_body_space():
     content = Path("dpo4000_utils/gui_qt/collapsible_window.py").read_text(encoding="utf-8")
-    theme = Path("dpo4000_utils/gui_qt/theme.qss").read_text(encoding="utf-8")
 
     assert "_COLLAPSED_OBJECT_NAME = \"InlineCollapsibleCardCollapsed\"" in content
     assert "self.setObjectName(self._EXPANDED_OBJECT_NAME if expanded else self._COLLAPSED_OBJECT_NAME)" in content
-    assert "self._content.setVisible(expanded)" in content
+    assert "self._content_shell.setVisible(expanded)" in content
     assert "self._layout.setContentsMargins(0, 0, 0, 0)" in content
-    assert "self.setMinimumHeight(self._HEADER_HEIGHT)" in content
-    assert "self.setMaximumHeight(self._HEADER_HEIGHT)" in content
+    assert "self._header.setMinimumHeight(34)" in content
     assert "self.setMaximumHeight(16_777_215)" in content
+    assert "self.setMinimumHeight(0)" in content
     assert "self.updateGeometry()" in content
-    assert "QGroupBox#InlineCollapsibleCardCollapsed" in theme
-    assert "QGroupBox#InlineCollapsibleCardCollapsed {" in theme
-    assert "padding: 34px 0 0 0;" in theme
-    assert "QGroupBox#InlineCollapsibleCardCollapsed::title" in theme
-    assert "border-bottom: 0;" in theme
+    assert "QFrame#InlineCollapsibleCardCollapsed QLabel#InlineCollapsibleHeader" in content
+    assert "border-bottom: 0;" in content
 
 
 def test_qt_collapsible_cards_match_normal_card_frame():
-    theme = Path("dpo4000_utils/gui_qt/theme.qss").read_text(encoding="utf-8")
+    content = Path("dpo4000_utils/gui_qt/collapsible_window.py").read_text(encoding="utf-8")
 
-    shared_frame_block = theme[
-        theme.index("QGroupBox#InlineCollapsibleCard,"):theme.index("QGroupBox#InlineCollapsibleCard {")
+    shared_frame_block = content[
+        content.index("QFrame#InlineCollapsibleCard,"):content.index("QFrame#InlineCollapsibleCard:hover")
     ]
     assert "background: #1f2937;" in shared_frame_block
     assert "border: 1px solid #374151;" in shared_frame_block
     assert "border-radius: 8px;" in shared_frame_block
-    assert "margin-top: 0;" in shared_frame_block
