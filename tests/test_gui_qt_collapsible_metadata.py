@@ -75,11 +75,56 @@ def test_qt_preview_and_control_panel_use_sibling_gutter():
     assert "border: 1px solid #2b3544;" in content
 
 
+def test_qt_control_pages_are_lazy_built_to_avoid_startup_combo_popups():
+    content = Path("dpo4000_utils/gui_qt/collapsible_window.py").read_text(encoding="utf-8")
+
+    assert "CONTROL_PAGE_BUILDERS" in content
+    assert "QStackedWidget" in content
+    assert "Create placeholder pages and build real control pages only when opened." in content
+    assert "self._lazy_control_pages_built = [False for _ in CONTROL_PAGE_BUILDERS]" in content
+    assert "LazyControlPagePlaceholder" in content
+    assert "def _select_drawer_page" in content
+    assert "self._ensure_control_page_built(index)" in content
+    assert "def _ensure_control_page_built" in content
+    assert "builder = getattr(self, CONTROL_PAGE_BUILDERS[index])" in content
+    assert "stack.removeWidget(placeholder)" in content
+    assert "placeholder.deleteLater()" in content
+    assert "stack.insertWidget(index, page)" in content
+    assert "self._lazy_control_pages_built[index] = True" in content
+    assert "super()._build_control_stack()" not in content
+
+
+def test_qt_lazy_pages_keep_preferences_safe():
+    content = Path("dpo4000_utils/gui_qt/collapsible_window.py").read_text(encoding="utf-8")
+
+    assert "self._pending_preferences = None" in content
+    assert "def _apply_preferences(self, preferences)" in content
+    assert "self._pending_preferences = preferences" in content
+    assert "def _apply_preferences_to_built_widgets" in content
+    assert "if hasattr(self, \"eth_host\")" in content
+    assert "if hasattr(self, \"output_folder\")" in content
+    assert "if hasattr(self, \"rearm_after_image\")" in content
+    assert "if hasattr(self, \"trigger_channel\")" in content
+    assert "def _collect_preferences" in content
+    assert "for index in (0, 3, 5):" in content
+    assert "return super()._collect_preferences()" in content
+
+
+def test_qt_lazy_pages_build_required_pages_for_quick_actions():
+    content = Path("dpo4000_utils/gui_qt/collapsible_window.py").read_text(encoding="utf-8")
+
+    assert "def capture_preview" in content
+    assert "self._ensure_control_page_built(3)" in content
+    assert "def save_png_image" in content
+    assert "def save_csv" in content
+    assert "def save_settings" in content
+    assert "def restore_settings" in content
+    assert "self._ensure_control_page_built(5)" in content
+
+
 def test_qt_every_direct_card_becomes_collapsible_with_primary_open_by_default():
     content = Path("dpo4000_utils/gui_qt/collapsible_window.py").read_text(encoding="utf-8")
 
-    assert "def _build_control_stack" in content
-    assert "self._make_page_cards_collapsible(stack.widget(index))" in content
     assert "def _make_page_cards_collapsible" in content
     assert "page.widget() if isinstance(page, QScrollArea) else page" in content
     assert "while index < layout.count():" in content
