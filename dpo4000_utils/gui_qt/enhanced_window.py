@@ -85,9 +85,20 @@ class QtScopeWindow(BaseQtScopeWindow):
     # ------------------------------------------------------------------
     # Space-saving shell controls
     # ------------------------------------------------------------------
-    def _build_preview_card(self):
-        """Build preview card with always-visible quick controls and Ctrl+C copy."""
-        card = super()._build_preview_card()
+    def _build_preview_card(self) -> QGroupBox:
+        """Build preview card without the redundant bottom action button row."""
+        card = self._card("Screen preview")
+        layout = QVBoxLayout(card)
+        layout.setSpacing(10)
+        layout.addWidget(self._build_quick_control_bar())
+
+        self.preview_label = QLabel("Capture preview to show the scope screen here.")
+        self.preview_label.setObjectName("PreviewLabel")
+        self.preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.preview_label.setMinimumSize(640, 420)
+        self.preview_label.setScaledContents(False)
+        layout.addWidget(self.preview_label, 1)
+
         card.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         card.setToolTip("Click the screen preview, then press Ctrl+C to copy the current image.")
         self.preview_label.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -95,10 +106,6 @@ class QtScopeWindow(BaseQtScopeWindow):
         self.preview_copy_shortcut = QShortcut(QKeySequence(QKeySequence.StandardKey.Copy), card)
         self.preview_copy_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         self.preview_copy_shortcut.activated.connect(self.copy_preview)
-
-        layout = card.layout()
-        if layout is not None:
-            layout.insertWidget(0, self._build_quick_control_bar())
         return card
 
     def _quick_button(self, text: str, callback, *, accent: bool = False) -> QToolButton:
