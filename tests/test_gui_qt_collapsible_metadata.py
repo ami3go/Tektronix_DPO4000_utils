@@ -3,12 +3,29 @@ from __future__ import annotations
 from pathlib import Path
 
 
-def test_qt_runner_launches_clickable_collapsible_window():
+def test_qt_runner_launches_stable_window():
     runner = Path("dpo4000_utils/gui_qt/runner.py").read_text(encoding="utf-8")
     package_init = Path("dpo4000_utils/gui_qt/__init__.py").read_text(encoding="utf-8")
 
-    assert "from .collapsible_window import QtScopeWindow" in runner
-    assert "from .collapsible_window import QtScopeWindow" in package_init
+    assert "from .stable_window import QtScopeWindow" in runner
+    assert "from .stable_window import QtScopeWindow" in package_init
+    assert "from .collapsible_window import QtScopeWindow" not in runner
+    assert "from .collapsible_window import QtScopeWindow" not in package_init
+
+
+def test_qt_stable_window_runs_scope_actions_on_worker_thread():
+    content = Path("dpo4000_utils/gui_qt/stable_window.py").read_text(encoding="utf-8")
+    worker = Path("dpo4000_utils/gui_qt/scope_worker.py").read_text(encoding="utf-8")
+
+    assert "class QtScopeWindow(MatureQtScopeWindow)" in content
+    assert "def _run_action" in content
+    assert "start_scope_worker" in content
+    assert "QEventLoop" in content
+    assert "_run_snapshot_scope_session" in content
+    assert "DPO4054(resource, auto_connect=False)" in content
+    assert "instrument.timeout = timeout_ms" in content
+    assert "class ScopeWorker(QRunnable)" in worker
+    assert "QThreadPool.globalInstance().start(worker)" in worker
 
 
 def test_qt_window_chrome_uses_only_window_title_for_app_name():
