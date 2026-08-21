@@ -21,6 +21,9 @@ def test_qt_acquisition_window_uses_top_menu_for_control_pages():
     content = Path("dpo4000_utils/gui_qt/acquisition_window.py").read_text(encoding="utf-8")
     theme = Path("dpo4000_utils/gui_qt/theme.qss").read_text(encoding="utf-8")
 
+    menu_block = content[
+        content.index("def _build_application_menu_bar"):content.index("    def _build_control_stack")
+    ]
     assert "ApplicationMenuBar" in content
     assert "ApplicationMenuButton" in content
     assert "ApplicationMenuTitle" in content
@@ -34,7 +37,9 @@ def test_qt_acquisition_window_uses_top_menu_for_control_pages():
     assert "QStackedWidget" in content
     assert "stack.setCurrentIndex(index)" in content
     assert "button.setChecked(True)" in content
-    assert "_add_top_acquisition_buttons(layout)" in content
+    assert "_add_top_acquisition_buttons" not in content
+    assert "self.run_acquisition" not in menu_block
+    assert "self.force_trigger" not in menu_block
     assert "QWidget#ApplicationMenuBar" in theme
     assert "QToolButton#ApplicationMenuButton" in theme
     assert "QToolButton#ApplicationMenuButton:checked" in theme
@@ -62,20 +67,28 @@ def test_qt_acquisition_window_is_advanced_only_without_compact_button():
     assert "Advanced controls are always visible" in content
 
 
-def test_qt_manual_acquisition_buttons_are_persistent_top_row_without_header():
+def test_qt_manual_acquisition_buttons_are_top_of_trigger_page_without_header():
     content = Path("dpo4000_utils/gui_qt/acquisition_window.py").read_text(encoding="utf-8")
 
-    top_buttons_block = content[
-        content.index("def _add_top_acquisition_buttons"):content.index("    def _build_quick_control_bar")
+    trigger_block = content[
+        content.index("def _build_trigger_tab"):content.index("    def _build_trigger_acquisition_toolbar")
     ]
-    assert "Place manual acquisition controls in the top row with no card/header" in top_buttons_block
-    assert '"Run", self.run_acquisition' in top_buttons_block
-    assert '"Stop", self.stop_acquisition' in top_buttons_block
-    assert '"Single", self.single_acquisition' in top_buttons_block
-    assert '"Continuous", self.continuous_acquisition' in top_buttons_block
-    assert '"Force", self.force_trigger' in top_buttons_block
+    toolbar_block = content[
+        content.index("def _build_trigger_acquisition_toolbar"):content.index("    def _build_trigger_level_only_card")
+    ]
+    assert "layout.addWidget(self._build_trigger_acquisition_toolbar())" in trigger_block
+    assert "layout.addWidget(self._build_trigger_acquisition_toolbar())" in trigger_block.split(
+        "layout.addWidget(self._build_trigger_level_only_card())"
+    )[0]
+    assert "TriggerAcquisitionToolbar" in toolbar_block
+    assert '"Run", self.run_acquisition' in toolbar_block
+    assert '"Stop", self.stop_acquisition' in toolbar_block
+    assert '"Single", self.single_acquisition' in toolbar_block
+    assert '"Continuous", self.continuous_acquisition' in toolbar_block
+    assert '"Force", self.force_trigger' in toolbar_block
     assert "Manual acquisition buttons" not in content
     assert "_build_acquisition_actions_card" not in content
+    assert "QGroupBox" not in toolbar_block
 
 
 def test_qt_launched_preview_toolbar_is_preview_only_no_acquisition_duplicates():
@@ -84,7 +97,7 @@ def test_qt_launched_preview_toolbar_is_preview_only_no_acquisition_duplicates()
     quick_block = content[
         content.index("def _build_quick_control_bar"):content.index("    # ------------------------------------------------------------------\n    # Top application menu layout")
     ]
-    assert "acquisition buttons live in the top row" in quick_block
+    assert "Keep preview/export actions near the preview" in quick_block
     assert '"IDN", self.test_connection' in quick_block
     assert '"Capture", self.capture_preview' in quick_block
     assert '"Copy", self.copy_preview' in quick_block
@@ -172,10 +185,10 @@ def test_qt_trigger_page_keeps_trigger_setup_and_rearm_without_manual_acquisitio
     content = Path("dpo4000_utils/gui_qt/acquisition_window.py").read_text(encoding="utf-8")
 
     trigger_block = content[
-        content.index("def _build_trigger_tab"):content.index("    def _build_trigger_level_only_card")
+        content.index("def _build_trigger_tab"):content.index("    def _build_trigger_acquisition_toolbar")
     ]
-    assert "Trigger level" in content
-    assert "_build_trigger_level_only_card" in content
+    assert "_build_trigger_acquisition_toolbar" in trigger_block
+    assert "_build_trigger_level_only_card" in trigger_block
     assert "Horizontal position" in trigger_block
     assert "Edge trigger setup" in trigger_block
     assert "Image capture re-arm" in trigger_block
