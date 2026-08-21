@@ -8,6 +8,26 @@ from PySide6.QtWidgets import QGroupBox, QScrollArea, QSizePolicy, QVBoxLayout, 
 from .acquisition_window import QtScopeWindow as AcquisitionQtScopeWindow
 
 PREVIEW_CONTROL_GUTTER_WIDTH = 12
+PREVIEW_CONTROL_GUTTER_QSS = """
+QSplitter#MainSplitter::handle {
+    background: #111827;
+    border: 0;
+    margin: 0;
+    width: 12px;
+}
+
+QSplitter#MainSplitter::handle:hover {
+    background: #1f2937;
+    border-left: 1px solid #253142;
+    border-right: 1px solid #253142;
+}
+
+QWidget#RightControlPanel {
+    background: #111827;
+    border: 1px solid #2b3544;
+    border-radius: 8px;
+}
+"""
 
 
 class CollapsibleCard(QGroupBox):
@@ -71,7 +91,15 @@ class QtScopeWindow(AcquisitionQtScopeWindow):
     def _build_ui(self) -> None:
         """Build the UI, then make the preview/control split read as a clean gutter."""
         super()._build_ui()
+        self._apply_preview_control_gutter()
+
+    def _apply_preview_control_gutter(self) -> None:
+        """Use a subtle 12 px gutter between device preview and control panel."""
         self.main_splitter.setHandleWidth(PREVIEW_CONTROL_GUTTER_WIDTH)
+        self.main_splitter.setStyleSheet(PREVIEW_CONTROL_GUTTER_QSS)
+        right_panel = self.findChild(QWidget, "RightControlPanel")
+        if right_panel is not None:
+            right_panel.setStyleSheet(PREVIEW_CONTROL_GUTTER_QSS)
 
     def _build_control_stack(self):
         """Build pages, then make every direct card collapsible.
@@ -131,4 +159,9 @@ class QtScopeWindow(AcquisitionQtScopeWindow):
         return self._register_advanced_widget(card)
 
 
-__all__ = ["CollapsibleCard", "PREVIEW_CONTROL_GUTTER_WIDTH", "QtScopeWindow"]
+__all__ = [
+    "CollapsibleCard",
+    "PREVIEW_CONTROL_GUTTER_QSS",
+    "PREVIEW_CONTROL_GUTTER_WIDTH",
+    "QtScopeWindow",
+]
