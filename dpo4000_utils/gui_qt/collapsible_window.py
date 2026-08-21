@@ -40,6 +40,51 @@ QWidget#RightControlPanel {
     border: 1px solid #2b3544;
     border-radius: 8px;
 }
+
+QFrame#InlineCollapsibleCard,
+QFrame#InlineCollapsibleCardCollapsed {
+    background: #1f2937;
+    border: 1px solid #374151;
+    border-radius: 8px;
+}
+
+QFrame#InlineCollapsibleCard:hover,
+QFrame#InlineCollapsibleCardCollapsed:hover {
+    border-color: #4b5563;
+}
+
+QLabel#InlineCollapsibleHeader {
+    background: #253142;
+    border-top-left-radius: 7px;
+    border-top-right-radius: 7px;
+    color: #ffffff;
+    font-weight: 700;
+    padding: 8px 12px;
+}
+
+QFrame#InlineCollapsibleCard QLabel#InlineCollapsibleHeader {
+    border-bottom: 1px solid #374151;
+}
+
+QFrame#InlineCollapsibleCardCollapsed QLabel#InlineCollapsibleHeader {
+    border-bottom: 0;
+    border-bottom-left-radius: 7px;
+    border-bottom-right-radius: 7px;
+}
+
+QWidget#InlineCollapsibleBody,
+QGroupBox#InlineCollapsibleContent {
+    background: transparent;
+    border: 0;
+    margin: 0;
+    padding: 0;
+    font-weight: 400;
+}
+
+QGroupBox#InlineCollapsibleContent::title {
+    color: transparent;
+    padding: 0;
+}
 """
 
 
