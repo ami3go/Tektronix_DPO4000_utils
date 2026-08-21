@@ -96,6 +96,28 @@ def test_qt_acquisition_page_is_setup_oriented_not_manual_buttons():
     assert "Apply acquisition setup" in content
 
 
+def test_qt_acquisition_record_length_uses_friendly_labels_and_scpi_values():
+    content = Path("dpo4000_utils/gui_qt/acquisition_window.py").read_text(encoding="utf-8")
+
+    assert '"1k"' in content
+    assert '"10k"' in content
+    assert '"100k"' in content
+    assert '"1M"' in content
+    assert '"10M"' in content
+    assert '"1K": "1000"' in content
+    assert '"10K": "10000"' in content
+    assert '"100K": "100000"' in content
+    assert '"1M": "1000000"' in content
+    assert '"10M": "10000000"' in content
+    assert "RECORD_LENGTH_VALUE_BY_LABEL" in content
+    assert "RECORD_LENGTH_LABEL_BY_VALUE" in content
+    assert "_normalise_record_length_points" in content
+    assert "_record_length_label" in content
+    assert "_selected_record_length_points" in content
+    assert "self._selected_record_length_points()" in content
+    assert "HORIZONTAL:RECORDLENGTH" in content
+
+
 def test_qt_acquisition_average_count_is_conditional_on_average_mode():
     content = Path("dpo4000_utils/gui_qt/acquisition_window.py").read_text(encoding="utf-8")
 
