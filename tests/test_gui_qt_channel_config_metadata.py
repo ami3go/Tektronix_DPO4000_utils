@@ -3,18 +3,19 @@ from __future__ import annotations
 from pathlib import Path
 
 
-def test_qt_runner_uses_acquisition_window():
+def test_qt_runner_uses_collapsible_window():
     content = Path("dpo4000_utils/gui_qt/runner.py").read_text(encoding="utf-8")
 
-    assert "from .acquisition_window import QtScopeWindow" in content
+    assert "from .collapsible_window import QtScopeWindow" in content
+    assert "from .acquisition_window import QtScopeWindow" not in content
     assert "from .ui_practice_window import QtScopeWindow" not in content
     assert "from .main_window import QtScopeWindow" not in content
 
 
-def test_qt_package_exports_acquisition_window_lazily():
+def test_qt_package_exports_collapsible_window_lazily():
     content = Path("dpo4000_utils/gui_qt/__init__.py").read_text(encoding="utf-8")
 
-    assert "from .acquisition_window import QtScopeWindow" in content
+    assert "from .collapsible_window import QtScopeWindow" in content
 
 
 def test_qt_acquisition_window_uses_top_menu_for_control_pages():
