@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QGroupBox, QSizePolicy, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QGroupBox, QScrollArea, QSizePolicy, QVBoxLayout, QWidget
 
 from .acquisition_window import QtScopeWindow as AcquisitionQtScopeWindow
 
@@ -66,13 +66,57 @@ class CollapsibleCard(QGroupBox):
 class QtScopeWindow(AcquisitionQtScopeWindow):
     """Launched Qt window using card-header collapse instead of extra header buttons."""
 
-    def _collapsible_section(self, title: str, content: QWidget, *, expanded: bool = True) -> QWidget:
+    def _build_control_stack(self):
+        """Build pages, then make every direct card collapsible.
+
+        The first plain card on each page remains expanded by default because it is
+        the currently-open/primary card for that page. Secondary cards and explicit
+        advanced sections start collapsed and can be opened from their card header.
+        """
+        stack = super()._build_control_stack()
+        for index in range(stack.count()):
+            self._make_page_cards_collapsible(stack.widget(index))
+        return stack
+
+    def _make_page_cards_collapsible(self, page: QWidget) -> QWidget:
+        """Convert direct plain QGroupBox cards in a page into clickable cards."""
+        body = page.widget() if isinstance(page, QScrollArea) else page
+        layout = body.layout() if body is not None else None
+        if layout is None:
+            return page
+
+        plain_card_index = 0
+        for index in range(layout.count()):
+            item = layout.itemAt(index)
+            widget = item.widget() if item is not None else None
+            if not isinstance(widget, QGroupBox) or isinstance(widget, CollapsibleCard):
+                continue
+
+            replacement = self._wrap_plain_card(
+                widget,
+                expanded=plain_card_index == 0,
+            )
+            layout.removeWidget(widget)
+            layout.insertWidget(index, replacement)
+            plain_card_index += 1
+        return page
+
+    def _wrap_plain_card(self, card: QGroupBox, *, expanded: bool) -> CollapsibleCard:
+        """Wrap a normal card so all cards share the same collapsible behavior."""
+        title = card.title().strip() or "Section"
+        card.setTitle("")
+        card.setObjectName("InlineCollapsibleContent")
+        card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        AcquisitionQtScopeWindow._prepare_drawer_card(card)
+        return CollapsibleCard(title, card, expanded=expanded)
+
+    def _collapsible_section(self, title: str, content: QWidget, *, expanded: bool = False) -> QWidget:
         """Use the card title/header as the collapse control to save vertical space."""
         if isinstance(content, QGroupBox):
             content.setTitle("")
             content.setObjectName("InlineCollapsibleContent")
             content.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-            self._prepare_drawer_card(content)
+            AcquisitionQtScopeWindow._prepare_drawer_card(content)
         else:
             content.setObjectName("InlineCollapsibleContent")
 
