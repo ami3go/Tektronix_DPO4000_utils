@@ -11,6 +11,17 @@ def test_qt_runner_launches_clickable_collapsible_window():
     assert "from .collapsible_window import QtScopeWindow" in package_init
 
 
+def test_qt_window_chrome_uses_only_window_title_for_app_name():
+    content = Path("dpo4000_utils/gui_qt/collapsible_window.py").read_text(encoding="utf-8")
+
+    assert 'WINDOW_TITLE = "Tektronix dpo4000"' in content
+    assert "self.setWindowTitle(WINDOW_TITLE)" in content
+    assert "def _build_application_menu_bar" in content
+    assert 'bar.findChild(QLabel, "ApplicationMenuTitle")' in content
+    assert "title.deleteLater()" in content
+    assert "WINDOW_TITLE" in content
+
+
 def test_qt_collapsible_sections_use_card_header_not_extra_button():
     content = Path("dpo4000_utils/gui_qt/collapsible_window.py").read_text(encoding="utf-8")
     theme = Path("dpo4000_utils/gui_qt/theme.qss").read_text(encoding="utf-8")
