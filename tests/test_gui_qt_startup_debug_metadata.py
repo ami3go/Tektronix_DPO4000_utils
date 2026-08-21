@@ -49,16 +49,31 @@ def test_qt_startup_debug_probe_schedules_timed_snapshots():
     assert "timer-2000ms" in content
 
 
-def test_qt_runner_wires_startup_debug_before_window_construction():
+def test_qt_runner_wires_startup_debug_and_startup_check_before_window_construction():
     content = Path("dpo4000_utils/gui_qt/runner.py").read_text(encoding="utf-8")
 
+    assert 'STARTUP_CHECK_FLAG = "--startup-check"' in content
     assert "parse_startup_debug_args" in content
     assert "install_startup_debug_probe" in content
     assert "startup_debug = parse_startup_debug_args(sys.argv)" in content
-    assert "app = QApplication(startup_debug.argv)" in content
+    assert "startup_check = STARTUP_CHECK_FLAG in startup_debug.argv" in content
+    assert "app_argv = [argument for argument in startup_debug.argv" in content
+    assert "app = QApplication(app_argv)" in content
     assert "install_startup_debug_probe(app, startup_debug.log_path)" in content
     assert "before-window-construction" in content
     assert "after-window-construction-before-show" in content
     assert "main window show() called" in content
     assert "after-main-window-show" in content
+    assert "QTimer.singleShot(2500, app.quit)" in content
     assert "app._dpo4000_startup_debug_probe" in content
+
+
+def test_qt_startup_check_script_runs_runner_with_debug_and_auto_close():
+    content = Path("scripts/qt_startup_check.py").read_text(encoding="utf-8")
+
+    assert "dpo4000_utils.gui_qt.runner" in content
+    assert "--startup-debug" in content
+    assert "--startup-debug-log=" in content
+    assert "--startup-check" in content
+    assert "qt_startup_debug.log" in content
+    assert "subprocess.run" in content
