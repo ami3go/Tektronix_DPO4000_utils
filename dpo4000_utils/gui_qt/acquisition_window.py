@@ -88,6 +88,10 @@ ACQUISITION_SETUP_QUERIES = {
     "average_count": "ACQUIRE:NUMAVG?",
     "record_length": "HORIZONTAL:RECORDLENGTH?",
 }
+PREVIEW_MIN_WIDTH = 480
+RIGHT_PANEL_MIN_WIDTH = 400
+RIGHT_PANEL_DEFAULT_WIDTH = DEFAULT_DRAWER_WIDTH
+RIGHT_PANEL_MAX_WIDTH = 620
 
 
 class QtScopeWindow(TabbedQtScopeWindow):
@@ -164,9 +168,11 @@ class QtScopeWindow(TabbedQtScopeWindow):
 
         self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
         self.main_splitter.setObjectName("MainSplitter")
+        self.main_splitter.setChildrenCollapsible(False)
         root.addWidget(self.main_splitter, 1)
 
         preview_card = self._build_preview_card()
+        preview_card.setMinimumWidth(PREVIEW_MIN_WIDTH)
         preview_card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.main_splitter.addWidget(preview_card)
 
@@ -184,12 +190,15 @@ class QtScopeWindow(TabbedQtScopeWindow):
         self.control_stack.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
         right_layout.addWidget(self.control_stack, 1)
 
-        right_panel.setMinimumWidth(420)
+        right_panel.setMinimumWidth(RIGHT_PANEL_MIN_WIDTH)
+        right_panel.setMaximumWidth(RIGHT_PANEL_MAX_WIDTH)
         right_panel.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
         self.main_splitter.addWidget(right_panel)
-        self.main_splitter.setStretchFactor(0, 3)
-        self.main_splitter.setStretchFactor(1, 1)
-        self.main_splitter.setSizes([810, DEFAULT_DRAWER_WIDTH])
+        self.main_splitter.setCollapsible(0, False)
+        self.main_splitter.setCollapsible(1, False)
+        self.main_splitter.setStretchFactor(0, 1)
+        self.main_splitter.setStretchFactor(1, 0)
+        self.main_splitter.setSizes([900, RIGHT_PANEL_DEFAULT_WIDTH])
 
         self.setStatusBar(QStatusBar())
         self._select_drawer_page(0)
