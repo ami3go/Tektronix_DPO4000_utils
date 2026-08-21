@@ -202,6 +202,56 @@ QToolButton[scopeAction="true"]:disabled {
     color: #6b7280;
 }
 
+QWidget#ApplicationMenuBar {
+    background: #0f172a;
+    border: 1px solid #1f2937;
+    border-radius: 8px;
+}
+
+QLabel#ApplicationMenuTitle {
+    color: #ffffff;
+    font-weight: 700;
+    padding: 0 10px 0 4px;
+}
+
+QToolButton#ApplicationMenuButton {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    color: #d1d5db;
+    padding: 6px 10px;
+}
+
+QToolButton#ApplicationMenuButton:hover {
+    background: #1f2937;
+    border-color: #374151;
+}
+
+QToolButton#ApplicationMenuButton:checked {
+    background: #2563eb;
+    border-color: #60a5fa;
+    color: #ffffff;
+    font-weight: 700;
+}
+
+QWidget#RightControlPanel {
+    background: #111827;
+    border: 1px solid #374151;
+    border-radius: 8px;
+}
+
+QStackedWidget#RightControlStack {
+    background: #111827;
+    border: 0;
+}
+
+QLabel#ControlPageTitle {
+    color: #ffffff;
+    font-size: 13pt;
+    font-weight: 700;
+    padding: 0 0 4px 0;
+}
+
 QTabWidget#ControlTabs {
     background: #111827;
     border: 0;
