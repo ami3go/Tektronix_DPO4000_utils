@@ -3,8 +3,19 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QGroupBox, QScrollArea, QSizePolicy, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QScrollArea,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
 
+from ..gui.config import resolve_output_folder
 from .acquisition_window import QtScopeWindow as AcquisitionQtScopeWindow
 
 PREVIEW_CONTROL_GUTTER_WIDTH = 12
@@ -157,6 +168,127 @@ class QtScopeWindow(AcquisitionQtScopeWindow):
 
         card = CollapsibleCard(title, content, expanded=expanded)
         return self._register_advanced_widget(card)
+
+    def _build_settings_tab(self) -> QWidget:
+        """Build settings with readable full-width naming fields."""
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 0, 8, 0)
+        layout.setSpacing(12)
+
+        card = self._card("Output and scope settings")
+        card_layout = QVBoxLayout(card)
+        card_layout.setSpacing(12)
+
+        folder_row = QWidget()
+        folder_row.setObjectName("SettingsFolderRow")
+        folder_layout = QHBoxLayout(folder_row)
+        folder_layout.setContentsMargins(0, 0, 0, 0)
+        folder_layout.setSpacing(8)
+        folder_label = QLabel("Destination folder")
+        folder_label.setMinimumWidth(132)
+        self.output_folder = QLineEdit(str(resolve_output_folder("scope_gui_output")))
+        self.output_folder.setMinimumWidth(260)
+        self.output_folder.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        folder_layout.addWidget(folder_label)
+        folder_layout.addWidget(self.output_folder, 1)
+        folder_layout.addWidget(self._button("Pick folder", self.pick_output_folder))
+        card_layout.addWidget(folder_row)
+
+        hint = QLabel("Filename format: <prefix><base><_timestamp optional>.<extension>")
+        hint.setObjectName("MutedLabel")
+        hint.setWordWrap(True)
+        card_layout.addWidget(hint)
+
+        png_block, self.png_prefix, self.png_base, self.png_timestamp = self._settings_naming_block(
+            "PNG images",
+            "scope_",
+            "screen",
+            True,
+        )
+        csv_block, self.csv_prefix, self.csv_base, self.csv_timestamp = self._settings_naming_block(
+            "CSV waveforms",
+            "scope_",
+            "waveform",
+            True,
+        )
+        settings_block, self.settings_prefix, self.settings_base, self.settings_timestamp = self._settings_naming_block(
+            "Settings JSON",
+            "dpo4054_",
+            "setup",
+            True,
+        )
+        card_layout.addWidget(png_block)
+        card_layout.addWidget(csv_block)
+        card_layout.addWidget(settings_block)
+
+        self.restore_wait_opc = QCheckBox("Wait for *OPC? after restore (can timeout on DPO4000)")
+        card_layout.addWidget(self.restore_wait_opc)
+
+        actions = QWidget()
+        actions.setObjectName("SettingsActionRow")
+        action_layout = QHBoxLayout(actions)
+        action_layout.setContentsMargins(0, 0, 0, 0)
+        action_layout.setSpacing(8)
+        save_button = self._button("Save settings JSON", self.save_settings)
+        restore_button = self._accent_button("Restore settings JSON...", self.restore_settings)
+        save_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        restore_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        action_layout.addWidget(save_button, 1)
+        action_layout.addWidget(restore_button, 1)
+        card_layout.addWidget(actions)
+
+        layout.addWidget(card)
+        layout.addStretch(1)
+        return page
+
+    def _settings_naming_block(
+        self,
+        title: str,
+        default_prefix: str,
+        default_base: str,
+        timestamp: bool,
+    ) -> tuple[QWidget, QLineEdit, QLineEdit, QCheckBox]:
+        """Build a readable filename naming block with full-width text fields."""
+        block = QWidget()
+        block.setObjectName("SettingsNamingBlock")
+        layout = QVBoxLayout(block)
+        layout.setContentsMargins(10, 8, 10, 10)
+        layout.setSpacing(7)
+
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        title_label = QLabel(title)
+        title_label.setObjectName("SettingsNamingTitle")
+        timestamp_check = QCheckBox("Timestamp")
+        timestamp_check.setChecked(timestamp)
+        header.addWidget(title_label, 1)
+        header.addWidget(timestamp_check)
+        layout.addLayout(header)
+
+        prefix = QLineEdit(default_prefix)
+        prefix.setMinimumWidth(180)
+        prefix.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        base = QLineEdit(default_base)
+        base.setMinimumWidth(220)
+        base.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+        layout.addWidget(self._settings_text_field_row("Prefix", prefix))
+        layout.addWidget(self._settings_text_field_row("Base", base))
+        return block, prefix, base, timestamp_check
+
+    @staticmethod
+    def _settings_text_field_row(label_text: str, editor: QLineEdit) -> QWidget:
+        row = QWidget()
+        row.setObjectName("SettingsTextFieldRow")
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+        label = QLabel(label_text)
+        label.setMinimumWidth(52)
+        layout.addWidget(label)
+        layout.addWidget(editor, 1)
+        return row
 
 
 __all__ = [
