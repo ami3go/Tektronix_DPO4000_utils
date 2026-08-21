@@ -32,7 +32,7 @@ def test_qt_acquisition_window_uses_top_menu_for_control_pages():
     assert "QButtonGroup" in content
     assert "QToolButton" in content
     assert "QStackedWidget" in content
-    assert "self.control_stack.setCurrentIndex(index)" in content
+    assert "stack.setCurrentIndex(index)" in content
     assert "button.setChecked(True)" in content
     assert "QWidget#ApplicationMenuBar" in theme
     assert "QToolButton#ApplicationMenuButton" in theme
@@ -40,6 +40,25 @@ def test_qt_acquisition_window_uses_top_menu_for_control_pages():
     assert "QWidget#RightControlPanel" in theme
     assert "QStackedWidget#RightControlStack" in theme
     assert "QLabel#ControlPageTitle" in theme
+
+
+def test_qt_acquisition_window_is_advanced_only_without_compact_button():
+    content = Path("dpo4000_utils/gui_qt/acquisition_window.py").read_text(encoding="utf-8")
+
+    menu_block = content[
+        content.index("def _build_application_menu_bar"):content.index("    def _build_control_stack")
+    ]
+    assert "compact_mode_button" not in menu_block
+    assert "Compact" not in menu_block
+    assert "Advanced" not in menu_block
+    assert "layout.addWidget(self.compact_mode_button)" not in menu_block
+    assert "def _apply_compact_mode" in content
+    assert "self.compact_mode = False" in content
+    assert "widget.setVisible(True)" in content
+    assert "def _register_advanced_widget" in content
+    assert "def _collapsible_section" in content
+    assert "expanded=True" in content
+    assert "Advanced controls are always visible" in content
 
 
 def test_qt_acquisition_window_adds_dedicated_setup_page():
