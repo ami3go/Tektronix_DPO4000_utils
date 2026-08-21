@@ -62,12 +62,28 @@ AVERAGE_COUNTS = (
     "512",
 )
 RECORD_LENGTHS = (
-    "1000",
-    "10000",
-    "100000",
-    "1000000",
-    "10000000",
+    "1k",
+    "10k",
+    "100k",
+    "1M",
+    "10M",
 )
+RECORD_LENGTH_VALUE_BY_LABEL = {
+    "1K": "1000",
+    "10K": "10000",
+    "100K": "100000",
+    "1M": "1000000",
+    "10M": "10000000",
+}
+RECORD_LENGTH_LABEL_BY_VALUE = {
+    value: label for label, value in (
+        ("1k", "1000"),
+        ("10k", "10000"),
+        ("100k", "100000"),
+        ("1M", "1000000"),
+        ("10M", "10000000"),
+    )
+}
 ACQUISITION_SETUP_QUERIES = {
     "mode": "ACQUIRE:MODE?",
     "average_count": "ACQUIRE:NUMAVG?",
@@ -307,6 +323,9 @@ class QtScopeWindow(TabbedQtScopeWindow):
         self.acquisition_record_length = QComboBox()
         self.acquisition_record_length.setEditable(True)
         self.acquisition_record_length.addItems(RECORD_LENGTHS)
+        self.acquisition_record_length.setToolTip(
+            "Friendly labels are converted to point counts for HORIZONTAL:RECORDLENGTH."
+        )
 
         form.addRow("Mode", self.acquisition_mode)
         form.addRow("Average count", self.acquisition_average_count)
@@ -314,7 +333,8 @@ class QtScopeWindow(TabbedQtScopeWindow):
 
         hint = QLabel(
             "Tektronix acquisition setup: HIRES is high-resolution mode; "
-            "AVERAGE enables ACQUIRE:NUMAVG; record length uses HORIZONTAL:RECORDLENGTH."
+            "AVERAGE enables ACQUIRE:NUMAVG; record length labels 1k, 10k, 100k, 1M, 10M "
+            "are sent as numeric HORIZONTAL:RECORDLENGTH point counts."
         )
         hint.setObjectName("MutedLabel")
         hint.setWordWrap(True)
@@ -353,6 +373,27 @@ class QtScopeWindow(TabbedQtScopeWindow):
             else "Disabled because acquisition mode is not AVERAGE; ACQUIRE:NUMAVG is skipped."
         )
 
+    @staticmethod
+    def _normalise_record_length_points(text: str) -> str:
+        value = str(text).strip()
+        if not value:
+            return ""
+        label_key = value.upper().replace(" ", "")
+        if label_key in RECORD_LENGTH_VALUE_BY_LABEL:
+            return RECORD_LENGTH_VALUE_BY_LABEL[label_key]
+        try:
+            return str(int(float(value)))
+        except ValueError:
+            return value
+
+    @classmethod
+    def _record_length_label(cls, text: str) -> str:
+        points = cls._normalise_record_length_points(text)
+        return RECORD_LENGTH_LABEL_BY_VALUE.get(points, points)
+
+    def _selected_record_length_points(self) -> str:
+        return self._normalise_record_length_points(self.acquisition_record_length.currentText())
+
     def read_acquisition_setup(self) -> None:
         def action(scope):
             instrument = getattr(scope, "scope", None)
@@ -367,7 +408,10 @@ class QtScopeWindow(TabbedQtScopeWindow):
         if isinstance(result, dict):
             self._set_combo_text(self.acquisition_mode, result.get("mode", ""))
             self._set_combo_text(self.acquisition_average_count, result.get("average_count", ""))
-            self._set_combo_text(self.acquisition_record_length, result.get("record_length", ""))
+            self._set_combo_text(
+                self.acquisition_record_length,
+                self._record_length_label(result.get("record_length", "")),
+            )
             self._update_average_count_enabled()
             mode = self.acquisition_mode.currentText().strip() or "Unknown"
             length = self.acquisition_record_length.currentText().strip() or "Unknown length"
@@ -377,7 +421,8 @@ class QtScopeWindow(TabbedQtScopeWindow):
     def apply_acquisition_setup(self) -> None:
         mode = self.acquisition_mode.currentText().strip().upper()
         average_count = self.acquisition_average_count.currentText().strip()
-        record_length = self.acquisition_record_length.currentText().strip()
+        record_length = self._selected_record_length_points()
+        record_length_label = self._record_length_label(record_length)
         use_average_count = mode == "AVERAGE"
 
         def action(scope):
@@ -394,17 +439,19 @@ class QtScopeWindow(TabbedQtScopeWindow):
                 for name, query in ACQUISITION_SETUP_QUERIES.items()
             }
             avg_text = readback.get("average_count", average_count) if use_average_count else "skipped"
+            readback_length = readback.get("record_length", record_length)
+            readback_label = self._record_length_label(readback_length)
             return (
                 "Acquisition setup applied: "
                 f"mode={readback.get('mode', mode)}, "
                 f"average_count={avg_text}, "
-                f"record_length={readback.get('record_length', record_length)}"
+                f"record_length={readback_label} ({self._normalise_record_length_points(readback_length)})"
             )
 
         result = self._run_action("Applying acquisition setup", action)
         if result is not None:
-            length = record_length or self.acquisition_record_length.currentText().strip() or "Unknown length"
-            self._acquisition_state = f"{mode or 'Unknown'}, {length} pts"
+            self._set_combo_text(self.acquisition_record_length, record_length_label)
+            self._acquisition_state = f"{mode or 'Unknown'}, {record_length_label or 'Unknown length'} pts"
             self._update_average_count_enabled()
             self._update_status_strip()
 
@@ -431,6 +478,8 @@ __all__ = [
     "AVERAGE_COUNTS",
     "CONTROL_TAB_TITLES",
     "PAGE_SHORTCUTS",
+    "RECORD_LENGTH_LABEL_BY_VALUE",
+    "RECORD_LENGTH_VALUE_BY_LABEL",
     "RECORD_LENGTHS",
     "QtScopeWindow",
 ]
