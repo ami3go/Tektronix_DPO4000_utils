@@ -31,6 +31,32 @@ def test_qt_collapsible_sections_use_card_header_not_extra_button():
     assert "QGroupBox#InlineCollapsibleContent" in theme
 
 
+def test_qt_every_direct_card_becomes_collapsible_with_primary_open_by_default():
+    content = Path("dpo4000_utils/gui_qt/collapsible_window.py").read_text(encoding="utf-8")
+
+    assert "def _build_control_stack" in content
+    assert "self._make_page_cards_collapsible(stack.widget(index))" in content
+    assert "def _make_page_cards_collapsible" in content
+    assert "page.widget() if isinstance(page, QScrollArea) else page" in content
+    assert "if not isinstance(widget, QGroupBox) or isinstance(widget, CollapsibleCard):" in content
+    assert "replacement = self._wrap_plain_card(" in content
+    assert "expanded=plain_card_index == 0" in content
+    assert "layout.removeWidget(widget)" in content
+    assert "layout.insertWidget(index, replacement)" in content
+    assert "plain_card_index += 1" in content
+    assert "def _wrap_plain_card" in content
+    assert "Wrap a normal card so all cards share the same collapsible behavior." in content
+    assert "return CollapsibleCard(title, card, expanded=expanded)" in content
+
+
+def test_qt_secondary_collapsible_sections_are_collapsed_by_default():
+    content = Path("dpo4000_utils/gui_qt/collapsible_window.py").read_text(encoding="utf-8")
+
+    assert "def _collapsible_section(self, title: str, content: QWidget, *, expanded: bool = False)" in content
+    assert "Secondary cards and explicit" in content
+    assert "advanced sections start collapsed" in content
+
+
 def test_qt_collapsed_cards_are_header_only_without_empty_body_space():
     content = Path("dpo4000_utils/gui_qt/collapsible_window.py").read_text(encoding="utf-8")
     theme = Path("dpo4000_utils/gui_qt/theme.qss").read_text(encoding="utf-8")
