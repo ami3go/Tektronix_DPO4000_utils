@@ -19,10 +19,29 @@ def main() -> int:
 
     # Previous launched layer: from .acquisition_window import QtScopeWindow
     from .collapsible_window import QtScopeWindow
+    from .startup_debug import install_startup_debug_probe, parse_startup_debug_args
 
-    app = QApplication(sys.argv)
+    startup_debug = parse_startup_debug_args(sys.argv)
+    app = QApplication(startup_debug.argv)
+    debug_probe = None
+    if startup_debug.enabled:
+        debug_probe = install_startup_debug_probe(app, startup_debug.log_path)
+        debug_probe.log("QApplication created")
+
+    if debug_probe is not None:
+        debug_probe.snapshot("before-window-construction")
     window = QtScopeWindow()
+    if debug_probe is not None:
+        debug_probe.log("QtScopeWindow constructed")
+        debug_probe.snapshot("after-window-construction-before-show")
+
     window.show()
+    if debug_probe is not None:
+        debug_probe.log("main window show() called")
+        debug_probe.snapshot("after-main-window-show")
+        # Keep the probe alive for the whole application lifetime.
+        app._dpo4000_startup_debug_probe = debug_probe  # type: ignore[attr-defined]
+
     return app.exec()
 
 
