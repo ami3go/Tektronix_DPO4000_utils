@@ -79,20 +79,30 @@ QGroupBox#CollapsibleContent {
     margin-top: 0;
 }
 
-QGroupBox#InlineCollapsibleCard {
+QGroupBox#InlineCollapsibleCard,
+QGroupBox#InlineCollapsibleCardCollapsed {
     background: #1f2937;
     border: 1px solid #374151;
     border-radius: 8px;
     margin-top: 0;
-    padding: 34px 12px 12px 12px;
     font-weight: 600;
 }
 
-QGroupBox#InlineCollapsibleCard:hover {
+QGroupBox#InlineCollapsibleCard {
+    padding: 34px 12px 12px 12px;
+}
+
+QGroupBox#InlineCollapsibleCardCollapsed {
+    padding: 34px 0 0 0;
+}
+
+QGroupBox#InlineCollapsibleCard:hover,
+QGroupBox#InlineCollapsibleCardCollapsed:hover {
     border-color: #4b5563;
 }
 
-QGroupBox#InlineCollapsibleCard::title {
+QGroupBox#InlineCollapsibleCard::title,
+QGroupBox#InlineCollapsibleCardCollapsed::title {
     subcontrol-origin: border;
     subcontrol-position: top left;
     left: 0;
@@ -100,15 +110,22 @@ QGroupBox#InlineCollapsibleCard::title {
     padding: 8px 12px;
     color: #ffffff;
     background: #253142;
-    border-bottom: 1px solid #374151;
     border-top-left-radius: 7px;
     border-top-right-radius: 7px;
+}
+
+QGroupBox#InlineCollapsibleCard::title {
+    border-bottom: 1px solid #374151;
+}
+
+QGroupBox#InlineCollapsibleCardCollapsed::title {
+    border-bottom: 0;
 }
 
 QGroupBox#InlineCollapsibleContent {
     background: transparent;
     border: 0;
-    margin-top: 0;
+    margin: 0;
     padding: 0;
     font-weight: 400;
 }
