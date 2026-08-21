@@ -115,24 +115,10 @@ class QtScopeWindow(TabbedQtScopeWindow):
         self.statusBar().showMessage("Advanced controls are always visible")
 
     # ------------------------------------------------------------------
-    # Persistent acquisition controls and preview toolbar
+    # Preview toolbar
     # ------------------------------------------------------------------
-    def _add_top_acquisition_buttons(self, layout: QHBoxLayout) -> None:
-        """Place manual acquisition controls in the top row with no card/header."""
-        actions = (
-            ("Run", self.run_acquisition, False, "F6 · Start acquisition"),
-            ("Stop", self.stop_acquisition, False, "F7 · Stop acquisition"),
-            ("Single", self.single_acquisition, False, "F8 · Start single acquisition"),
-            ("Continuous", self.continuous_acquisition, False, "Start continuous acquisition"),
-            ("Force", self.force_trigger, True, "Force one trigger event"),
-        )
-        for text, callback, accent, tooltip in actions:
-            button = self._quick_button(text, callback, accent=accent)
-            button.setToolTip(tooltip)
-            layout.addWidget(button)
-
     def _build_quick_control_bar(self) -> QWidget:
-        """Keep preview actions near the preview; acquisition buttons live in the top row."""
+        """Keep preview/export actions near the preview."""
         toolbar = QWidget()
         toolbar.setObjectName("QuickControlBar")
         layout = QHBoxLayout(toolbar)
@@ -221,7 +207,6 @@ class QtScopeWindow(TabbedQtScopeWindow):
             layout.addWidget(button)
 
         layout.addStretch(1)
-        self._add_top_acquisition_buttons(layout)
         return bar
 
     def _build_control_stack(self) -> QStackedWidget:
@@ -270,7 +255,7 @@ class QtScopeWindow(TabbedQtScopeWindow):
         self.statusBar().showMessage("Control drawer removed; controls stay in the right panel")
 
     # ------------------------------------------------------------------
-    # Trigger page: trigger setup only; acquisition controls are persistent
+    # Trigger page: trigger plus always-visible manual acquisition actions
     # ------------------------------------------------------------------
     def _build_trigger_tab(self) -> QWidget:
         body = QWidget()
@@ -278,6 +263,7 @@ class QtScopeWindow(TabbedQtScopeWindow):
         layout.setContentsMargins(0, 0, 8, 0)
         layout.setSpacing(12)
 
+        layout.addWidget(self._build_trigger_acquisition_toolbar())
         layout.addWidget(self._build_trigger_level_only_card())
         layout.addWidget(self._collapsible_section("Horizontal position", self._build_horizontal_position_card()))
         layout.addWidget(self._collapsible_section("Edge trigger setup", self._build_edge_trigger_card()))
@@ -293,6 +279,26 @@ class QtScopeWindow(TabbedQtScopeWindow):
             scroll_name="TriggerScrollArea",
             body_name="TriggerScrollBody",
         )
+
+    def _build_trigger_acquisition_toolbar(self) -> QWidget:
+        toolbar = QWidget()
+        toolbar.setObjectName("TriggerAcquisitionToolbar")
+        layout = QHBoxLayout(toolbar)
+        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setSpacing(8)
+        actions = (
+            ("Run", self.run_acquisition, False, "F6 · Start acquisition"),
+            ("Stop", self.stop_acquisition, False, "F7 · Stop acquisition"),
+            ("Single", self.single_acquisition, False, "F8 · Start single acquisition"),
+            ("Continuous", self.continuous_acquisition, False, "Start continuous acquisition"),
+            ("Force", self.force_trigger, True, "Force one trigger event"),
+        )
+        for text, callback, accent, tooltip in actions:
+            button = self._accent_button(text, callback) if accent else self._button(text, callback)
+            button.setToolTip(tooltip)
+            layout.addWidget(button)
+        layout.addStretch(1)
+        return toolbar
 
     def _build_trigger_level_only_card(self) -> QGroupBox:
         card = self._card("Trigger level")
