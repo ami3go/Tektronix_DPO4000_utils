@@ -1,8 +1,10 @@
-"""PySide6 launched window with a dedicated Tektronix Acquisition setup tab."""
+"""PySide6 launched window with top menu navigation and Tektronix Acquisition setup."""
 
 from __future__ import annotations
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QButtonGroup,
     QCheckBox,
     QComboBox,
     QFormLayout,
@@ -11,11 +13,16 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QTabWidget,
+    QSizePolicy,
+    QSplitter,
+    QStackedWidget,
+    QStatusBar,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
+from .main_window import APP_TITLE, DEFAULT_DRAWER_WIDTH
 from .ui_practice_window import SHORTCUTS, QtScopeWindow as TabbedQtScopeWindow
 
 CONTROL_TAB_TITLES = (
@@ -69,24 +76,135 @@ ACQUISITION_SETUP_QUERIES = {
 
 
 class QtScopeWindow(TabbedQtScopeWindow):
-    """Tabbed Qt window with Tektronix acquisition setup split out of Trigger."""
-
-    def _build_control_tabs(self) -> QTabWidget:
-        tabs = QTabWidget()
-        tabs.setObjectName("ControlTabs")
-        tabs.setDocumentMode(True)
-        tabs.setTabPosition(QTabWidget.TabPosition.North)
-        tabs.addTab(self._build_connection_tab(), CONTROL_TAB_TITLES[0])
-        tabs.addTab(self._build_channels_tab(), CONTROL_TAB_TITLES[1])
-        tabs.addTab(self._build_measurement_tab(), CONTROL_TAB_TITLES[2])
-        tabs.addTab(self._build_trigger_tab(), CONTROL_TAB_TITLES[3])
-        tabs.addTab(self._build_acquisition_tab(), CONTROL_TAB_TITLES[4])
-        tabs.addTab(self._build_settings_tab(), CONTROL_TAB_TITLES[5])
-        tabs.addTab(self._build_log_tab(), CONTROL_TAB_TITLES[6])
-        return tabs
+    """Qt window with application-menu navigation and right-side control pages."""
 
     # ------------------------------------------------------------------
-    # Trigger tab: trigger plus manual acquisition actions
+    # Top application menu layout
+    # ------------------------------------------------------------------
+    def _build_ui(self) -> None:
+        """Build preview plus right-side menu pages selected from a top menu row."""
+        central = QWidget(self)
+        root = QVBoxLayout(central)
+        root.setContentsMargins(18, 18, 18, 12)
+        root.setSpacing(10)
+        self.setCentralWidget(central)
+
+        root.addWidget(self._build_application_menu_bar())
+
+        self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.main_splitter.setObjectName("MainSplitter")
+        root.addWidget(self.main_splitter, 1)
+
+        preview_card = self._build_preview_card()
+        preview_card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.main_splitter.addWidget(preview_card)
+
+        right_panel = QWidget()
+        right_panel.setObjectName("RightControlPanel")
+        right_layout = QVBoxLayout(right_panel)
+        right_layout.setContentsMargins(12, 10, 12, 12)
+        right_layout.setSpacing(10)
+
+        self.current_page_title = QLabel(CONTROL_TAB_TITLES[0])
+        self.current_page_title.setObjectName("ControlPageTitle")
+        right_layout.addWidget(self.current_page_title)
+
+        self.control_stack = self._build_control_stack()
+        self.control_stack.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
+        right_layout.addWidget(self.control_stack, 1)
+
+        right_panel.setMinimumWidth(420)
+        right_panel.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
+        self.main_splitter.addWidget(right_panel)
+        self.main_splitter.setStretchFactor(0, 3)
+        self.main_splitter.setStretchFactor(1, 1)
+        self.main_splitter.setSizes([810, DEFAULT_DRAWER_WIDTH])
+
+        self.setStatusBar(QStatusBar())
+        self._select_drawer_page(0)
+
+    def _build_application_menu_bar(self) -> QWidget:
+        bar = QWidget()
+        bar.setObjectName("ApplicationMenuBar")
+        layout = QHBoxLayout(bar)
+        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setSpacing(6)
+
+        title = QLabel(APP_TITLE)
+        title.setObjectName("ApplicationMenuTitle")
+        layout.addWidget(title)
+
+        self.application_menu_buttons = QButtonGroup(self)
+        self.application_menu_buttons.setExclusive(True)
+        for index, title_text in enumerate(CONTROL_TAB_TITLES):
+            button = QToolButton()
+            button.setObjectName("ApplicationMenuButton")
+            button.setText(title_text)
+            button.setCheckable(True)
+            button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+            button.setToolTip(f"Open {title_text} controls")
+            button.clicked.connect(lambda checked=False, page=index: self._select_drawer_page(page))
+            self.application_menu_buttons.addButton(button, index)
+            layout.addWidget(button)
+
+        layout.addStretch(1)
+        self.compact_mode_button = QToolButton()
+        self.compact_mode_button.setObjectName("CompactModeButton")
+        self.compact_mode_button.setCheckable(True)
+        self.compact_mode_button.setChecked(True)
+        self.compact_mode_button.setText("Compact")
+        self.compact_mode_button.setToolTip("Hide advanced page sections")
+        self.compact_mode_button.clicked.connect(self.toggle_compact_mode)
+        layout.addWidget(self.compact_mode_button)
+        return bar
+
+    def _build_control_stack(self) -> QStackedWidget:
+        stack = QStackedWidget()
+        stack.setObjectName("RightControlStack")
+        stack.addWidget(self._build_connection_tab())
+        stack.addWidget(self._build_channels_tab())
+        stack.addWidget(self._build_measurement_tab())
+        stack.addWidget(self._build_trigger_tab())
+        stack.addWidget(self._build_acquisition_tab())
+        stack.addWidget(self._build_settings_tab())
+        stack.addWidget(self._build_log_tab())
+        return stack
+
+    def _select_drawer_page(self, index: int) -> None:
+        """Select the right-side page from top-menu buttons or Ctrl+number shortcuts."""
+        stack = getattr(self, "control_stack", None)
+        if stack is None or index < 0 or index >= stack.count():
+            return
+        stack.setCurrentIndex(index)
+        title = CONTROL_TAB_TITLES[index]
+        page_title = getattr(self, "current_page_title", None)
+        if page_title is not None:
+            page_title.setText(title)
+        button_group = getattr(self, "application_menu_buttons", None)
+        if button_group is not None:
+            button = button_group.button(index)
+            if button is not None:
+                button.setChecked(True)
+        self.statusBar().showMessage(f"Opened {title} controls")
+
+    def _build_control_tabs(self):  # pragma: no cover - retained only for older callers.
+        """Compatibility shim: launched UI now uses top-menu buttons, not a tab widget."""
+        return self._build_control_stack()
+
+    def show_control_drawer(self) -> None:
+        """Compatibility no-op: controls are always available through the top menu row."""
+        self.statusBar().showMessage("Use the top menu row to open controls")
+
+    def hide_control_drawer(self) -> None:
+        """Compatibility no-op: the launched UI has no hideable drawer."""
+        self.statusBar().showMessage("Control drawer removed; use the top menu row")
+
+    def toggle_drawer_pin(self) -> None:
+        """Compatibility no-op for older drawer shortcuts."""
+        self.statusBar().showMessage("Control drawer removed; controls stay in the right panel")
+
+    # ------------------------------------------------------------------
+    # Trigger page: trigger plus manual acquisition actions
     # ------------------------------------------------------------------
     def _build_trigger_tab(self) -> QWidget:
         body = QWidget()
@@ -141,7 +259,7 @@ class QtScopeWindow(TabbedQtScopeWindow):
         return self._prepare_drawer_card(card)
 
     # ------------------------------------------------------------------
-    # Acquisition tab: Tektronix acquisition setup, not manual run controls
+    # Acquisition page: Tektronix acquisition setup, not manual run controls
     # ------------------------------------------------------------------
     def _build_acquisition_tab(self) -> QWidget:
         body = QWidget()
