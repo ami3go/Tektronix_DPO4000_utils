@@ -4,15 +4,17 @@ This review covers the current `testing-pyside6` launch path after the UI became
 
 ## Current launched path
 
-The active entry point is:
+The active entry point is now:
 
 ```text
 dpo4000-gui-qt
   -> dpo4000_utils.gui_qt.runner.main
-  -> dpo4000_utils.gui_qt.collapsible_window.QtScopeWindow
+  -> dpo4000_utils.gui_qt.stable_window.QtScopeWindow
 ```
 
-`collapsible_window.QtScopeWindow` is the launched, user-facing window. Older layers still exist underneath it because the PySide6 UI was developed incrementally:
+`stable_window.QtScopeWindow` is the public launch target. It keeps the mature top-menu/collapsible-card UI behavior and adds the worker-backed scope action path.
+
+Older layers still exist underneath the stable launch module because the PySide6 UI was developed incrementally:
 
 ```text
 main_window.py
@@ -20,104 +22,94 @@ main_window.py
   -> ui_practice_window.py
   -> acquisition_window.py
   -> collapsible_window.py
+  -> stable_window.py
 ```
 
-This inheritance stack is the largest remaining structural legacy item. It is acceptable for the testing branch, but it should eventually be collapsed into one stable implementation once the UI behavior is accepted.
+This inheritance stack is still the largest remaining structural legacy item. The safe first step is complete: the runner and package export now use the stable launch module. A deeper flattening pass can copy the remaining inherited behavior into `stable_window.py` later.
 
-## Refactoring completed in this pass
+## Refactoring completed
 
-### 1. Lazy page preference application
+### 1. Startup check support
 
-Before this pass, opening a new lazy page reapplied saved preferences to all already-built pages. That could overwrite live user edits if the user changed a field and then opened another menu page.
+A repeatable startup check helper was added:
 
-The launched window now applies saved preferences once per page, at first page construction only. Built pages are tracked separately from preference-applied pages.
+```powershell
+python scripts/qt_startup_check.py
+```
 
-Affected logic:
+It launches the Qt GUI with startup diagnostics enabled, auto-closes it after a short delay, and writes `qt_startup_debug.log`. This is the practical Windows confirmation path because the target startup behavior must be observed on the Windows PC.
+
+### 2. Worker-backed scope actions
+
+`stable_window.QtScopeWindow` now overrides `_run_action()` so blocking VISA/SCPI work runs through a Qt worker thread:
 
 ```text
-_lazy_control_pages_built
-_lazy_control_pages_preferences_applied
-_apply_preferences_to_control_page(index)
-_apply_preferences_to_unapplied_pages()
+stable_window.py
+scope_worker.py
 ```
 
-### 2. Launcher cleanup
+The old synchronous return contract is preserved with a nested `QEventLoop`, so existing readback handlers can still update widgets from returned values. The instrument I/O itself is no longer executed directly on the Qt GUI thread.
 
-The `runner.py` entry point no longer carries the stale “experimental” description or commented previous launch layer. Startup diagnostics remain opt-in through:
+### 3. Runtime Qt smoke tests
+
+A runtime smoke-test file was added:
 
 ```text
---startup-debug
---startup-debug-log=<path>
-DPO4000_QT_STARTUP_DEBUG=1
-DPO4000_QT_STARTUP_LOG=<path>
+tests/test_gui_qt_runtime_smoke.py
 ```
 
-### 3. Startup stability retained
+It imports PySide6 if available, constructs the stable window offscreen, checks lazy page behavior, and verifies the worker-thread metadata.
 
-The lazy right-side pages stay in place. This avoids constructing all `QComboBox` widgets at startup, which avoids creating many hidden Qt popup containers before the main window appears.
+### 4. Stable launch module
+
+The console runner and lazy package export now target:
+
+```text
+dpo4000_utils.gui_qt.stable_window.QtScopeWindow
+```
+
+`collapsible_window.py` remains as the mature UI behavior layer for now. This avoids a risky full rewrite while moving the public launch contract to a stable module name.
+
+### 5. Legacy QSS cleanup
+
+`theme.qss` was trimmed to remove old drawer/tab/compact-header selectors that are no longer part of the stable launched UI. The active styling now focuses on:
+
+```text
+status strip
+quick toolbar
+top application menu
+right-side control stack
+scroll pages
+forms/buttons/inputs
+stable local collapsible-card QSS
+```
+
+### 6. Lazy page preference safety
+
+Opening a new lazy page no longer reapplies saved preferences to all already-built pages. Preferences are applied once per page, at first page construction only. This prevents saved preferences from overwriting live user edits during navigation.
 
 ## Legacy code intentionally retained
 
-The following items were not removed in this pass because they still reduce risk while the PySide6 UI is being validated:
-
 ### Older PySide6 layers
 
-`main_window.py`, `enhanced_window.py`, `ui_practice_window.py`, and `acquisition_window.py` still provide behavior inherited by the launched window. Deleting them now would require a larger flattening rewrite.
+`main_window.py`, `enhanced_window.py`, `ui_practice_window.py`, `acquisition_window.py`, and `collapsible_window.py` still provide inherited behavior. Deleting them now would require copying the remaining page builders, status logic, shortcuts, acquisition setup, preview behavior, and lazy-page behavior into one large stable module.
 
-Recommended later action: create one consolidated `stable_window.py` or replace `collapsible_window.py` with a flattened implementation, then delete the intermediate layers.
+Recommended later action: after the current stable launch path passes Windows and hardware smoke tests, do a dedicated flatten-only PR/branch.
 
 ### Startup debug module
 
-`startup_debug.py` is kept because it is useful for diagnosing platform-specific Qt widget behavior on Windows. It is opt-in and has no normal startup cost beyond parsing flags.
-
-Recommended later action: keep until the startup flicker issue is confirmed resolved on the target PC, then either keep as a developer tool or move it under a diagnostics namespace.
+`startup_debug.py` is kept because it is useful for diagnosing platform-specific Qt widget behavior on Windows. It is opt-in and has no normal startup cost beyond flag parsing.
 
 ### Metadata tests
 
-The current tests are mostly source/metadata tests. They are useful for guarding behavior during rapid UI iteration, but they do not replace runtime Qt tests.
+The metadata tests remain useful while the UI is evolving quickly. Runtime smoke tests were added, but they do not replace real hardware tests.
 
-Recommended later action: add a small `pytest-qt` or smoke-run test suite for widget construction and lazy page switching.
-
-## Stability and performance recommendations
-
-### High priority
-
-1. Move SCPI/hardware calls off the Qt UI thread.
-   - Current hardware actions are still synchronous.
-   - A worker thread or command queue will prevent UI freezing during slow VISA calls.
-
-2. Flatten the PySide6 inheritance stack after acceptance.
-   - Keep current behavior.
-   - Remove old drawer/tab compatibility methods.
-   - Consolidate constants and page builders.
-
-3. Separate page factories from action methods.
-   - UI construction and instrument operations are currently mixed in window classes.
-   - A small service layer would make hardware actions easier to test.
-
-### Medium priority
-
-1. Consolidate QSS rules.
-   - Some older drawer/tab styles remain in `theme.qss` for compatibility.
-   - After flattening, unused selectors can be removed safely.
-
-2. Add runtime smoke tests.
-   - Construct `QtScopeWindow`.
-   - Open every top-menu page.
-   - Confirm no unexpected top-level widgets are visible.
-   - Confirm lazy preferences do not overwrite edited fields.
-
-3. Reduce page-build side effects.
-   - Avoid building preference-bearing pages during close if no preference file should be updated.
-   - Prefer direct preference model updates from field changes later.
-
-## Suggested next cleanup order
+## Remaining recommendations
 
 ```text
-1. Confirm startup behavior on Windows target PC.
-2. Add worker-thread/command-queue for hardware actions.
-3. Add runtime Qt smoke tests.
-4. Flatten PySide6 window inheritance into one stable launched module.
-5. Remove old drawer/tab compatibility code and unused QSS selectors.
-6. Promote PySide6 branch toward main after hardware smoke test.
+1. Run scripts/qt_startup_check.py on the Windows target PC.
+2. Run the app against the DPO4000 and verify IDN, capture, trigger, acquisition setup, PNG, CSV.
+3. If stable, flatten inherited PySide6 layers into one implementation module.
+4. Then delete old PySide6 compatibility layers and expand runtime tests.
+5. Promote PySide6 branch toward main after hardware smoke test.
 ```
