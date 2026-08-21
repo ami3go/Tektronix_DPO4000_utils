@@ -91,23 +91,25 @@ def test_qt_manual_acquisition_buttons_are_top_of_trigger_page_without_header():
     assert "QGroupBox" not in toolbar_block
 
 
-def test_qt_launched_preview_toolbar_is_preview_only_no_acquisition_duplicates():
+def test_qt_launched_preview_toolbar_contains_preview_and_duplicate_trigger_controls():
     content = Path("dpo4000_utils/gui_qt/acquisition_window.py").read_text(encoding="utf-8")
 
     quick_block = content[
         content.index("def _build_quick_control_bar"):content.index("    # ------------------------------------------------------------------\n    # Top application menu layout")
     ]
-    assert "Keep preview/export actions near the preview" in quick_block
+    assert "preview/export and duplicate trigger controls near the preview" in quick_block
     assert '"IDN", self.test_connection' in quick_block
     assert '"Capture", self.capture_preview' in quick_block
     assert '"Copy", self.copy_preview' in quick_block
     assert '"PNG", self.save_png_image' in quick_block
     assert '"CSV", self.save_csv' in quick_block
-    assert '"Run"' not in quick_block
-    assert '"Stop"' not in quick_block
-    assert '"Single"' not in quick_block
-    assert '"Continuous"' not in quick_block
-    assert '"Force"' not in quick_block
+    assert "layout.addSpacing(10)" in quick_block
+    assert "trigger_actions" in quick_block
+    assert '"Run", self.run_acquisition' in quick_block
+    assert '"Stop", self.stop_acquisition' in quick_block
+    assert '"Single", self.single_acquisition' in quick_block
+    assert '"Continuous", self.continuous_acquisition' in quick_block
+    assert '"Force", self.force_trigger' in quick_block
 
 
 def test_qt_acquisition_window_adds_dedicated_setup_page():
