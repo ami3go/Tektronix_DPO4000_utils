@@ -94,11 +94,19 @@ class CollapsibleCard(QFrame):
     _EXPANDED_OBJECT_NAME = "InlineCollapsibleCard"
     _COLLAPSED_OBJECT_NAME = "InlineCollapsibleCardCollapsed"
 
-    def __init__(self, title: str, content: QWidget, *, expanded: bool = True) -> None:
-        super().__init__()
+    def __init__(
+        self,
+        title: str,
+        content: QWidget,
+        *,
+        expanded: bool = True,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
         self._base_title = title
         self._content = content
         self._expanded = False
+        self.setWindowFlags(Qt.WindowType.Widget)
         self.setObjectName(self._EXPANDED_OBJECT_NAME)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.setToolTip(f"Click the {title} card header to collapse or expand.")
@@ -107,14 +115,14 @@ class CollapsibleCard(QFrame):
         self._layout.setContentsMargins(0, 0, 0, 0)
         self._layout.setSpacing(0)
 
-        self._header = QLabel()
+        self._header = QLabel(self)
         self._header.setObjectName("InlineCollapsibleHeader")
         self._header.setCursor(Qt.CursorShape.PointingHandCursor)
         self._header.setMinimumHeight(34)
         self._header.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self._layout.addWidget(self._header)
 
-        self._content_shell = QWidget()
+        self._content_shell = QWidget(self)
         self._content_shell.setObjectName("InlineCollapsibleBody")
         shell_layout = QVBoxLayout(self._content_shell)
         shell_layout.setContentsMargins(12, 10, 12, 12)
@@ -176,7 +184,10 @@ class QtScopeWindow(AcquisitionQtScopeWindow):
         bar = super()._build_application_menu_bar()
         title = bar.findChild(QLabel, "ApplicationMenuTitle")
         if title is not None:
-            title.setParent(None)
+            layout = bar.layout()
+            title.hide()
+            if layout is not None:
+                layout.removeWidget(title)
             title.deleteLater()
         return bar
 
@@ -193,40 +204,49 @@ class QtScopeWindow(AcquisitionQtScopeWindow):
         return stack
 
     def _make_page_cards_collapsible(self, page: QWidget) -> QWidget:
-        """Convert direct plain QGroupBox cards in a page into lightweight clickable cards."""
+        """Convert direct plain QGroupBox cards without creating parentless windows."""
         body = page.widget() if isinstance(page, QScrollArea) else page
         layout = body.layout() if body is not None else None
         if layout is None:
             return page
 
         plain_card_index = 0
-        for index in range(layout.count()):
+        index = 0
+        while index < layout.count():
             item = layout.itemAt(index)
             widget = item.widget() if item is not None else None
             if not isinstance(widget, QGroupBox) or isinstance(widget, CollapsibleCard):
+                index += 1
                 continue
 
+            widget.hide()
+            layout.removeWidget(widget)
             replacement = self._wrap_plain_card(
                 widget,
                 expanded=plain_card_index == 0,
+                parent=body,
             )
-            layout.removeWidget(widget)
             layout.insertWidget(index, replacement)
+            replacement.show()
             plain_card_index += 1
+            index += 1
         return page
 
-    def _wrap_plain_card(self, card: QGroupBox, *, expanded: bool) -> CollapsibleCard:
+    def _wrap_plain_card(self, card: QGroupBox, *, expanded: bool, parent: QWidget) -> CollapsibleCard:
         """Wrap a normal card so all cards share the same lightweight behavior."""
         title = card.title().strip() or "Section"
+        card.setWindowFlags(Qt.WindowType.Widget)
         card.setTitle("")
         card.setObjectName("InlineCollapsibleContent")
         card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         AcquisitionQtScopeWindow._prepare_drawer_card(card)
-        return CollapsibleCard(title, card, expanded=expanded)
+        card.show()
+        return CollapsibleCard(title, card, expanded=expanded, parent=parent)
 
     def _collapsible_section(self, title: str, content: QWidget, *, expanded: bool = False) -> QWidget:
         """Use the card title/header as the collapse control to save vertical space."""
         if isinstance(content, QGroupBox):
+            content.setWindowFlags(Qt.WindowType.Widget)
             content.setTitle("")
             content.setObjectName("InlineCollapsibleContent")
             content.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
