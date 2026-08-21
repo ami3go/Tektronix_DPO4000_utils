@@ -17,7 +17,32 @@ def test_qt_package_exports_acquisition_window_lazily():
     assert "from .acquisition_window import QtScopeWindow" in content
 
 
-def test_qt_acquisition_window_adds_dedicated_setup_tab():
+def test_qt_acquisition_window_uses_top_menu_for_control_pages():
+    content = Path("dpo4000_utils/gui_qt/acquisition_window.py").read_text(encoding="utf-8")
+    theme = Path("dpo4000_utils/gui_qt/theme.qss").read_text(encoding="utf-8")
+
+    assert "ApplicationMenuBar" in content
+    assert "ApplicationMenuButton" in content
+    assert "ApplicationMenuTitle" in content
+    assert "RightControlPanel" in content
+    assert "RightControlStack" in content
+    assert "ControlPageTitle" in content
+    assert "def _build_application_menu_bar" in content
+    assert "def _build_control_stack" in content
+    assert "QButtonGroup" in content
+    assert "QToolButton" in content
+    assert "QStackedWidget" in content
+    assert "self.control_stack.setCurrentIndex(index)" in content
+    assert "button.setChecked(True)" in content
+    assert "QWidget#ApplicationMenuBar" in theme
+    assert "QToolButton#ApplicationMenuButton" in theme
+    assert "QToolButton#ApplicationMenuButton:checked" in theme
+    assert "QWidget#RightControlPanel" in theme
+    assert "QStackedWidget#RightControlStack" in theme
+    assert "QLabel#ControlPageTitle" in theme
+
+
+def test_qt_acquisition_window_adds_dedicated_setup_page():
     content = Path("dpo4000_utils/gui_qt/acquisition_window.py").read_text(encoding="utf-8")
 
     assert "CONTROL_TAB_TITLES" in content
@@ -26,10 +51,11 @@ def test_qt_acquisition_window_adds_dedicated_setup_tab():
     assert "_build_acquisition_setup_card" in content
     assert 'scroll_name="AcquisitionScrollArea"' in content
     assert 'body_name="AcquisitionScrollBody"' in content
-    assert "tabs.addTab(self._build_acquisition_tab(), CONTROL_TAB_TITLES[4])" in content
+    assert "stack.addWidget(self._build_acquisition_tab())" in content
+    assert "tabs.addTab(self._build_acquisition_tab()" not in content
 
 
-def test_qt_acquisition_tab_is_setup_oriented_not_manual_buttons():
+def test_qt_acquisition_page_is_setup_oriented_not_manual_buttons():
     content = Path("dpo4000_utils/gui_qt/acquisition_window.py").read_text(encoding="utf-8")
 
     acquisition_block = content[
@@ -65,7 +91,7 @@ def test_qt_acquisition_average_count_is_conditional_on_average_mode():
     assert "skipped" in content
 
 
-def test_qt_trigger_tab_keeps_manual_acquisition_and_rearm_sections():
+def test_qt_trigger_page_keeps_manual_acquisition_and_rearm_sections():
     content = Path("dpo4000_utils/gui_qt/acquisition_window.py").read_text(encoding="utf-8")
 
     trigger_block = content[
@@ -81,7 +107,7 @@ def test_qt_trigger_tab_keeps_manual_acquisition_and_rearm_sections():
     assert "_build_image_rearm_card" in trigger_block
 
 
-def test_qt_acquisition_shortcuts_include_seven_tabs():
+def test_qt_acquisition_shortcuts_include_seven_menu_pages():
     content = Path("dpo4000_utils/gui_qt/acquisition_window.py").read_text(encoding="utf-8")
 
     assert "PAGE_SHORTCUTS" in content
@@ -89,6 +115,7 @@ def test_qt_acquisition_shortcuts_include_seven_tabs():
     assert '("Ctrl+6", 5, "Settings")' in content
     assert '("Ctrl+7", 6, "Log")' in content
     assert "_install_global_shortcuts" in content
+    assert "self._select_drawer_page(index)" in content
 
 
 def test_qt_ui_practice_window_keeps_status_strip_and_guarded_controls():
@@ -108,21 +135,6 @@ def test_qt_ui_practice_window_keeps_status_strip_and_guarded_controls():
     assert "apply_acquisition_setup" in content
     assert "Test IDN first" in content
     assert "scopeAction" in content
-
-
-def test_qt_ui_practice_window_still_uses_tabs_not_launched_drawer():
-    content = Path("dpo4000_utils/gui_qt/ui_practice_window.py").read_text(encoding="utf-8")
-    theme = Path("dpo4000_utils/gui_qt/theme.qss").read_text(encoding="utf-8")
-
-    assert "QTabWidget" in content
-    assert "ControlTabs" in content
-    assert "def _build_control_tabs" in content
-    assert "tabs.addTab" in content
-    assert "the remote drawer is not used" in content
-    assert "Control drawer removed" in content
-    assert "QTabWidget#ControlTabs" in theme
-    assert "QTabWidget#ControlTabs::pane" in theme
-    assert "QTabWidget#ControlTabs QTabBar::tab:selected" in theme
 
 
 def test_qt_preview_has_quick_toolbar_ctrl_c_and_no_redundant_bottom_buttons():
