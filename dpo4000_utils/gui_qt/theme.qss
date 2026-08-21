@@ -74,54 +74,6 @@ QGroupBox::title {
     background: transparent;
 }
 
-QGroupBox#CollapsibleContent {
-    padding: 14px;
-    margin-top: 0;
-}
-
-QGroupBox#InlineCollapsibleCard,
-QGroupBox#InlineCollapsibleCardCollapsed {
-    background: #1f2937;
-    border: 1px solid #374151;
-    border-radius: 8px;
-    margin-top: 0;
-    font-weight: 600;
-}
-
-QGroupBox#InlineCollapsibleCard {
-    padding: 34px 12px 12px 12px;
-}
-
-QGroupBox#InlineCollapsibleCardCollapsed {
-    padding: 34px 0 0 0;
-}
-
-QGroupBox#InlineCollapsibleCard:hover,
-QGroupBox#InlineCollapsibleCardCollapsed:hover {
-    border-color: #4b5563;
-}
-
-QGroupBox#InlineCollapsibleCard::title,
-QGroupBox#InlineCollapsibleCardCollapsed::title {
-    subcontrol-origin: border;
-    subcontrol-position: top left;
-    left: 0;
-    top: 0;
-    padding: 8px 12px;
-    color: #ffffff;
-    background: #253142;
-    border-top-left-radius: 7px;
-    border-top-right-radius: 7px;
-}
-
-QGroupBox#InlineCollapsibleCard::title {
-    border-bottom: 1px solid #374151;
-}
-
-QGroupBox#InlineCollapsibleCardCollapsed::title {
-    border-bottom: 0;
-}
-
 QGroupBox#InlineCollapsibleContent {
     background: transparent;
     border: 0;
@@ -140,13 +92,6 @@ QLabel {
     color: #e5e7eb;
 }
 
-QLabel#TitleLabel {
-    background: transparent;
-    color: #ffffff;
-    font-size: 18pt;
-    font-weight: 700;
-}
-
 QLabel#MutedLabel {
     background: transparent;
     color: #9ca3af;
@@ -161,12 +106,6 @@ QLabel#PreviewLabel {
 
 QLabel#PreviewLabel:focus {
     border: 1px solid #60a5fa;
-}
-
-QLabel#DrawerTitle {
-    color: #ffffff;
-    font-size: 13pt;
-    font-weight: 700;
 }
 
 QWidget#ScopeStatusStrip {
@@ -219,7 +158,8 @@ QToolButton#StatusActionButton:hover {
     background: #374151;
 }
 
-QWidget#QuickControlBar {
+QWidget#QuickControlBar,
+QWidget#TriggerAcquisitionToolbar {
     background: #0f172a;
     border: 1px solid #1f2937;
     border-radius: 8px;
@@ -264,12 +204,6 @@ QWidget#ApplicationMenuBar {
     border-radius: 8px;
 }
 
-QLabel#ApplicationMenuTitle {
-    color: #ffffff;
-    font-weight: 700;
-    padding: 0 10px 0 4px;
-}
-
 QToolButton#ApplicationMenuButton {
     background: transparent;
     border: 1px solid transparent;
@@ -306,134 +240,6 @@ QLabel#ControlPageTitle {
     font-size: 13pt;
     font-weight: 700;
     padding: 0 0 4px 0;
-}
-
-QTabWidget#ControlTabs {
-    background: #111827;
-    border: 0;
-}
-
-QTabWidget#ControlTabs::pane {
-    background: #111827;
-    border: 1px solid #374151;
-    border-radius: 8px;
-    top: -1px;
-}
-
-QTabWidget#ControlTabs QTabBar::tab {
-    background: #1f2937;
-    border: 1px solid #374151;
-    border-bottom: 0;
-    border-top-left-radius: 7px;
-    border-top-right-radius: 7px;
-    color: #d1d5db;
-    margin-right: 4px;
-    padding: 8px 12px;
-}
-
-QTabWidget#ControlTabs QTabBar::tab:hover {
-    background: #374151;
-}
-
-QTabWidget#ControlTabs QTabBar::tab:selected {
-    background: #2563eb;
-    border-color: #60a5fa;
-    color: #ffffff;
-    font-weight: 700;
-}
-
-QWidget#ControlDrawer {
-    background: #111827;
-}
-
-QWidget#DrawerNav {
-    background: #0f172a;
-    border: 1px solid #1f2937;
-    border-radius: 8px;
-}
-
-QWidget#DrawerControls {
-    background: transparent;
-}
-
-QWidget#DrawerContent {
-    background: #111827;
-    border-right: 1px solid #374151;
-}
-
-QWidget#DrawerHeader {
-    background: transparent;
-}
-
-QToolButton#CompactModeButton,
-QToolButton#CollapsibleHeader {
-    background: #1f2937;
-    border: 1px solid #374151;
-    border-radius: 6px;
-    color: #e5e7eb;
-    padding: 7px 10px;
-    text-align: left;
-}
-
-QToolButton#CompactModeButton:hover,
-QToolButton#CollapsibleHeader:hover {
-    background: #374151;
-}
-
-QToolButton#CompactModeButton:checked {
-    background: #2563eb;
-    border-color: #60a5fa;
-    color: #ffffff;
-}
-
-QWidget#CollapsibleSection {
-    background: transparent;
-}
-
-QToolButton#DrawerNavButton {
-    background: #1f2937;
-    border: 1px solid #374151;
-    border-radius: 8px;
-    color: #e5e7eb;
-    padding: 7px 4px;
-    text-align: center;
-}
-
-QToolButton#DrawerNavButton:hover {
-    background: #374151;
-}
-
-QToolButton#DrawerNavButton:checked {
-    background: #2563eb;
-    border-color: #60a5fa;
-    color: #ffffff;
-    font-weight: 700;
-}
-
-QToolButton#DrawerUtilityButton,
-QPushButton#DrawerShowButton {
-    background: #1f2937;
-    border: 1px solid #374151;
-    border-radius: 6px;
-    color: #e5e7eb;
-    padding: 7px 6px;
-}
-
-QToolButton#DrawerUtilityButton:hover,
-QPushButton#DrawerShowButton:hover {
-    background: #374151;
-}
-
-QToolButton#DrawerUtilityButton:checked {
-    background: #2563eb;
-    border-color: #60a5fa;
-    color: #ffffff;
-}
-
-QToolButton#DrawerUtilityButton:disabled {
-    background: #111827;
-    border-color: #1f2937;
-    color: #6b7280;
 }
 
 QSplitter#MainSplitter::handle {
@@ -490,6 +296,17 @@ QPushButton#AccentButton {
 
 QPushButton#AccentButton:hover {
     background: #1d4ed8;
+}
+
+QWidget#SettingsNamingBlock {
+    background: #111827;
+    border: 1px solid #374151;
+    border-radius: 8px;
+}
+
+QLabel#SettingsNamingTitle {
+    color: #ffffff;
+    font-weight: 700;
 }
 
 QRadioButton, QCheckBox {
