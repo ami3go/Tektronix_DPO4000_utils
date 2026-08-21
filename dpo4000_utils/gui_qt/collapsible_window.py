@@ -31,6 +31,10 @@ CONTROL_PAGE_BUILDERS = (
     "_build_settings_tab",
     "_build_log_tab",
 )
+CONNECTION_PAGE_INDEX = 0
+TRIGGER_PAGE_INDEX = 3
+SETTINGS_PAGE_INDEX = 5
+PREFERENCE_PAGE_INDEXES = (CONNECTION_PAGE_INDEX, TRIGGER_PAGE_INDEX, SETTINGS_PAGE_INDEX)
 PREVIEW_CONTROL_GUTTER_QSS = """
 QSplitter#MainSplitter::handle {
     background: #111827;
@@ -175,6 +179,7 @@ class QtScopeWindow(AcquisitionQtScopeWindow):
     def __init__(self, *args, **kwargs) -> None:
         self._pending_preferences = None
         self._lazy_control_pages_built: list[bool] = []
+        self._lazy_control_pages_preferences_applied: list[bool] = []
         super().__init__(*args, **kwargs)
         self.setWindowTitle(WINDOW_TITLE)
 
@@ -214,6 +219,7 @@ class QtScopeWindow(AcquisitionQtScopeWindow):
         stack = QStackedWidget()
         stack.setObjectName("RightControlStack")
         self._lazy_control_pages_built = [False for _ in CONTROL_PAGE_BUILDERS]
+        self._lazy_control_pages_preferences_applied = [False for _ in CONTROL_PAGE_BUILDERS]
         for index, _builder_name in enumerate(CONTROL_PAGE_BUILDERS):
             placeholder = QWidget()
             placeholder.setObjectName(f"LazyControlPagePlaceholder{index}")
@@ -243,7 +249,7 @@ class QtScopeWindow(AcquisitionQtScopeWindow):
         stack.insertWidget(index, page)
         self._lazy_control_pages_built[index] = True
 
-        self._apply_preferences_to_built_widgets()
+        self._apply_preferences_to_control_page(index)
         update_controls = getattr(self, "_update_scope_control_enabled", None)
         if callable(update_controls):
             update_controls()
@@ -306,16 +312,22 @@ class QtScopeWindow(AcquisitionQtScopeWindow):
     # Preferences and lazy pages
     # ------------------------------------------------------------------
     def _apply_preferences(self, preferences) -> None:
-        """Apply preferences only to pages that have already been built."""
+        """Store preferences and apply them once to already-built pages only."""
         self._pending_preferences = preferences
-        self._apply_preferences_to_built_widgets()
+        self._apply_preferences_to_unapplied_pages()
 
-    def _apply_preferences_to_built_widgets(self) -> None:
+    def _apply_preferences_to_unapplied_pages(self) -> None:
+        """Apply stored preferences once per built page without overwriting live edits."""
+        for index, built in enumerate(self._lazy_control_pages_built):
+            if built and not self._lazy_control_pages_preferences_applied[index]:
+                self._apply_preferences_to_control_page(index)
+
+    def _apply_preferences_to_control_page(self, index: int) -> None:
         preferences = getattr(self, "_pending_preferences", None)
         if preferences is None:
             return
 
-        if hasattr(self, "eth_host"):
+        if index == CONNECTION_PAGE_INDEX and hasattr(self, "eth_host"):
             self.eth_host.setText(preferences.ethernet_host)
             self.eth_port.setText(preferences.ethernet_port)
             self._set_combo_text(self.eth_protocol, preferences.ethernet_protocol)
@@ -328,7 +340,16 @@ class QtScopeWindow(AcquisitionQtScopeWindow):
                 self.usb_mode.setChecked(True)
             self._refresh_generated_ethernet_resource()
 
-        if hasattr(self, "output_folder"):
+        elif index == TRIGGER_PAGE_INDEX:
+            if hasattr(self, "rearm_after_image"):
+                self.rearm_after_image.setChecked(preferences.rearm_after_image)
+                self._set_combo_text(self.trigger_channel_after_image, preferences.trigger_channel_after_image)
+            if hasattr(self, "trigger_channel"):
+                self._set_combo_text(self.trigger_channel, preferences.trigger_setup_channel)
+                self.trigger_level.setText(preferences.trigger_level)
+                self.trigger_set_source.setChecked(preferences.trigger_set_source)
+
+        elif index == SETTINGS_PAGE_INDEX and hasattr(self, "output_folder"):
             self.output_folder.setText(preferences.output_folder)
             self.png_prefix.setText(preferences.png_prefix)
             self.png_base.setText(preferences.png_base)
@@ -341,39 +362,33 @@ class QtScopeWindow(AcquisitionQtScopeWindow):
             self.settings_timestamp.setChecked(preferences.settings_add_timestamp)
             self.restore_wait_opc.setChecked(preferences.restore_wait_opc)
 
-        if hasattr(self, "rearm_after_image"):
-            self.rearm_after_image.setChecked(preferences.rearm_after_image)
-            self._set_combo_text(self.trigger_channel_after_image, preferences.trigger_channel_after_image)
-
-        if hasattr(self, "trigger_channel"):
-            self._set_combo_text(self.trigger_channel, preferences.trigger_setup_channel)
-            self.trigger_level.setText(preferences.trigger_level)
-            self.trigger_set_source.setChecked(preferences.trigger_set_source)
+        if 0 <= index < len(self._lazy_control_pages_preferences_applied):
+            self._lazy_control_pages_preferences_applied[index] = True
 
     def _collect_preferences(self):
         """Build preference-bearing pages before saving preferences on close."""
-        for index in (0, 3, 5):
+        for index in PREFERENCE_PAGE_INDEXES:
             self._ensure_control_page_built(index)
         return super()._collect_preferences()
 
     def capture_preview(self) -> None:
-        self._ensure_control_page_built(3)
+        self._ensure_control_page_built(TRIGGER_PAGE_INDEX)
         return super().capture_preview()
 
     def save_png_image(self) -> None:
-        self._ensure_control_page_built(5)
+        self._ensure_control_page_built(SETTINGS_PAGE_INDEX)
         return super().save_png_image()
 
     def save_csv(self) -> None:
-        self._ensure_control_page_built(5)
+        self._ensure_control_page_built(SETTINGS_PAGE_INDEX)
         return super().save_csv()
 
     def save_settings(self) -> None:
-        self._ensure_control_page_built(5)
+        self._ensure_control_page_built(SETTINGS_PAGE_INDEX)
         return super().save_settings()
 
     def restore_settings(self) -> None:
-        self._ensure_control_page_built(5)
+        self._ensure_control_page_built(SETTINGS_PAGE_INDEX)
         return super().restore_settings()
 
     # ------------------------------------------------------------------
@@ -503,9 +518,13 @@ class QtScopeWindow(AcquisitionQtScopeWindow):
 
 __all__ = [
     "CollapsibleCard",
+    "CONNECTION_PAGE_INDEX",
     "CONTROL_PAGE_BUILDERS",
+    "PREFERENCE_PAGE_INDEXES",
     "PREVIEW_CONTROL_GUTTER_QSS",
     "PREVIEW_CONTROL_GUTTER_WIDTH",
+    "SETTINGS_PAGE_INDEX",
+    "TRIGGER_PAGE_INDEX",
     "WINDOW_TITLE",
     "QtScopeWindow",
 ]
