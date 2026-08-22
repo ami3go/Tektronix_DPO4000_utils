@@ -3,6 +3,18 @@ from __future__ import annotations
 from pathlib import Path
 
 
+def test_project_version_is_v020_release():
+    project = Path("pyproject.toml").read_text(encoding="utf-8")
+    changelog = Path("CHANGELOG.md").read_text(encoding="utf-8")
+    release_notes = Path("docs/releases/v0.2.0.md").read_text(encoding="utf-8")
+
+    assert 'version = "0.2.0"' in project
+    assert "## v0.2.0 - 2026-08-22" in changelog
+    assert "# dpo4000-utils v0.2.0" in release_notes
+    assert "TektronixDPO4000-windows.exe" in release_notes
+    assert "TektronixDPO4000-linux" in release_notes
+
+
 def test_shared_build_helper_targets_pyside6_titlebar_tabs_runner_entry():
     content = Path("scripts/build_app.py").read_text(encoding="utf-8")
 
@@ -80,6 +92,26 @@ def test_windows_and_linux_wrappers_call_shared_build_helper_safely():
     assert "python3 scripts/build_app.py" not in linux
 
     assert "build_windows_exe.bat" in compat
+
+
+def test_gui_executable_workflow_builds_and_publishes_release_assets():
+    workflow = Path(".github/workflows/build-gui-executables.yml").read_text(encoding="utf-8")
+
+    assert "workflow_dispatch:" in workflow
+    assert "release_tag:" in workflow
+    assert "push:" in workflow
+    assert "tags:" in workflow
+    assert '"v*"' in workflow
+    assert "permissions:" in workflow
+    assert "contents: write" in workflow
+    assert "APP_NAME: TektronixDPO4000" in workflow
+    assert "BUILD_MODE: onefile" in workflow
+    assert "dist\\TektronixDPO4000.exe" in workflow
+    assert "TektronixDPO4000-windows.exe" in workflow
+    assert "cp dist/TektronixDPO4000 release-assets/TektronixDPO4000-linux" in workflow
+    assert "softprops/action-gh-release@v2" in workflow
+    assert "body_path: docs/releases/v0.2.0.md" in workflow
+    assert "TektronixScopeGUI" not in workflow
 
 
 def test_application_build_guide_documents_platform_commands_and_outputs():
