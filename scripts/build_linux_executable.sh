@@ -3,7 +3,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-APP_NAME="${APP_NAME:-TektronixDPO4000}"
+APP_NAME="${APP_NAME:-DPO4000Desk}"
 BUILD_MODE="${BUILD_MODE:-onedir}"
 PYTHON_BIN="${PYTHON:-python3}"
 
@@ -12,7 +12,7 @@ if [[ "$BUILD_MODE" != "onedir" && "$BUILD_MODE" != "onefile" ]]; then
   exit 1
 fi
 
-echo "Building ${APP_NAME} for Linux using PySide6 UI..."
+echo "Building ${APP_NAME} for Linux using DPO4000 Desk PySide6 UI..."
 echo "BUILD_MODE=${BUILD_MODE}"
 echo "PYTHON=${PYTHON_BIN}"
 
