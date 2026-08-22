@@ -4,8 +4,6 @@ This guide builds the current DPO4000 Desk desktop application entry point:
 
 ```text
 dpo4000-desk
-  -> dpo4000_utils.gui_qt.runner.main
-  -> dpo4000_utils.gui_qt.titlebar_tabs_window.QtScopeWindow
 ```
 
 DPO4000 Desk uses a frameless desktop window so the page buttons can share the same row as the window title. Build on the same operating system you want to distribute for:
