@@ -1,7 +1,7 @@
 """Build the DPO4000 PySide6 application with PyInstaller.
 
 The script intentionally creates a tiny generated entry-point file instead of
-passing ``dpo4000_utils/gui_qt/runner.py`` directly to PyInstaller.  That keeps
+passing ``dpo4000_utils/gui_qt/runner.py`` directly to PyInstaller. That keeps
 package-relative imports working the same way they do when running the installed
 ``dpo4000-gui-qt`` console script.
 """
@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import os
 import platform
+import shlex
 import shutil
 import subprocess
 import sys
@@ -21,6 +22,20 @@ DEFAULT_APP_NAME = "TektronixDPO4000"
 ENTRY_DIR = ROOT / "build" / "pyinstaller_entry"
 ENTRY_FILE = ENTRY_DIR / "dpo4000_qt_entry.py"
 ICON_FILE = ROOT / "dpo4000_utils" / "gui" / "dpo_scope_icon.ico"
+TRUE_VALUES = {"1", "true", "yes", "on"}
+FALSE_VALUES = {"0", "false", "no", "off"}
+
+
+def _env_flag(name: str, *, default: bool) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    normalised = value.strip().lower()
+    if normalised in TRUE_VALUES:
+        return True
+    if normalised in FALSE_VALUES:
+        return False
+    return default
 
 
 def parse_args() -> argparse.Namespace:
@@ -34,52 +49,73 @@ def parse_args() -> argparse.Namespace:
         "--mode",
         choices=("onedir", "onefile"),
         default=os.environ.get("BUILD_MODE", "onedir"),
-        help="PyInstaller output mode. 'onedir' starts faster and is easier to debug; 'onefile' is portable but slower to start.",
+        help=(
+            "PyInstaller output mode. 'onedir' starts faster and is easier to debug; "
+            "'onefile' is portable but slower to start."
+        ),
     )
     parser.add_argument(
         "--clean",
-        action="store_true",
-        default=os.environ.get("BUILD_CLEAN", "1") not in {"0", "false", "False"},
+        action=argparse.BooleanOptionalAction,
+        default=_env_flag("BUILD_CLEAN", default=True),
         help="Remove build/dist output before building. Enabled by default.",
     )
     parser.add_argument(
         "--console",
         action="store_true",
+        default=_env_flag("BUILD_CONSOLE", default=False),
         help="Keep a console window. Useful for debugging PyInstaller startup errors.",
     )
     parser.add_argument(
         "--skip-install",
         action="store_true",
+        default=_env_flag("BUILD_SKIP_INSTALL", default=False),
         help="Do not install/upgrade build dependencies before running PyInstaller.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print the resolved PyInstaller command and output path without running it.",
     )
     return parser.parse_args()
 
 
-def run(command: list[str]) -> None:
-    print("+", " ".join(command), flush=True)
-    subprocess.run(command, cwd=ROOT, check=True)
+def format_command(command: list[str]) -> str:
+    """Return a shell-readable command for logging without changing execution."""
+    return " ".join(shlex.quote(part) for part in command)
 
 
-def clean_outputs(app_name: str) -> None:
-    for path in (ROOT / "build", ROOT / "dist"):
-        if path.exists():
+def run(command: list[str], *, dry_run: bool = False) -> None:
+    print("+", format_command(command), flush=True)
+    if not dry_run:
+        subprocess.run(command, cwd=ROOT, check=True)
+
+
+def clean_outputs(app_name: str, *, dry_run: bool = False) -> None:
+    targets = [ROOT / "build", ROOT / "dist", *ROOT.glob(f"{app_name}*.spec")]
+    for path in targets:
+        if dry_run:
+            print(f"Would remove: {path.relative_to(ROOT)}")
+            continue
+        if path.is_dir():
             shutil.rmtree(path)
-    for spec in ROOT.glob(f"{app_name}*.spec"):
-        spec.unlink()
+        elif path.exists():
+            path.unlink()
 
 
-def write_entry_file() -> None:
+def write_entry_file(*, dry_run: bool = False) -> None:
+    content = "from dpo4000_utils.gui_qt.runner import main\nraise SystemExit(main())\n"
+    if dry_run:
+        print(f"Would write generated entry: {ENTRY_FILE.relative_to(ROOT)}")
+        print(content.rstrip())
+        return
     ENTRY_DIR.mkdir(parents=True, exist_ok=True)
-    ENTRY_FILE.write_text(
-        "from dpo4000_utils.gui_qt.runner import main\n"
-        "raise SystemExit(main())\n",
-        encoding="utf-8",
-    )
+    ENTRY_FILE.write_text(content, encoding="utf-8")
 
 
-def install_build_dependencies() -> None:
-    run([sys.executable, "-m", "pip", "install", "--upgrade", "pip"])
-    run([sys.executable, "-m", "pip", "install", "-e", ".[build,pyside6]"])
+def install_build_dependencies(*, dry_run: bool = False) -> None:
+    run([sys.executable, "-m", "pip", "install", "--upgrade", "pip"], dry_run=dry_run)
+    run([sys.executable, "-m", "pip", "install", "-e", ".[build,pyside6]"], dry_run=dry_run)
 
 
 def pyinstaller_command(args: argparse.Namespace) -> list[str]:
@@ -142,14 +178,15 @@ def main() -> int:
     args = parse_args()
     print(f"Building {args.app_name} for {platform.system()} ({args.mode})", flush=True)
     if args.clean:
-        clean_outputs(args.app_name)
-    write_entry_file()
+        clean_outputs(args.app_name, dry_run=args.dry_run)
+    write_entry_file(dry_run=args.dry_run)
     if not args.skip_install:
-        install_build_dependencies()
-    run(pyinstaller_command(args))
+        install_build_dependencies(dry_run=args.dry_run)
+    command = pyinstaller_command(args)
+    run(command, dry_run=args.dry_run)
 
     output = output_hint(args.app_name, args.mode)
-    print("\nBuild finished:", output)
+    print("\nBuild finished:" if not args.dry_run else "\nDry run output would be:", output)
     print("Target machine still needs a VISA runtime/backend for real instrument access.")
     print("Examples: NI-VISA, TekVISA, Keysight VISA, or a compatible pyvisa backend.")
     return 0
