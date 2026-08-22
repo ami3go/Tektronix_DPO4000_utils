@@ -1,4 +1,4 @@
-name: Build GUI Executables
+name: Build DPO4000 Desk Executables
 
 on:
   workflow_dispatch:
@@ -21,7 +21,7 @@ permissions:
 
 # Release builds use one-file mode so the assets are easy to download/run.
 env:
-  APP_NAME: TektronixDPO4000
+  APP_NAME: DPO4000Desk
   BUILD_MODE: onefile
 
 jobs:
@@ -46,13 +46,13 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path release-assets
-          Copy-Item dist\TektronixDPO4000.exe release-assets\TektronixDPO4000-windows.exe
+          Copy-Item dist\DPO4000Desk.exe release-assets\DPO4000Desk-windows.exe
 
       - name: Upload Windows EXE
         uses: actions/upload-artifact@v4
         with:
-          name: TektronixDPO4000-windows
-          path: release-assets/TektronixDPO4000-windows.exe
+          name: DPO4000Desk-windows
+          path: release-assets/DPO4000Desk-windows.exe
           if-no-files-found: error
 
   build-linux:
@@ -79,14 +79,14 @@ jobs:
       - name: Rename Linux executable asset
         run: |
           mkdir -p release-assets
-          cp dist/TektronixDPO4000 release-assets/TektronixDPO4000-linux
-          chmod +x release-assets/TektronixDPO4000-linux
+          cp dist/DPO4000Desk release-assets/DPO4000Desk-linux
+          chmod +x release-assets/DPO4000Desk-linux
 
       - name: Upload Linux executable
         uses: actions/upload-artifact@v4
         with:
-          name: TektronixDPO4000-linux
-          path: release-assets/TektronixDPO4000-linux
+          name: DPO4000Desk-linux
+          path: release-assets/DPO4000Desk-linux
           if-no-files-found: error
 
   release:
@@ -111,9 +111,9 @@ jobs:
         with:
           tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || inputs.release_tag }}
           target_commitish: ${{ github.sha }}
-          name: dpo4000-utils ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || inputs.release_tag }}
+          name: DPO4000 Desk ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || inputs.release_tag }}
           body_path: docs/releases/v0.2.0.md
           prerelease: ${{ inputs.prerelease || false }}
           files: |
-            release-assets/TektronixDPO4000-windows/TektronixDPO4000-windows.exe
-            release-assets/TektronixDPO4000-linux/TektronixDPO4000-linux
+            release-assets/DPO4000Desk-windows/DPO4000Desk-windows.exe
+            release-assets/DPO4000Desk-linux/DPO4000Desk-linux
