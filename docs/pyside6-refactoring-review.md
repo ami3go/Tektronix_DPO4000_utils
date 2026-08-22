@@ -8,11 +8,9 @@ The active entry point is:
 
 ```text
 dpo4000-desk
-  -> dpo4000_utils.gui_qt.runner.main
-  -> dpo4000_utils.gui_qt.titlebar_tabs_window.QtScopeWindow
 ```
 
-`titlebar_tabs_window.QtScopeWindow` is the public launch target for DPO4000 Desk. It keeps the compact titlebar page layout and the worker-backed scope action path.
+DPO4000 Desk keeps the compact titlebar page layout and the worker-backed scope action path.
 
 Older implementation layers still exist underneath the current launch module because the desktop UI was developed incrementally:
 
@@ -58,19 +56,9 @@ scope_worker.py
 
 Runtime smoke tests construct the launched window offscreen, check lazy page behavior, and verify worker-thread metadata.
 
-```text
-tests/test_gui_qt_runtime_smoke.py
-```
-
 ### 4. Current launch module
 
-The console runner and lazy package export target:
-
-```text
-dpo4000_utils.gui_qt.titlebar_tabs_window.QtScopeWindow
-```
-
-This keeps the public launch contract stable while allowing later internal flattening.
+The console runner and lazy package export target the current DPO4000 Desk titlebar implementation. This keeps the public launch contract stable while allowing later internal flattening.
 
 ### 5. Lazy page preference safety
 
