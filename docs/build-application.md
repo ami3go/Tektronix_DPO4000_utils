@@ -5,10 +5,10 @@ This guide builds the current PySide6 application entry point:
 ```text
 dpo4000-gui-qt
   -> dpo4000_utils.gui_qt.runner.main
-  -> dpo4000_utils.gui_qt.preview_window.QtScopeWindow
+  -> dpo4000_utils.gui_qt.titlebar_tabs_window.QtScopeWindow
 ```
 
-The build scripts use PyInstaller. Build on the same operating system you want to distribute for:
+The `testing-titlebar-tabs` branch uses an experimental frameless Qt window so the page buttons can share the same row as the window title. Build on the same operating system you want to distribute for:
 
 - build the Windows `.exe` on Windows
 - build the Linux executable on Linux
@@ -44,7 +44,7 @@ Linux:   dist/TektronixDPO4000
 From the repository root:
 
 ```powershell
-git checkout main
+git checkout testing-titlebar-tabs
 git pull
 py -3 -m venv .venv
 .\.venv\Scripts\Activate.ps1
@@ -83,7 +83,7 @@ python scripts\build_app.py --mode onedir --console
 From the repository root:
 
 ```bash
-git checkout main
+git checkout testing-titlebar-tabs
 git pull
 python3 -m venv .venv
 source .venv/bin/activate
@@ -183,4 +183,5 @@ For USB instruments, install the relevant USB/VISA driver. For Ethernet/VXI-11 o
 - `onedir` is recommended for daily use and debugging.
 - `onefile` is convenient for transfer but starts slower because it extracts files at launch.
 - Build Windows packages on Windows and Linux packages on Linux.
+- The frameless title bar is experimental; verify drag, maximize, close, and resize behavior on the target desktop.
 - The old `scripts/build_exe.bat` remains as a compatibility wrapper for `scripts/build_windows_exe.bat`.
