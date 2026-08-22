@@ -36,7 +36,10 @@ def test_shared_build_helper_validates_mode_app_name_and_output():
 
     assert "BUILD_MODES = (\"onedir\", \"onefile\")" in content
     assert "choices=BUILD_MODES" in content
+    assert "UNSAFE_APP_NAME_CHARS" in content
+    assert "def _validate_app_name" in content
     assert "--app-name cannot be empty" in content
+    assert "--app-name cannot contain path separators or drive separators" in content
     assert "def output_path" in content
     assert "def verify_output_exists" in content
     assert "expected output was not found" in content
