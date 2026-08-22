@@ -1,53 +1,57 @@
-# PySide6 testing branch
+# DPO4000 Desk testing notes
 
-This branch contains an experimental PySide6/Qt GUI beside the existing Tkinter GUI.
+DPO4000 Desk is the modern desktop application built on top of the `dpo4000-utils` Python driver.
 
-The current stable Tkinter GUI is unchanged and still runs with:
+The stable Tkinter GUI remains available with:
 
 ```bash
 dpo4000-gui
 ```
 
-The experimental Qt GUI runs with:
+DPO4000 Desk runs with:
 
 ```bash
-pip install -e .[qt]
-dpo4000-gui-qt
+pip install -e .[pyside6]
+dpo4000-desk
 ```
 
 or from the repository root:
 
 ```bash
-pip install -e .[qt]
+pip install -e .[pyside6]
 python -m dpo4000_utils.gui_qt.runner
 ```
 
 ## Current scope
 
-This is a first testing pass, not a full replacement yet.
+DPO4000 Desk is now the main desktop workflow for bench use.
 
-Implemented in the Qt prototype:
+Implemented:
 
-- Dark Qt stylesheet matching the current application theme.
+- Compact titlebar page layout.
 - Left-side scope screen preview area.
-- Right-side tabs: Connection, Channels, Measurement, Trigger, Settings, Log.
-- Connection tab with USB/VISA and Ethernet resource fields.
-- `Test IDN` action.
-- Preview capture to `scope_output/qt_preview.png`.
-- Copy captured preview to the system clipboard through Qt.
-- Measurement add/read/clear slot actions.
-- Trigger acquisition actions: Run, Stop, Single, Continuous, Force trigger.
+- Pages: Connection, Channels, Measurement, Trigger, Acquisition, File, Display, Log.
+- USB/VISA and Ethernet resource fields.
+- IDN/retry connection flow.
+- PNG capture and clipboard copy.
+- CSV waveform export.
+- Measurement add/read/edit/delete slot actions.
+- Guarded measurement edit/delete mode.
+- Trigger and acquisition actions: Run, Stop, Single, Continuous, Force trigger.
 - Edge-trigger setup action.
 - Horizontal position set action.
+- Persistent GUI preferences.
 
-Still incomplete compared with the Tk GUI:
+## Test checklist
 
-- Channel label read/write is only scaffolded.
-- CSV waveform export is scaffolded.
-- Settings save/restore is scaffolded.
-- Preferences persistence is not implemented.
-- Long-running hardware operations are synchronous in this first pass.
-
-## Design rule
-
-Keep `dpo4000_utils/gui_qt/` separate from `dpo4000_utils/gui/` until the Qt GUI is stable enough to replace the Tk GUI.
+```text
+1. Start dpo4000-desk.
+2. Verify the titlebar page buttons switch pages.
+3. Verify drag, maximize, minimize, close, and resize behavior.
+4. Connect to the oscilloscope with USB/VISA or Ethernet.
+5. Run IDN/retry.
+6. Capture PNG and confirm the preview updates.
+7. Save CSV from enabled channels.
+8. Read, add, edit, and delete measurement slots.
+9. Check trigger/acquisition actions on the real scope.
+```
