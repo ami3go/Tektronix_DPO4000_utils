@@ -8,15 +8,19 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+QtCore = pytest.importorskip("PySide6.QtCore")
 QtWidgets = pytest.importorskip("PySide6.QtWidgets")
 
-from dpo4000_utils.gui_qt.collapsible_window import WINDOW_TITLE  # noqa: E402
 from dpo4000_utils.gui_qt.display_window import (  # noqa: E402
     CONTROL_PAGE_BUILDERS,
+    CONTROL_TAB_TITLES,
     DISPLAY_PAGE_INDEX,
     FILE_PAGE_INDEX,
 )
-from dpo4000_utils.gui_qt.preview_window import QtScopeWindow  # noqa: E402
+from dpo4000_utils.gui_qt.titlebar_tabs_window import (  # noqa: E402
+    TITLEBAR_WINDOW_TITLE,
+    QtScopeWindow,
+)
 
 
 def _app():
@@ -26,24 +30,30 @@ def _app():
     return app
 
 
-def test_stable_qt_window_constructs_with_lazy_pages():
+def test_titlebar_tabs_qt_window_constructs_with_lazy_pages():
     app = _app()
     window = QtScopeWindow()
     try:
-        assert window.windowTitle() == WINDOW_TITLE
+        assert window.windowTitle() == TITLEBAR_WINDOW_TITLE
+        assert window.windowFlags() & QtCore.Qt.WindowType.FramelessWindowHint
         assert window.control_stack.count() == len(CONTROL_PAGE_BUILDERS)
         assert len(window._lazy_control_pages_built) == len(CONTROL_PAGE_BUILDERS)
         assert window._lazy_control_pages_built[0] is True
         assert sum(bool(value) for value in window._lazy_control_pages_built) == 1
         assert window.current_page_title.text() == "Connection"
         assert window.main_splitter.handleWidth() == 12
+        titlebar = window.findChild(QtWidgets.QWidget, "TitlebarTabsBar")
+        assert titlebar is not None
+        assert titlebar.minimumHeight() >= 46
+        assert window.application_menu_buttons.buttons()
+        assert [button.text() for button in window.application_menu_buttons.buttons()] == list(CONTROL_TAB_TITLES)
         preview_card = window.preview_label.parentWidget()
         assert preview_card.title() == ""
         assert preview_card.objectName() == "UntitledPreviewCard"
         assert preview_card.contentsMargins().top() == 0
         assert preview_card.layout().contentsMargins().top() <= 8
         top_level_titles = {widget.windowTitle() for widget in app.topLevelWidgets() if widget.isVisible()}
-        assert top_level_titles <= {"", WINDOW_TITLE}
+        assert top_level_titles <= {"", TITLEBAR_WINDOW_TITLE}
     finally:
         window.close()
         window.deleteLater()
