@@ -8,7 +8,7 @@ dpo4000-gui-qt
   -> dpo4000_utils.gui_qt.titlebar_tabs_window.QtScopeWindow
 ```
 
-The `testing-titlebar-tabs` branch uses an experimental frameless Qt window so the page buttons can share the same row as the window title. Build on the same operating system you want to distribute for:
+The main GUI now uses a frameless Qt window so the page buttons can share the same row as the window title. Build on the same operating system you want to distribute for:
 
 - build the Windows `.exe` on Windows
 - build the Linux executable on Linux
@@ -44,7 +44,7 @@ Linux:   dist/TektronixDPO4000
 From the repository root:
 
 ```powershell
-git checkout testing-titlebar-tabs
+git checkout main
 git pull
 py -3 -m venv .venv
 .\.venv\Scripts\Activate.ps1
@@ -83,7 +83,7 @@ python scripts\build_app.py --mode onedir --console
 From the repository root:
 
 ```bash
-git checkout testing-titlebar-tabs
+git checkout main
 git pull
 python3 -m venv .venv
 source .venv/bin/activate
@@ -142,6 +142,40 @@ Useful options:
 ```
 
 `--skip-install` is useful when your virtual environment already has the project and build dependencies installed. `--dry-run` prints the resolved PyInstaller command and output path without modifying the environment or running PyInstaller.
+
+## Release workflow
+
+The GitHub Actions workflow `.github/workflows/build-gui-executables.yml` can build one-file release assets and create a GitHub release.
+
+Expected release assets:
+
+```text
+TektronixDPO4000-windows.exe
+TektronixDPO4000-linux
+```
+
+Manual release from GitHub Actions:
+
+```text
+Actions -> Build GUI Executables -> Run workflow
+release_tag: v0.2.0
+prerelease: false
+```
+
+Command-line release by tag push:
+
+```bash
+git checkout main
+git pull
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+The workflow publishes the release body from:
+
+```text
+docs/releases/v0.2.0.md
+```
 
 ## Test before packaging
 
