@@ -8,13 +8,12 @@ The project provides:
 
 - a reusable Python driver/API distributed as `dpo4000-utils`
 - a stable Tkinter GUI through `dpo4000-gui`
-- the modern PySide6/Qt desktop app through `dpo4000-desk`
-- a compatibility PySide6 command through `dpo4000-gui-qt`
+- the modern desktop app through `dpo4000-desk`
 - build scripts and GitHub Actions for Windows/Linux DPO4000 Desk executables
 
 ## DPO4000 Desk desktop GUI
 
-![DPO4000 Desk PySide6 GUI](docs/assets/titlebar-gui.png)
+![DPO4000 Desk GUI](docs/assets/titlebar-gui.png)
 
 DPO4000 Desk uses a compact frameless titlebar layout with page buttons in the top row:
 
@@ -55,7 +54,7 @@ Core driver plus Tkinter GUI:
 python -m pip install -e .
 ```
 
-DPO4000 Desk / PySide6 GUI:
+DPO4000 Desk dependencies:
 
 ```bash
 python -m pip install -e .[pyside6]
@@ -81,12 +80,6 @@ DPO4000 Desk:
 
 ```bash
 dpo4000-desk
-```
-
-Compatibility command:
-
-```bash
-dpo4000-gui-qt
 ```
 
 Direct module launch:
@@ -200,7 +193,7 @@ python -m pip install -e .[dev]
 pytest -q
 ```
 
-PySide6 metadata/runtime smoke checks:
+DPO4000 Desk metadata/runtime smoke checks:
 
 ```bash
 python -m pip install -e .[dev,pyside6]
@@ -232,7 +225,7 @@ https://ami3go.github.io/Tektronix_DPO4000_utils/
 ```text
 dpo4000_utils/               package code
 dpo4000_utils/gui/           Tkinter GUI application
-dpo4000_utils/gui_qt/        DPO4000 Desk PySide6 GUI application
+dpo4000_utils/gui_qt/        DPO4000 Desk desktop application
 tektronix_utils.py           legacy compatibility import module
 examples/                    small usage examples
 scripts/                     helper scripts, including PyInstaller builds
