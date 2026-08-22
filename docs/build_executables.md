@@ -4,8 +4,6 @@ The current application package target is the DPO4000 Desk desktop GUI:
 
 ```text
 dpo4000-desk
-  -> dpo4000_utils.gui_qt.runner.main
-  -> dpo4000_utils.gui_qt.titlebar_tabs_window.QtScopeWindow
 ```
 
 DPO4000 Desk uses a frameless desktop window so the page buttons sit in the same row as the window title. The build scripts use PyInstaller and should be run on the same operating system as the artifact you want to distribute:
