@@ -37,6 +37,24 @@ def test_qt_titlebar_tabs_window_uses_frameless_custom_titlebar():
     assert "self.statusBar().setSizeGripEnabled(True)" in content
 
 
+def test_qt_titlebar_tabs_buttons_are_drag_surfaces_without_stealing_clicks():
+    content = Path("dpo4000_utils/gui_qt/titlebar_tabs_window.py").read_text(encoding="utf-8")
+
+    assert "TITLEBAR_DRAG_SURFACE_PROPERTY" in content
+    assert "TITLEBAR_DOUBLE_CLICK_SURFACE_PROPERTY" in content
+    assert "widget.installEventFilter(self)" in content
+    assert "def eventFilter" in content
+    assert "QApplication.startDragDistance()" in content
+    assert "self._install_titlebar_drag_handlers(button, allow_double_click=False)" in content
+    assert "simple clicks pass through" in content
+    assert "return False" in content
+    assert "return consumed" in content
+    assert "def _start_titlebar_window_move" in content
+    assert "startSystemMove" in content
+    assert "self.move(self._event_global_position(event) - self._titlebar_drag_position)" in content
+    assert "def _reset_titlebar_drag_state" in content
+
+
 def test_qt_preview_window_removes_reserved_title_band():
     content = Path("dpo4000_utils/gui_qt/preview_window.py").read_text(encoding="utf-8")
 
