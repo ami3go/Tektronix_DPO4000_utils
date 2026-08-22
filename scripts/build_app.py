@@ -24,6 +24,7 @@ ENTRY_FILE = ENTRY_DIR / "dpo4000_qt_entry.py"
 ICON_FILE = ROOT / "dpo4000_utils" / "gui" / "dpo_scope_icon.ico"
 TRUE_VALUES = {"1", "true", "yes", "on"}
 FALSE_VALUES = {"0", "false", "no", "off"}
+BUILD_MODES = ("onedir", "onefile")
 
 
 def _env_flag(name: str, *, default: bool) -> bool:
@@ -47,7 +48,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--mode",
-        choices=("onedir", "onefile"),
+        choices=BUILD_MODES,
         default=os.environ.get("BUILD_MODE", "onedir"),
         help=(
             "PyInstaller output mode. 'onedir' starts faster and is easier to debug; "
@@ -77,7 +78,10 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Print the resolved PyInstaller command and output path without running it.",
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    if not args.app_name.strip():
+        parser.error("--app-name cannot be empty")
+    return args
 
 
 def format_command(command: list[str]) -> str:
@@ -163,15 +167,28 @@ def pyinstaller_command(args: argparse.Namespace) -> list[str]:
     return command
 
 
-def output_hint(app_name: str, mode: str) -> str:
-    system = platform.system()
-    if system == "Windows":
+def output_path(app_name: str, mode: str) -> Path:
+    if platform.system() == "Windows":
         if mode == "onefile":
-            return f"dist\\{app_name}.exe"
-        return f"dist\\{app_name}\\{app_name}.exe"
+            return ROOT / "dist" / f"{app_name}.exe"
+        return ROOT / "dist" / app_name / f"{app_name}.exe"
     if mode == "onefile":
-        return f"dist/{app_name}"
-    return f"dist/{app_name}/{app_name}"
+        return ROOT / "dist" / app_name
+    return ROOT / "dist" / app_name / app_name
+
+
+def output_hint(app_name: str, mode: str) -> str:
+    return str(output_path(app_name, mode).relative_to(ROOT))
+
+
+def verify_output_exists(app_name: str, mode: str) -> None:
+    output = output_path(app_name, mode)
+    if not output.exists():
+        raise SystemExit(
+            f"PyInstaller finished but expected output was not found: {output.relative_to(ROOT)}"
+        )
+    if output.is_dir():
+        raise SystemExit(f"Expected executable path is a directory: {output.relative_to(ROOT)}")
 
 
 def main() -> int:
@@ -186,6 +203,8 @@ def main() -> int:
     run(command, dry_run=args.dry_run)
 
     output = output_hint(args.app_name, args.mode)
+    if not args.dry_run:
+        verify_output_exists(args.app_name, args.mode)
     print("\nBuild finished:" if not args.dry_run else "\nDry run output would be:", output)
     print("Target machine still needs a VISA runtime/backend for real instrument access.")
     print("Examples: NI-VISA, TekVISA, Keysight VISA, or a compatible pyvisa backend.")
