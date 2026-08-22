@@ -8,16 +8,23 @@ def test_project_version_is_v020_release():
     changelog = Path("CHANGELOG.md").read_text(encoding="utf-8")
     release_notes = Path("docs/releases/v0.2.0.md").read_text(encoding="utf-8")
 
+    assert 'name = "dpo4000-utils"' in project
     assert 'version = "0.2.0"' in project
+    assert 'dpo4000-desk = "dpo4000_utils.gui_qt.runner:main"' in project
+    assert 'dpo4000-gui-qt = "dpo4000_utils.gui_qt.runner:main"' in project
     assert "## v0.2.0 - 2026-08-22" in changelog
-    assert "# dpo4000-utils v0.2.0" in release_notes
-    assert "TektronixDPO4000-windows.exe" in release_notes
-    assert "TektronixDPO4000-linux" in release_notes
+    assert "DPO4000 Desk" in changelog
+    assert "# dpo4000-utils v0.2.0 / DPO4000 Desk" in release_notes
+    assert "DPO4000Desk-windows.exe" in release_notes
+    assert "DPO4000Desk-linux" in release_notes
 
 
 def test_shared_build_helper_targets_pyside6_titlebar_tabs_runner_entry():
     content = Path("scripts/build_app.py").read_text(encoding="utf-8")
 
+    assert "DPO4000 Desk PySide6 application" in content
+    assert "dpo4000-desk" in content
+    assert "DEFAULT_APP_NAME = \"DPO4000Desk\"" in content
     assert "dpo4000_utils.gui_qt.runner import main" in content
     assert "dpo4000_utils/gui_qt/runner.py" not in content
     assert "dpo4000_utils.gui_qt.titlebar_tabs_window" in content
@@ -77,7 +84,8 @@ def test_windows_and_linux_wrappers_call_shared_build_helper_safely():
     assert 'findstr /C:"--dry-run"' in windows
     assert "Dry run completed; no executable was created." in windows
     assert "BUILD_MODE must be onedir or onefile" in windows
-    assert "TektronixDPO4000" in windows
+    assert "DPO4000Desk" in windows
+    assert "TektronixDPO4000" not in windows
     assert "py -3 scripts\\build_app.py" not in windows
 
     assert 'PYTHON_BIN="${PYTHON:-python3}"' in linux
@@ -88,7 +96,8 @@ def test_windows_and_linux_wrappers_call_shared_build_helper_safely():
     assert "--dry-run" in linux
     assert "Dry run completed; no executable was created." in linux
     assert "BUILD_MODE must be onedir or onefile" in linux
-    assert "TektronixDPO4000" in linux
+    assert "DPO4000Desk" in linux
+    assert "TektronixDPO4000" not in linux
     assert "python3 scripts/build_app.py" not in linux
 
     assert "build_windows_exe.bat" in compat
@@ -97,6 +106,7 @@ def test_windows_and_linux_wrappers_call_shared_build_helper_safely():
 def test_gui_executable_workflow_builds_and_publishes_release_assets():
     workflow = Path(".github/workflows/build-gui-executables.yml").read_text(encoding="utf-8")
 
+    assert "Build DPO4000 Desk Executables" in workflow
     assert "workflow_dispatch:" in workflow
     assert "release_tag:" in workflow
     assert "push:" in workflow
@@ -104,26 +114,32 @@ def test_gui_executable_workflow_builds_and_publishes_release_assets():
     assert '"v*"' in workflow
     assert "permissions:" in workflow
     assert "contents: write" in workflow
-    assert "APP_NAME: TektronixDPO4000" in workflow
+    assert "APP_NAME: DPO4000Desk" in workflow
     assert "BUILD_MODE: onefile" in workflow
-    assert "dist\\TektronixDPO4000.exe" in workflow
-    assert "TektronixDPO4000-windows.exe" in workflow
-    assert "cp dist/TektronixDPO4000 release-assets/TektronixDPO4000-linux" in workflow
+    assert "dist\\DPO4000Desk.exe" in workflow
+    assert "DPO4000Desk-windows.exe" in workflow
+    assert "cp dist/DPO4000Desk release-assets/DPO4000Desk-linux" in workflow
     assert "softprops/action-gh-release@v2" in workflow
+    assert "name: DPO4000 Desk" in workflow
     assert "body_path: docs/releases/v0.2.0.md" in workflow
     assert "TektronixScopeGUI" not in workflow
+    assert "TektronixDPO4000" not in workflow
 
 
 def test_application_build_guide_documents_platform_commands_and_outputs():
     guide = Path("docs/build-application.md").read_text(encoding="utf-8")
 
+    assert "dpo4000-desk" in guide
     assert "dpo4000-gui-qt" in guide
     assert "titlebar_tabs_window.QtScopeWindow" in guide
     assert "scripts\\build_windows_exe.bat" in guide
     assert "scripts/build_linux_executable.sh" in guide
     assert "python scripts/build_app.py" in guide
     assert "--dry-run" in guide
-    assert "dist\\TektronixDPO4000\\TektronixDPO4000.exe" in guide
-    assert "dist/TektronixDPO4000/TektronixDPO4000" in guide
+    assert "dist\\DPO4000Desk\\DPO4000Desk.exe" in guide
+    assert "dist/DPO4000Desk/DPO4000Desk" in guide
     assert "BUILD_MODE=onefile" in guide
+    assert "DPO4000Desk-windows.exe" in guide
+    assert "DPO4000Desk-linux" in guide
     assert "VISA runtime" in guide
+    assert "TektronixDPO4000" not in guide
