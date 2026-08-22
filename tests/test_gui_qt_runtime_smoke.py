@@ -16,7 +16,7 @@ from dpo4000_utils.gui_qt.display_window import (  # noqa: E402
     DISPLAY_PAGE_INDEX,
     FILE_PAGE_INDEX,
 )
-from dpo4000_utils.gui_qt.measurement_window import QtScopeWindow  # noqa: E402
+from dpo4000_utils.gui_qt.preview_window import QtScopeWindow  # noqa: E402
 
 
 def _app():
@@ -37,7 +37,11 @@ def test_stable_qt_window_constructs_with_lazy_pages():
         assert sum(bool(value) for value in window._lazy_control_pages_built) == 1
         assert window.current_page_title.text() == "Connection"
         assert window.main_splitter.handleWidth() == 12
-        assert window.preview_label.parentWidget().title() == ""
+        preview_card = window.preview_label.parentWidget()
+        assert preview_card.title() == ""
+        assert preview_card.objectName() == "UntitledPreviewCard"
+        assert preview_card.contentsMargins().top() == 0
+        assert preview_card.layout().contentsMargins().top() <= 8
         top_level_titles = {widget.windowTitle() for widget in app.topLevelWidgets() if widget.isVisible()}
         assert top_level_titles <= {"", WINDOW_TITLE}
     finally:
