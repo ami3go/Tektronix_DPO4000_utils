@@ -47,6 +47,12 @@ MEASUREMENT_MANAGER_BUTTON_MIN_WIDTH = 150
 class QtScopeWindow(DisplayQtScopeWindow):
     """Stable launched Qt window with editable existing measurement management."""
 
+    def _build_preview_card(self) -> QGroupBox:
+        """Keep the left preview card untitled so the toolbar and image use the space."""
+        card = super()._build_preview_card()
+        card.setTitle("")
+        return card
+
     def _callback_requires_scope(self, callback) -> bool:
         """Gate measurement management actions behind the existing IDN safety check."""
         if getattr(callback, "__name__", "") in MEASUREMENT_MANAGEMENT_ACTIONS:
