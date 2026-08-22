@@ -1,6 +1,6 @@
 # Build DPO4000 Desk executables
 
-The current application package target is the PySide6 desktop GUI:
+The current application package target is the DPO4000 Desk desktop GUI:
 
 ```text
 dpo4000-desk
@@ -8,9 +8,7 @@ dpo4000-desk
   -> dpo4000_utils.gui_qt.titlebar_tabs_window.QtScopeWindow
 ```
 
-`dpo4000-gui-qt` remains available as a compatibility alias for the same application.
-
-DPO4000 Desk uses a frameless Qt window so the page buttons sit in the same row as the window title. The build scripts use PyInstaller and should be run on the same operating system as the artifact you want to distribute:
+DPO4000 Desk uses a frameless desktop window so the page buttons sit in the same row as the window title. The build scripts use PyInstaller and should be run on the same operating system as the artifact you want to distribute:
 
 - build Windows `.exe` artifacts on Windows
 - build Linux artifacts on Linux
@@ -21,7 +19,7 @@ The generated executable includes Python and collected Python packages, but it d
 
 ## Recommended output mode
 
-The default mode is `onedir` because it is more reliable for Qt applications and starts faster than `onefile`.
+The default mode is `onedir` because it starts faster and is easier to debug than `onefile`.
 
 Default application name:
 
@@ -168,18 +166,6 @@ Before packaging, test from source:
 
 ```bash
 dpo4000-desk
-```
-
-Compatibility command:
-
-```bash
-dpo4000-gui-qt
-```
-
-Run the Qt startup check:
-
-```bash
-python scripts/qt_startup_check.py
 ```
 
 Run packaging metadata tests:
