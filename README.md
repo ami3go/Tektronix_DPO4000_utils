@@ -82,12 +82,6 @@ DPO4000 Desk:
 dpo4000-desk
 ```
 
-Direct module launch:
-
-```bash
-python -m dpo4000_utils.gui_qt.runner
-```
-
 ## DPO4000 Desk first-run flow
 
 1. Start `dpo4000-desk`.
