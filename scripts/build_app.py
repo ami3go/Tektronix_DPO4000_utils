@@ -1,9 +1,9 @@
-"""Build the DPO4000 PySide6 application with PyInstaller.
+"""Build the DPO4000 Desk PySide6 application with PyInstaller.
 
 The script intentionally creates a tiny generated entry-point file instead of
 passing ``dpo4000_utils/gui_qt/runner.py`` directly to PyInstaller. That keeps
 package-relative imports working the same way they do when running the installed
-``dpo4000-gui-qt`` console script.
+``dpo4000-desk`` console script.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_APP_NAME = "TektronixDPO4000"
+DEFAULT_APP_NAME = "DPO4000Desk"
 ENTRY_DIR = ROOT / "build" / "pyinstaller_entry"
 ENTRY_FILE = ENTRY_DIR / "dpo4000_qt_entry.py"
 ICON_FILE = ROOT / "dpo4000_utils" / "gui" / "dpo_scope_icon.ico"
@@ -48,7 +48,7 @@ def _validate_app_name(parser: argparse.ArgumentParser, app_name: str) -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Build the DPO4000 PySide6 GUI package.")
+    parser = argparse.ArgumentParser(description="Build the DPO4000 Desk PySide6 GUI package.")
     parser.add_argument(
         "--app-name",
         default=os.environ.get("APP_NAME", DEFAULT_APP_NAME),
