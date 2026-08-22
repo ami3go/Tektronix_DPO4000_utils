@@ -3,16 +3,32 @@ from __future__ import annotations
 from pathlib import Path
 
 
-def test_qt_runner_uses_measurement_window():
+def test_qt_runner_uses_preview_window():
     runner = Path("dpo4000_utils/gui_qt/runner.py").read_text(encoding="utf-8")
     package_init = Path("dpo4000_utils/gui_qt/__init__.py").read_text(encoding="utf-8")
 
-    assert "from .measurement_window import QtScopeWindow" in runner
-    assert "from .measurement_window import QtScopeWindow" in package_init
+    assert "from .preview_window import QtScopeWindow" in runner
+    assert "from .preview_window import QtScopeWindow" in package_init
+    assert "from .measurement_window import QtScopeWindow" not in runner
     assert "from .display_window import QtScopeWindow" not in runner
     assert "from .main_window import QtScopeWindow" not in runner
     assert "from .ui_practice_window import QtScopeWindow" not in runner
     assert "from .acquisition_window import QtScopeWindow" not in runner
+
+
+def test_qt_preview_window_removes_reserved_title_band():
+    content = Path("dpo4000_utils/gui_qt/preview_window.py").read_text(encoding="utf-8")
+
+    assert "class QtScopeWindow(MeasurementQtScopeWindow)" in content
+    assert "UNTITLED_PREVIEW_CARD_QSS" in content
+    assert "UntitledPreviewCard" in content
+    assert "card.setTitle(\"\")" in content
+    assert "card.setContentsMargins(0, 0, 0, 0)" in content
+    assert "card.setStyleSheet(UNTITLED_PREVIEW_CARD_QSS)" in content
+    assert "layout.setContentsMargins(10, 8, 10, 10)" in content
+    assert "QGroupBox#UntitledPreviewCard::title" in content
+    assert "height: 0px;" in content
+    assert "margin-top: 0px;" in content
 
 
 def test_qt_stable_window_keeps_launch_contracts():
