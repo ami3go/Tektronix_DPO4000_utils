@@ -5,7 +5,7 @@ This guide builds the current PySide6 application entry point:
 ```text
 dpo4000-gui-qt
   -> dpo4000_utils.gui_qt.runner.main
-  -> dpo4000_utils.gui_qt.stable_window.QtScopeWindow
+  -> dpo4000_utils.gui_qt.display_window.QtScopeWindow
 ```
 
 The build scripts use PyInstaller. Build on the same operating system you want to distribute for:
