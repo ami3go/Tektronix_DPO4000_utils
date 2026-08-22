@@ -7,6 +7,11 @@ APP_NAME="${APP_NAME:-TektronixDPO4000}"
 BUILD_MODE="${BUILD_MODE:-onedir}"
 PYTHON_BIN="${PYTHON:-python3}"
 
+if [[ "$BUILD_MODE" != "onedir" && "$BUILD_MODE" != "onefile" ]]; then
+  echo "ERROR: BUILD_MODE must be onedir or onefile. Current value: ${BUILD_MODE}" >&2
+  exit 1
+fi
+
 echo "Building ${APP_NAME} for Linux using PySide6 UI..."
 echo "BUILD_MODE=${BUILD_MODE}"
 echo "PYTHON=${PYTHON_BIN}"
