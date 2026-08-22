@@ -11,12 +11,15 @@ def test_project_version_is_v020_release():
     assert 'name = "dpo4000-utils"' in project
     assert 'version = "0.2.0"' in project
     assert 'dpo4000-desk = "dpo4000_utils.gui_qt.runner:main"' in project
-    assert 'dpo4000-gui-qt = "dpo4000_utils.gui_qt.runner:main"' in project
+    assert "dpo4000-gui-qt" not in project
+    assert "\nqt = [" not in project
     assert "## v0.2.0 - 2026-08-22" in changelog
     assert "DPO4000 Desk" in changelog
+    assert "old desktop command alias was removed" in changelog
     assert "# dpo4000-utils v0.2.0 / DPO4000 Desk" in release_notes
     assert "DPO4000Desk-windows.exe" in release_notes
     assert "DPO4000Desk-linux" in release_notes
+    assert "dpo4000-gui-qt" not in release_notes
 
 
 def test_shared_build_helper_targets_pyside6_titlebar_tabs_runner_entry():
@@ -119,6 +122,7 @@ def test_gui_executable_workflow_builds_and_publishes_release_assets():
     assert "dist\\DPO4000Desk.exe" in workflow
     assert "DPO4000Desk-windows.exe" in workflow
     assert "cp dist/DPO4000Desk release-assets/DPO4000Desk-linux" in workflow
+    assert "Install Linux GUI runtime dependencies" in workflow
     assert "softprops/action-gh-release@v2" in workflow
     assert "name: DPO4000 Desk" in workflow
     assert "body_path: docs/releases/v0.2.0.md" in workflow
@@ -130,7 +134,7 @@ def test_application_build_guide_documents_platform_commands_and_outputs():
     guide = Path("docs/build-application.md").read_text(encoding="utf-8")
 
     assert "dpo4000-desk" in guide
-    assert "dpo4000-gui-qt" in guide
+    assert "dpo4000-gui-qt" not in guide
     assert "titlebar_tabs_window.QtScopeWindow" in guide
     assert "scripts\\build_windows_exe.bat" in guide
     assert "scripts/build_linux_executable.sh" in guide
