@@ -3,12 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 
 
-def test_qt_runner_uses_display_window():
+def test_qt_runner_uses_measurement_window():
     runner = Path("dpo4000_utils/gui_qt/runner.py").read_text(encoding="utf-8")
     package_init = Path("dpo4000_utils/gui_qt/__init__.py").read_text(encoding="utf-8")
 
-    assert "from .display_window import QtScopeWindow" in runner
-    assert "from .display_window import QtScopeWindow" in package_init
+    assert "from .measurement_window import QtScopeWindow" in runner
+    assert "from .measurement_window import QtScopeWindow" in package_init
+    assert "from .display_window import QtScopeWindow" not in runner
     assert "from .main_window import QtScopeWindow" not in runner
     assert "from .ui_practice_window import QtScopeWindow" not in runner
     assert "from .acquisition_window import QtScopeWindow" not in runner
@@ -90,6 +91,51 @@ def test_qt_display_actions_are_idn_gated():
 
     assert "def _callback_requires_scope" in content
     assert "DISPLAY_SCOPE_ACTIONS" in content
+    assert "return True" in content
+    assert "super()._callback_requires_scope(callback)" in content
+
+
+def test_qt_measurement_window_adds_existing_measurement_manager():
+    content = Path("dpo4000_utils/gui_qt/measurement_window.py").read_text(encoding="utf-8")
+
+    assert "class QtScopeWindow(DisplayQtScopeWindow)" in content
+    assert "MEASUREMENT_MANAGEMENT_ACTIONS" in content
+    assert "MEASUREMENT_SETUP_QUERIES" in content
+    assert "MEASUREMENT_TABLE_HEADERS" in content
+    assert "Existing scope measurements" in content
+    assert "ExistingMeasurementsTable" in content
+    assert "Read configured" in content
+    assert "Load selected" in content
+    assert "Apply edit" in content
+    assert "Read value" in content
+    assert "Delete selected" in content
+    assert "def read_existing_measurements" in content
+    assert "def load_selected_measurement_for_edit" in content
+    assert "def apply_selected_measurement_edit" in content
+    assert "def delete_selected_measurement" in content
+    assert "def read_selected_measurement_value" in content
+
+
+def test_qt_measurement_manager_reads_and_edits_meas_scpi_slots():
+    content = Path("dpo4000_utils/gui_qt/measurement_window.py").read_text(encoding="utf-8")
+
+    assert "MEASUREMENT:MEAS{slot}:STATE?" in content
+    assert "MEASUREMENT:MEAS{slot}:TYPE?" in content
+    assert "MEASUREMENT:MEAS{slot}:SOURCE1?" in content
+    assert "MEASUREMENT:MEAS{slot}:SOURCE2?" in content
+    assert "MEASUREMENT:MEAS{slot}:VALUE?" in content
+    assert "scope.add_measurement(config)" in content
+    assert "scope.disable_measurement(slot)" in content
+    assert "scope.read_measurement_value(slot)" in content
+    assert "_set_measurement_editor" in content
+    assert "_selected_measurement_config_for_slot" in content
+
+
+def test_qt_measurement_management_actions_are_idn_gated():
+    content = Path("dpo4000_utils/gui_qt/measurement_window.py").read_text(encoding="utf-8")
+
+    assert "def _callback_requires_scope" in content
+    assert "MEASUREMENT_MANAGEMENT_ACTIONS" in content
     assert "return True" in content
     assert "super()._callback_requires_scope(callback)" in content
 
