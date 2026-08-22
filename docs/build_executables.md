@@ -5,10 +5,10 @@ The current application package target is the PySide6 GUI:
 ```text
 dpo4000-gui-qt
   -> dpo4000_utils.gui_qt.runner.main
-  -> dpo4000_utils.gui_qt.preview_window.QtScopeWindow
+  -> dpo4000_utils.gui_qt.titlebar_tabs_window.QtScopeWindow
 ```
 
-The build scripts use PyInstaller and should be run on the same operating system as the artifact you want to distribute:
+This branch uses an experimental frameless Qt window so the page buttons can sit in the same row as the window title. The build scripts use PyInstaller and should be run on the same operating system as the artifact you want to distribute:
 
 - build Windows `.exe` artifacts on Windows
 - build Linux artifacts on Linux
@@ -164,3 +164,5 @@ scripts/build_linux_executable.sh
 ```
 
 Hardware is not required for packaging. VISA runtime is needed only when the generated app is used with a real oscilloscope.
+
+The frameless title bar is experimental. Verify drag, double-click maximize, close/minimize/maximize controls, and resize behavior on the target desktop before merging this branch.
