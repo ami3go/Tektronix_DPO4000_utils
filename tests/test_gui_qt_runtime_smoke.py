@@ -10,11 +10,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 QtWidgets = pytest.importorskip("PySide6.QtWidgets")
 
-from dpo4000_utils.gui_qt.stable_window import (  # noqa: E402
-    CONTROL_PAGE_BUILDERS,
-    WINDOW_TITLE,
-    QtScopeWindow,
-)
+from dpo4000_utils.gui_qt.collapsible_window import CONTROL_PAGE_BUILDERS, WINDOW_TITLE  # noqa: E402
+from dpo4000_utils.gui_qt.display_window import QtScopeWindow  # noqa: E402
 
 
 def _app():
@@ -52,6 +49,22 @@ def test_stable_qt_lazy_page_builds_on_selection():
         assert window.current_page_title.text() == "Acquisition"
         assert hasattr(window, "acquisition_mode")
         assert hasattr(window, "acquisition_record_length")
+    finally:
+        window.close()
+        window.deleteLater()
+        app.processEvents()
+
+
+def test_display_settings_card_is_added_to_settings_page():
+    app = _app()
+    window = QtScopeWindow()
+    try:
+        window._select_drawer_page(5)
+        assert window._lazy_control_pages_built[5] is True
+        assert hasattr(window, "display_backlight")
+        assert hasattr(window, "display_persistence")
+        assert hasattr(window, "display_message_text")
+        assert hasattr(window, "display_message_state")
     finally:
         window.close()
         window.deleteLater()
