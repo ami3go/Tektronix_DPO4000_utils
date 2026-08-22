@@ -25,6 +25,7 @@ ICON_FILE = ROOT / "dpo4000_utils" / "gui" / "dpo_scope_icon.ico"
 TRUE_VALUES = {"1", "true", "yes", "on"}
 FALSE_VALUES = {"0", "false", "no", "off"}
 BUILD_MODES = ("onedir", "onefile")
+UNSAFE_APP_NAME_CHARS = {"/", "\\", ":"}
 
 
 def _env_flag(name: str, *, default: bool) -> bool:
@@ -37,6 +38,13 @@ def _env_flag(name: str, *, default: bool) -> bool:
     if normalised in FALSE_VALUES:
         return False
     return default
+
+
+def _validate_app_name(parser: argparse.ArgumentParser, app_name: str) -> None:
+    if not app_name.strip():
+        parser.error("--app-name cannot be empty")
+    if any(character in app_name for character in UNSAFE_APP_NAME_CHARS):
+        parser.error("--app-name cannot contain path separators or drive separators")
 
 
 def parse_args() -> argparse.Namespace:
@@ -79,8 +87,7 @@ def parse_args() -> argparse.Namespace:
         help="Print the resolved PyInstaller command and output path without running it.",
     )
     args = parser.parse_args()
-    if not args.app_name.strip():
-        parser.error("--app-name cannot be empty")
+    _validate_app_name(parser, args.app_name)
     return args
 
 
