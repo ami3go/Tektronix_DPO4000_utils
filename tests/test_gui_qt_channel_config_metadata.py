@@ -3,17 +3,38 @@ from __future__ import annotations
 from pathlib import Path
 
 
-def test_qt_runner_uses_preview_window():
+def test_qt_runner_uses_titlebar_tabs_window():
     runner = Path("dpo4000_utils/gui_qt/runner.py").read_text(encoding="utf-8")
     package_init = Path("dpo4000_utils/gui_qt/__init__.py").read_text(encoding="utf-8")
 
-    assert "from .preview_window import QtScopeWindow" in runner
-    assert "from .preview_window import QtScopeWindow" in package_init
+    assert "from .titlebar_tabs_window import QtScopeWindow" in runner
+    assert "from .titlebar_tabs_window import QtScopeWindow" in package_init
+    assert "from .preview_window import QtScopeWindow" not in runner
     assert "from .measurement_window import QtScopeWindow" not in runner
     assert "from .display_window import QtScopeWindow" not in runner
     assert "from .main_window import QtScopeWindow" not in runner
     assert "from .ui_practice_window import QtScopeWindow" not in runner
     assert "from .acquisition_window import QtScopeWindow" not in runner
+
+
+def test_qt_titlebar_tabs_window_uses_frameless_custom_titlebar():
+    content = Path("dpo4000_utils/gui_qt/titlebar_tabs_window.py").read_text(encoding="utf-8")
+
+    assert "class QtScopeWindow(PreviewQtScopeWindow)" in content
+    assert "TITLEBAR_WINDOW_TITLE" in content
+    assert "TITLEBAR_TABS_QSS" in content
+    assert "Qt.WindowType.FramelessWindowHint" in content
+    assert "TitlebarTabsBar" in content
+    assert "TitlebarWindowTitle" in content
+    assert "TitlebarTabButton" in content
+    assert "TitlebarWindowButton" in content
+    assert "TitlebarCloseButton" in content
+    assert "def _build_titlebar_tabs_bar" in content
+    assert "for index, title_text in enumerate(CONTROL_TAB_TITLES)" in content
+    assert "self.application_menu_buttons.addButton(button, index)" in content
+    assert "self._install_titlebar_drag_handlers" in content
+    assert "def _toggle_maximized" in content
+    assert "self.statusBar().setSizeGripEnabled(True)" in content
 
 
 def test_qt_preview_window_removes_reserved_title_band():
