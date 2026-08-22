@@ -4,10 +4,8 @@
 
 ### Added
 
-- **DPO4000 Desk** name for the PySide6 desktop application.
-- `dpo4000-desk` console command as the primary Qt desktop application launcher.
-- `dpo4000-gui-qt` retained as a compatibility launcher for the same Qt application.
-- PySide6 GUI launch path promoted to the main desktop application flow.
+- **DPO4000 Desk** name for the desktop application.
+- `dpo4000-desk` console command as the primary desktop application launcher.
 - Modern frameless titlebar with page buttons in the title row.
 - Draggable titlebar tabs with fallback manual move handling.
 - Dedicated **File** and **Display** top-level pages.
@@ -19,7 +17,7 @@
   - read selected measurement value
   - delete/disable selected measurement
 - Larger measurement-manager action buttons for better usability.
-- Runtime Qt smoke tests for the launched UI path.
+- Runtime desktop smoke tests for the launched UI path.
 - Shared PyInstaller build helper plus Windows and Linux wrapper scripts.
 - Release-capable GitHub Actions workflow for Windows/Linux executable assets.
 
@@ -32,6 +30,7 @@
 - Build target now resolves through `dpo4000_utils.gui_qt.titlebar_tabs_window.QtScopeWindow`.
 - Default packaged executable name changed to `DPO4000Desk`.
 - Release asset names changed to `DPO4000Desk-windows.exe` and `DPO4000Desk-linux`.
+- The old desktop command alias was removed; use `dpo4000-desk`.
 
 ### Notes
 
