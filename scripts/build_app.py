@@ -163,6 +163,8 @@ def pyinstaller_command(args: argparse.Namespace) -> list[str]:
             "--hidden-import",
             "dpo4000_utils.gui_qt.runner",
             "--hidden-import",
+            "dpo4000_utils.gui_qt.measurement_window",
+            "--hidden-import",
             "dpo4000_utils.gui_qt.display_window",
             "--hidden-import",
             "dpo4000_utils.gui_qt.stable_window",
