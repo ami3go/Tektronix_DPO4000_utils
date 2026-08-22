@@ -3,11 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 
 
-def test_shared_build_helper_targets_pyside6_preview_runner_entry():
+def test_shared_build_helper_targets_pyside6_titlebar_tabs_runner_entry():
     content = Path("scripts/build_app.py").read_text(encoding="utf-8")
 
     assert "dpo4000_utils.gui_qt.runner import main" in content
     assert "dpo4000_utils/gui_qt/runner.py" not in content
+    assert "dpo4000_utils.gui_qt.titlebar_tabs_window" in content
     assert "dpo4000_utils.gui_qt.preview_window" in content
     assert "dpo4000_utils.gui_qt.measurement_window" in content
     assert "dpo4000_utils.gui_qt.display_window" in content
@@ -85,7 +86,7 @@ def test_application_build_guide_documents_platform_commands_and_outputs():
     guide = Path("docs/build-application.md").read_text(encoding="utf-8")
 
     assert "dpo4000-gui-qt" in guide
-    assert "preview_window.QtScopeWindow" in guide
+    assert "titlebar_tabs_window.QtScopeWindow" in guide
     assert "scripts\\build_windows_exe.bat" in guide
     assert "scripts/build_linux_executable.sh" in guide
     assert "python scripts/build_app.py" in guide
