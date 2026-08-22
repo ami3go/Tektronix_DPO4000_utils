@@ -37,6 +37,7 @@ def test_stable_qt_window_constructs_with_lazy_pages():
         assert sum(bool(value) for value in window._lazy_control_pages_built) == 1
         assert window.current_page_title.text() == "Connection"
         assert window.main_splitter.handleWidth() == 12
+        assert window.preview_label.parentWidget().title() == ""
         top_level_titles = {widget.windowTitle() for widget in app.topLevelWidgets() if widget.isVisible()}
         assert top_level_titles <= {"", WINDOW_TITLE}
     finally:
