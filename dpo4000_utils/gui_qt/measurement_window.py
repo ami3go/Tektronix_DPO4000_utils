@@ -3,7 +3,8 @@
 Adds a practical MEAS1..MEAS8 manager to the Measurement page.  The manager can
 read the currently configured scope measurements, load an existing slot into the
 normal editor, apply edits back to that slot, read its value, or disable/delete
-that slot.
+that slot.  Destructive/edit actions are locked behind an explicit pencil edit
+mode to prevent accidental measurement changes.
 """
 
 from __future__ import annotations
@@ -15,10 +16,12 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QGridLayout,
     QGroupBox,
+    QHBoxLayout,
     QLabel,
     QSizePolicy,
     QTableWidget,
     QTableWidgetItem,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -42,6 +45,9 @@ MEASUREMENT_SETUP_QUERIES = {
 MEASUREMENT_TABLE_HEADERS = ("Slot", "State", "Type", "Source 1", "Source 2", "Value")
 MEASUREMENT_MANAGER_BUTTON_MIN_HEIGHT = 38
 MEASUREMENT_MANAGER_BUTTON_MIN_WIDTH = 150
+MEASUREMENT_EDIT_MODE_ICON = "✎"
+MEASUREMENT_EDIT_MODE_LOCKED_TEXT = "Editing locked"
+MEASUREMENT_EDIT_MODE_ENABLED_TEXT = "Editing enabled"
 
 
 class QtScopeWindow(DisplayQtScopeWindow):
@@ -72,9 +78,13 @@ class QtScopeWindow(DisplayQtScopeWindow):
         layout = QVBoxLayout(card)
         layout.setSpacing(10)
 
+        self._measurement_edit_mode_enabled = False
+        layout.addWidget(self._build_measurement_edit_mode_header())
+
         hint = QLabel(
-            "Read MEAS1..MEAS8 from the scope, select a row, then load/edit/delete that slot. "
-            "Edits use the normal Measurement editor below."
+            "Read MEAS1..MEAS8 from the scope, select a row, then load that slot into the "
+            "normal Measurement editor below. Turn on pencil Edit mode before applying edits "
+            "or deleting a measurement."
         )
         hint.setObjectName("MutedLabel")
         hint.setWordWrap(True)
@@ -96,7 +106,36 @@ class QtScopeWindow(DisplayQtScopeWindow):
         self._reset_existing_measurements_table()
 
         layout.addWidget(self._build_existing_measurements_actions())
+        self._set_measurement_edit_mode(False, announce=False)
         return self._prepare_drawer_card(card)
+
+    def _build_measurement_edit_mode_header(self) -> QWidget:
+        """Build the top-right guarded edit-mode toggle for destructive actions."""
+        header = QWidget()
+        header.setObjectName("MeasurementEditModeHeader")
+        layout = QHBoxLayout(header)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+
+        self.measurement_edit_mode_state = QLabel(MEASUREMENT_EDIT_MODE_LOCKED_TEXT)
+        self.measurement_edit_mode_state.setObjectName("MeasurementEditModeState")
+        self.measurement_edit_mode_state.setToolTip(
+            "Apply edit and Delete selected are disabled until edit mode is enabled."
+        )
+        layout.addWidget(self.measurement_edit_mode_state)
+        layout.addStretch(1)
+
+        self.measurement_edit_mode_button = QToolButton()
+        self.measurement_edit_mode_button.setObjectName("MeasurementEditModeButton")
+        self.measurement_edit_mode_button.setText(f"{MEASUREMENT_EDIT_MODE_ICON} Edit")
+        self.measurement_edit_mode_button.setCheckable(True)
+        self.measurement_edit_mode_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        self.measurement_edit_mode_button.setToolTip(
+            "Enable Apply edit and Delete selected for the selected MEAS slot."
+        )
+        self.measurement_edit_mode_button.clicked.connect(self.toggle_measurement_edit_mode)
+        layout.addWidget(self.measurement_edit_mode_button, 0, Qt.AlignmentFlag.AlignRight)
+        return header
 
     def _build_existing_measurements_actions(self) -> QWidget:
         """Build large action buttons that remain usable in the narrow right panel."""
@@ -107,12 +146,33 @@ class QtScopeWindow(DisplayQtScopeWindow):
         grid.setHorizontalSpacing(8)
         grid.setVerticalSpacing(8)
 
+        self.read_existing_measurements_button = self._button(
+            "Read configured",
+            self.read_existing_measurements,
+        )
+        self.load_selected_measurement_button = self._button(
+            "Load selected",
+            self.load_selected_measurement_for_edit,
+        )
+        self.apply_measurement_edit_button = self._accent_button(
+            "Apply edit",
+            self.apply_selected_measurement_edit,
+        )
+        self.read_selected_measurement_value_button = self._button(
+            "Read value",
+            self.read_selected_measurement_value,
+        )
+        self.delete_measurement_button = self._button(
+            "Delete selected",
+            self.delete_selected_measurement,
+        )
+
         button_specs = (
-            (self._button("Read configured", self.read_existing_measurements), 0, 0, 1, 1),
-            (self._button("Load selected", self.load_selected_measurement_for_edit), 0, 1, 1, 1),
-            (self._accent_button("Apply edit", self.apply_selected_measurement_edit), 1, 0, 1, 1),
-            (self._button("Read value", self.read_selected_measurement_value), 1, 1, 1, 1),
-            (self._button("Delete selected", self.delete_selected_measurement), 2, 0, 1, 2),
+            (self.read_existing_measurements_button, 0, 0, 1, 1),
+            (self.load_selected_measurement_button, 0, 1, 1, 1),
+            (self.apply_measurement_edit_button, 1, 0, 1, 1),
+            (self.read_selected_measurement_value_button, 1, 1, 1, 1),
+            (self.delete_measurement_button, 2, 0, 1, 2),
         )
         for button, row, column, row_span, column_span in button_specs:
             button.setMinimumHeight(MEASUREMENT_MANAGER_BUTTON_MIN_HEIGHT)
@@ -120,6 +180,64 @@ class QtScopeWindow(DisplayQtScopeWindow):
             button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             grid.addWidget(button, row, column, row_span, column_span)
         return actions
+
+    def toggle_measurement_edit_mode(self, checked: bool) -> None:
+        """Toggle the guarded edit/delete action state from the pencil button."""
+        self._set_measurement_edit_mode(bool(checked))
+
+    def _set_measurement_edit_mode(self, enabled: bool, *, announce: bool = True) -> None:
+        """Enable or lock edit/delete buttons without changing safe read/load actions."""
+        self._measurement_edit_mode_enabled = bool(enabled)
+        button = getattr(self, "measurement_edit_mode_button", None)
+        if button is not None:
+            button.setChecked(self._measurement_edit_mode_enabled)
+            button.setText(
+                f"{MEASUREMENT_EDIT_MODE_ICON} Edit on"
+                if self._measurement_edit_mode_enabled
+                else f"{MEASUREMENT_EDIT_MODE_ICON} Edit"
+            )
+            button.setToolTip(
+                "Lock Apply edit and Delete selected."
+                if self._measurement_edit_mode_enabled
+                else "Enable Apply edit and Delete selected for the selected MEAS slot."
+            )
+
+        state = getattr(self, "measurement_edit_mode_state", None)
+        if state is not None:
+            state.setText(
+                MEASUREMENT_EDIT_MODE_ENABLED_TEXT
+                if self._measurement_edit_mode_enabled
+                else MEASUREMENT_EDIT_MODE_LOCKED_TEXT
+            )
+
+        for guarded_button_name in ("apply_measurement_edit_button", "delete_measurement_button"):
+            guarded_button = getattr(self, guarded_button_name, None)
+            if guarded_button is not None:
+                guarded_button.setEnabled(self._measurement_edit_mode_enabled)
+                guarded_button.setToolTip(
+                    "Enabled by pencil Edit mode."
+                    if self._measurement_edit_mode_enabled
+                    else "Turn on pencil Edit mode first."
+                )
+
+        if announce:
+            message = (
+                "Measurement edit mode enabled"
+                if self._measurement_edit_mode_enabled
+                else "Measurement edit mode locked"
+            )
+            self.statusBar().showMessage(message)
+
+    def _measurement_edit_mode_is_enabled(self) -> bool:
+        return bool(getattr(self, "_measurement_edit_mode_enabled", False))
+
+    def _guard_measurement_edit_mode(self) -> bool:
+        if self._measurement_edit_mode_is_enabled():
+            return True
+        self.statusBar().showMessage(
+            "Turn on pencil Edit mode before applying edits or deleting measurements"
+        )
+        return False
 
     def _reset_existing_measurements_table(self) -> None:
         for row, slot in enumerate(MEASUREMENT_SLOTS):
@@ -249,6 +367,8 @@ class QtScopeWindow(DisplayQtScopeWindow):
         self.statusBar().showMessage(f"Loaded MEAS{slot} into editor")
 
     def apply_selected_measurement_edit(self) -> None:
+        if not self._guard_measurement_edit_mode():
+            return
         slot = self._selected_existing_measurement_slot()
         config = self._selected_measurement_config_for_slot(slot)
 
@@ -278,6 +398,8 @@ class QtScopeWindow(DisplayQtScopeWindow):
             )
 
     def delete_selected_measurement(self) -> None:
+        if not self._guard_measurement_edit_mode():
+            return
         slot = self._selected_existing_measurement_slot()
         result = self._run_action(f"Deleting MEAS{slot}", lambda scope: scope.disable_measurement(slot))
         if result is not None or self._connection_ok:
@@ -304,6 +426,9 @@ class QtScopeWindow(DisplayQtScopeWindow):
 
 
 __all__ = [
+    "MEASUREMENT_EDIT_MODE_ENABLED_TEXT",
+    "MEASUREMENT_EDIT_MODE_ICON",
+    "MEASUREMENT_EDIT_MODE_LOCKED_TEXT",
     "MEASUREMENT_MANAGEMENT_ACTIONS",
     "MEASUREMENT_MANAGER_BUTTON_MIN_HEIGHT",
     "MEASUREMENT_MANAGER_BUTTON_MIN_WIDTH",
