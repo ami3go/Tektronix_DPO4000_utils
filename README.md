@@ -1,19 +1,22 @@
-# Tektronix DPO4000 Utilities
+# dpo4000-utils and DPO4000 Desk
 
-Python utilities and desktop GUIs for Tektronix DPO4000-family oscilloscopes, developed around the DPO4054.
+`dpo4000-utils` is a Python driver and automation toolkit for Tektronix DPO4000-family oscilloscopes, developed around the DPO4054.
+
+**DPO4000 Desk** is the desktop GUI application built on top of `dpo4000-utils` for bench operation, screenshot capture, waveform export, measurement management, trigger control, and display setup.
 
 The project provides:
 
-- a reusable Python driver/API
+- a reusable Python driver/API distributed as `dpo4000-utils`
 - a stable Tkinter GUI through `dpo4000-gui`
-- a modern PySide6/Qt GUI through `dpo4000-gui-qt`
-- build scripts and GitHub Actions for Windows/Linux GUI executables
+- the modern PySide6/Qt desktop app through `dpo4000-desk`
+- a compatibility PySide6 command through `dpo4000-gui-qt`
+- build scripts and GitHub Actions for Windows/Linux DPO4000 Desk executables
 
-## PySide6 GUI
+## DPO4000 Desk desktop GUI
 
-![Tektronix DPO4000 PySide6 GUI](docs/assets/titlebar-gui.png)
+![DPO4000 Desk PySide6 GUI](docs/assets/titlebar-gui.png)
 
-The current PySide6 GUI uses a compact frameless titlebar layout with page buttons in the top row:
+DPO4000 Desk uses a compact frameless titlebar layout with page buttons in the top row:
 
 ```text
 Connection | Channels | Measurement | Trigger | Acquisition | File | Display | Log
@@ -30,7 +33,7 @@ Common front-panel style actions are available from the preview toolbar, includi
 - Export enabled channel waveforms to CSV.
 - Save and restore oscilloscope setup strings through SCPI.
 - Read/write CH1..CH4 labels.
-- Configure channel and MATH settings from the PySide6 GUI.
+- Configure channel and MATH settings from DPO4000 Desk.
 - Add, read, edit, and clear `MEAS1..MEAS8` measurement slots.
 - Guarded measurement edit/delete mode to reduce accidental measurement deletion.
 - Read/set trigger level and configure common edge-trigger options.
@@ -52,7 +55,7 @@ Core driver plus Tkinter GUI:
 python -m pip install -e .
 ```
 
-PySide6 GUI:
+DPO4000 Desk / PySide6 GUI:
 
 ```bash
 python -m pip install -e .[pyside6]
@@ -74,7 +77,13 @@ Tkinter GUI:
 dpo4000-gui
 ```
 
-PySide6 GUI:
+DPO4000 Desk:
+
+```bash
+dpo4000-desk
+```
+
+Compatibility command:
 
 ```bash
 dpo4000-gui-qt
@@ -86,9 +95,9 @@ Direct module launch:
 python -m dpo4000_utils.gui_qt.runner
 ```
 
-## PySide6 first-run flow
+## DPO4000 Desk first-run flow
 
-1. Start `dpo4000-gui-qt`.
+1. Start `dpo4000-desk`.
 2. Select **USB/VISA** or **Ethernet**.
 3. Click **IDN** or **Retry** first.
 4. After a successful `*IDN?`, protected scope actions unlock.
@@ -106,7 +115,7 @@ F6              Run acquisition
 F7              Stop acquisition
 F8              Single acquisition
 Ctrl+L          Focus VISA resource field
-Ctrl+1..8       Switch PySide6 pages
+Ctrl+1..8       Switch DPO4000 Desk pages
 ```
 
 ## Python API example
@@ -141,7 +150,7 @@ scope.force_trigger_event()
 
 Legacy imports using `from tektronix_utils import DPO4054` remain supported.
 
-## Build executables
+## Build DPO4000 Desk executables
 
 Windows `.exe`:
 
@@ -159,8 +168,8 @@ chmod +x scripts/build_linux_executable.sh
 Default outputs:
 
 ```text
-Windows: dist\TektronixDPO4000\TektronixDPO4000.exe
-Linux:   dist/TektronixDPO4000/TektronixDPO4000
+Windows: dist\DPO4000Desk\DPO4000Desk.exe
+Linux:   dist/DPO4000Desk/DPO4000Desk
 ```
 
 One-file builds:
@@ -223,7 +232,7 @@ https://ami3go.github.io/Tektronix_DPO4000_utils/
 ```text
 dpo4000_utils/               package code
 dpo4000_utils/gui/           Tkinter GUI application
-dpo4000_utils/gui_qt/        PySide6 GUI application
+dpo4000_utils/gui_qt/        DPO4000 Desk PySide6 GUI application
 tektronix_utils.py           legacy compatibility import module
 examples/                    small usage examples
 scripts/                     helper scripts, including PyInstaller builds
