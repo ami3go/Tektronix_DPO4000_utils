@@ -18,6 +18,13 @@ if errorlevel 1 (
 python scripts\build_app.py --mode "%BUILD_MODE%" --app-name "%APP_NAME%" %*
 if errorlevel 1 exit /b 1
 
+echo %* | findstr /C:"--dry-run" >nul
+if not errorlevel 1 (
+  echo Dry run completed; no executable was created.
+  endlocal
+  exit /b 0
+)
+
 echo.
 if /i "%BUILD_MODE%"=="onefile" (
   echo Build finished: dist\%APP_NAME%.exe
