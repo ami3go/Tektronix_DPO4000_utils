@@ -4,14 +4,14 @@ setlocal enableextensions
 cd /d "%~dp0\.."
 
 if not defined BUILD_MODE set "BUILD_MODE=onedir"
-if not defined APP_NAME set "APP_NAME=TektronixDPO4000"
+if not defined APP_NAME set "APP_NAME=DPO4000Desk"
 
 if /i not "%BUILD_MODE%"=="onedir" if /i not "%BUILD_MODE%"=="onefile" (
   echo ERROR: BUILD_MODE must be onedir or onefile. Current value: %BUILD_MODE%
   exit /b 1
 )
 
-echo Building %APP_NAME% for Windows using PySide6 UI...
+echo Building %APP_NAME% for Windows using DPO4000 Desk PySide6 UI...
 echo BUILD_MODE=%BUILD_MODE%
 
 python --version >nul 2>nul
