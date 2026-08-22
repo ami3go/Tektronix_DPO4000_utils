@@ -41,6 +41,8 @@ def test_windows_and_linux_wrappers_call_shared_build_helper_safely():
     assert '--app-name "%APP_NAME%"' in windows
     assert "%*" in windows
     assert "python --version" in windows
+    assert 'findstr /C:"--dry-run"' in windows
+    assert "Dry run completed; no executable was created." in windows
     assert "TektronixDPO4000" in windows
     assert "py -3 scripts\\build_app.py" not in windows
 
@@ -50,6 +52,7 @@ def test_windows_and_linux_wrappers_call_shared_build_helper_safely():
     assert '--app-name "$APP_NAME"' in linux
     assert '"$@"' in linux
     assert "--dry-run" in linux
+    assert "Dry run completed; no executable was created." in linux
     assert "TektronixDPO4000" in linux
     assert "python3 scripts/build_app.py" not in linux
 
