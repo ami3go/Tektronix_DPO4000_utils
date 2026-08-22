@@ -12,7 +12,7 @@ __all__ = ["QtScopeWindow"]
 def __getattr__(name: str):
     """Load Qt classes lazily so importing the package does not require PySide6."""
     if name == "QtScopeWindow":
-        from .display_window import QtScopeWindow
+        from .measurement_window import QtScopeWindow
 
         return QtScopeWindow
     raise AttributeError(name)
