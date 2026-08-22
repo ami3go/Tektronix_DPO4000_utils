@@ -1,6 +1,6 @@
-"""Experimental PySide6 window with page buttons in a custom title bar.
+"""DPO4000 Desk PySide6 window with page buttons in a custom title bar.
 
-This branch intentionally uses a frameless Qt window so the application page
+The desktop application uses a frameless Qt window so the application page
 buttons can live in the same top row as the window title.  It keeps native OS
 window decoration out of the way, but provides basic drag, double-click maximize,
 minimize, maximize/restore, close, and status-bar size-grip behavior.
@@ -31,7 +31,7 @@ from .acquisition_window import (
 from .display_window import CONTROL_TAB_TITLES
 from .preview_window import QtScopeWindow as PreviewQtScopeWindow
 
-TITLEBAR_WINDOW_TITLE = "Tektronix dpo4000"
+TITLEBAR_WINDOW_TITLE = "DPO4000 Desk"
 TITLEBAR_DRAG_SURFACE_PROPERTY = "titlebarDragSurface"
 TITLEBAR_DOUBLE_CLICK_SURFACE_PROPERTY = "titlebarDoubleClickSurface"
 TITLEBAR_TABS_QSS = """
@@ -95,7 +95,7 @@ QWidget#TitlebarTabsContent {
 
 
 class QtScopeWindow(PreviewQtScopeWindow):
-    """Experimental launched window with control-page tabs in the title row."""
+    """Launched DPO4000 Desk window with control-page tabs in the title row."""
 
     def __init__(self, *args, **kwargs) -> None:
         self._titlebar_drag_position = None
