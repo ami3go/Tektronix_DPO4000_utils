@@ -31,6 +31,20 @@ def test_shared_build_helper_has_safe_flags_and_dry_run():
     assert "Dry run output would be" in content
 
 
+def test_shared_build_helper_validates_mode_app_name_and_output():
+    content = Path("scripts/build_app.py").read_text(encoding="utf-8")
+
+    assert "BUILD_MODES = (\"onedir\", \"onefile\")" in content
+    assert "choices=BUILD_MODES" in content
+    assert "--app-name cannot be empty" in content
+    assert "def output_path" in content
+    assert "def verify_output_exists" in content
+    assert "expected output was not found" in content
+    assert "Expected executable path is a directory" in content
+    assert "verify_output_exists(args.app_name, args.mode)" in content
+    assert "if not args.dry_run:" in content
+
+
 def test_windows_and_linux_wrappers_call_shared_build_helper_safely():
     windows = Path("scripts/build_windows_exe.bat").read_text(encoding="utf-8")
     linux = Path("scripts/build_linux_executable.sh").read_text(encoding="utf-8")
@@ -43,6 +57,7 @@ def test_windows_and_linux_wrappers_call_shared_build_helper_safely():
     assert "python --version" in windows
     assert 'findstr /C:"--dry-run"' in windows
     assert "Dry run completed; no executable was created." in windows
+    assert "BUILD_MODE must be onedir or onefile" in windows
     assert "TektronixDPO4000" in windows
     assert "py -3 scripts\\build_app.py" not in windows
 
@@ -53,6 +68,7 @@ def test_windows_and_linux_wrappers_call_shared_build_helper_safely():
     assert '"$@"' in linux
     assert "--dry-run" in linux
     assert "Dry run completed; no executable was created." in linux
+    assert "BUILD_MODE must be onedir or onefile" in linux
     assert "TektronixDPO4000" in linux
     assert "python3 scripts/build_app.py" not in linux
 
