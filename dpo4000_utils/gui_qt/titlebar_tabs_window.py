@@ -8,8 +8,9 @@ minimize, maximize/restore, close, and status-bar size-grip behavior.
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, Qt
 from PySide6.QtWidgets import (
+    QApplication,
     QButtonGroup,
     QHBoxLayout,
     QLabel,
@@ -31,6 +32,8 @@ from .display_window import CONTROL_TAB_TITLES
 from .preview_window import QtScopeWindow as PreviewQtScopeWindow
 
 TITLEBAR_WINDOW_TITLE = "Tektronix dpo4000"
+TITLEBAR_DRAG_SURFACE_PROPERTY = "titlebarDragSurface"
+TITLEBAR_DOUBLE_CLICK_SURFACE_PROPERTY = "titlebarDoubleClickSurface"
 TITLEBAR_TABS_QSS = """
 QWidget#TitlebarTabsBar {
     background: #111827;
@@ -96,6 +99,8 @@ class QtScopeWindow(PreviewQtScopeWindow):
 
     def __init__(self, *args, **kwargs) -> None:
         self._titlebar_drag_position = None
+        self._titlebar_drag_start_position = None
+        self._titlebar_drag_active = False
         super().__init__(*args, **kwargs)
         self.setWindowTitle(TITLEBAR_WINDOW_TITLE)
         self.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
@@ -184,8 +189,9 @@ class QtScopeWindow(PreviewQtScopeWindow):
             button.setText(title_text)
             button.setCheckable(True)
             button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
-            button.setToolTip(f"Open {title_text} controls")
+            button.setToolTip(f"Open {title_text} controls; drag to move the window")
             button.clicked.connect(lambda checked=False, page=index: self._select_drawer_page(page))
+            self._install_titlebar_drag_handlers(button, allow_double_click=False)
             self.application_menu_buttons.addButton(button, index)
             layout.addWidget(button)
 
@@ -205,11 +211,17 @@ class QtScopeWindow(PreviewQtScopeWindow):
         button.clicked.connect(callback)
         return button
 
-    def _install_titlebar_drag_handlers(self, widget: QWidget) -> None:
-        widget.mousePressEvent = self._titlebar_mouse_press_event  # type: ignore[method-assign]
-        widget.mouseMoveEvent = self._titlebar_mouse_move_event  # type: ignore[method-assign]
-        widget.mouseReleaseEvent = self._titlebar_mouse_release_event  # type: ignore[method-assign]
-        widget.mouseDoubleClickEvent = self._titlebar_mouse_double_click_event  # type: ignore[method-assign]
+    def _install_titlebar_drag_handlers(self, widget: QWidget, *, allow_double_click: bool = True) -> None:
+        """Mark titlebar widgets as drag surfaces without stealing normal clicks.
+
+        The tab buttons occupy most of the custom title bar.  A direct mousePress
+        override on those buttons would break click-to-select, so drag is handled
+        through an event filter: simple clicks pass through, while real mouse
+        movement starts a window move and consumes the eventual release.
+        """
+        widget.setProperty(TITLEBAR_DRAG_SURFACE_PROPERTY, True)
+        widget.setProperty(TITLEBAR_DOUBLE_CLICK_SURFACE_PROPERTY, allow_double_click)
+        widget.installEventFilter(self)
 
     @staticmethod
     def _event_global_position(event):
@@ -217,36 +229,65 @@ class QtScopeWindow(PreviewQtScopeWindow):
             return event.globalPosition().toPoint()
         return event.globalPos()
 
-    def _titlebar_mouse_press_event(self, event) -> None:
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._titlebar_drag_position = self._event_global_position(event) - self.frameGeometry().topLeft()
-            event.accept()
-            return
-        event.ignore()
+    def eventFilter(self, watched, event) -> bool:  # noqa: N802 - Qt override name.
+        if not isinstance(watched, QWidget) or not watched.property(TITLEBAR_DRAG_SURFACE_PROPERTY):
+            return super().eventFilter(watched, event)
 
-    def _titlebar_mouse_move_event(self, event) -> None:
-        if self._titlebar_drag_position is None:
-            event.ignore()
-            return
-        if event.buttons() & Qt.MouseButton.LeftButton:
-            if self.isMaximized():
-                self.showNormal()
-                self._sync_maximize_button()
-            self.move(self._event_global_position(event) - self._titlebar_drag_position)
-            event.accept()
-            return
-        event.ignore()
+        event_type = event.type()
+        if event_type == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
+            self._titlebar_drag_start_position = self._event_global_position(event)
+            self._titlebar_drag_position = self._titlebar_drag_start_position - self.frameGeometry().topLeft()
+            self._titlebar_drag_active = False
+            return False
 
-    def _titlebar_mouse_release_event(self, event) -> None:
-        self._titlebar_drag_position = None
-        event.accept()
+        if event_type == QEvent.Type.MouseMove and event.buttons() & Qt.MouseButton.LeftButton:
+            if self._titlebar_drag_start_position is None or self._titlebar_drag_position is None:
+                return False
+            current_position = self._event_global_position(event)
+            moved = (current_position - self._titlebar_drag_start_position).manhattanLength()
+            if not self._titlebar_drag_active and moved < QApplication.startDragDistance():
+                return False
+            self._titlebar_drag_active = True
+            self._start_titlebar_window_move(event)
+            return True
 
-    def _titlebar_mouse_double_click_event(self, event) -> None:
-        if event.button() == Qt.MouseButton.LeftButton:
+        if event_type == QEvent.Type.MouseButtonRelease:
+            consumed = self._titlebar_drag_active
+            self._reset_titlebar_drag_state()
+            return consumed
+
+        if (
+            event_type == QEvent.Type.MouseButtonDblClick
+            and watched.property(TITLEBAR_DOUBLE_CLICK_SURFACE_PROPERTY)
+            and event.button() == Qt.MouseButton.LeftButton
+        ):
             self._toggle_maximized()
             event.accept()
-            return
-        event.ignore()
+            return True
+
+        return super().eventFilter(watched, event)
+
+    def _start_titlebar_window_move(self, event) -> None:
+        """Move the frameless window with native system move when available."""
+        if self.isMaximized():
+            self.showNormal()
+            self._sync_maximize_button()
+
+        window_handle = self.windowHandle()
+        if window_handle is not None and hasattr(window_handle, "startSystemMove"):
+            try:
+                if window_handle.startSystemMove():
+                    return
+            except RuntimeError:
+                pass
+
+        if self._titlebar_drag_position is not None:
+            self.move(self._event_global_position(event) - self._titlebar_drag_position)
+
+    def _reset_titlebar_drag_state(self) -> None:
+        self._titlebar_drag_start_position = None
+        self._titlebar_drag_position = None
+        self._titlebar_drag_active = False
 
     def _toggle_maximized(self) -> None:
         if self.isMaximized():
@@ -261,4 +302,10 @@ class QtScopeWindow(PreviewQtScopeWindow):
             button.setText("❐" if self.isMaximized() else "□")
 
 
-__all__ = ["QtScopeWindow", "TITLEBAR_TABS_QSS", "TITLEBAR_WINDOW_TITLE"]
+__all__ = [
+    "QtScopeWindow",
+    "TITLEBAR_DOUBLE_CLICK_SURFACE_PROPERTY",
+    "TITLEBAR_DRAG_SURFACE_PROPERTY",
+    "TITLEBAR_TABS_QSS",
+    "TITLEBAR_WINDOW_TITLE",
+]
