@@ -52,6 +52,12 @@ python -m pip install --upgrade pip
 scripts\build_windows_exe.bat
 ```
 
+Validate arguments without running PyInstaller:
+
+```powershell
+scripts\build_windows_exe.bat --dry-run --skip-install
+```
+
 Build one-file `.exe` instead:
 
 ```powershell
@@ -84,6 +90,18 @@ source .venv/bin/activate
 python -m pip install --upgrade pip
 chmod +x scripts/build_linux_executable.sh
 scripts/build_linux_executable.sh
+```
+
+Validate arguments without running PyInstaller:
+
+```bash
+scripts/build_linux_executable.sh --dry-run --skip-install
+```
+
+Use an explicit Python executable if `python3` is not the active virtual environment:
+
+```bash
+PYTHON=.venv/bin/python scripts/build_linux_executable.sh
 ```
 
 Build one-file executable instead:
@@ -119,9 +137,11 @@ Useful options:
 --app-name NAME
 --console
 --skip-install
+--dry-run
+--no-clean
 ```
 
-`--skip-install` is useful when your virtual environment already has the project and build dependencies installed.
+`--skip-install` is useful when your virtual environment already has the project and build dependencies installed. `--dry-run` prints the resolved PyInstaller command and output path without modifying the environment or running PyInstaller.
 
 ## Test before packaging
 
