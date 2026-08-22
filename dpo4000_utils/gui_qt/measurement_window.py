@@ -13,9 +13,10 @@ from typing import Any
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QGridLayout,
     QGroupBox,
-    QHBoxLayout,
     QLabel,
+    QSizePolicy,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -39,6 +40,8 @@ MEASUREMENT_SETUP_QUERIES = {
     "value": "MEASUREMENT:MEAS{slot}:VALUE?",
 }
 MEASUREMENT_TABLE_HEADERS = ("Slot", "State", "Type", "Source 1", "Source 2", "Value")
+MEASUREMENT_MANAGER_BUTTON_MIN_HEIGHT = 38
+MEASUREMENT_MANAGER_BUTTON_MIN_WIDTH = 150
 
 
 class QtScopeWindow(DisplayQtScopeWindow):
@@ -61,7 +64,7 @@ class QtScopeWindow(DisplayQtScopeWindow):
     def _build_existing_measurements_card(self) -> QGroupBox:
         card = self._card("Existing scope measurements")
         layout = QVBoxLayout(card)
-        layout.setSpacing(8)
+        layout.setSpacing(10)
 
         hint = QLabel(
             "Read MEAS1..MEAS8 from the scope, select a row, then load/edit/delete that slot. "
@@ -86,14 +89,31 @@ class QtScopeWindow(DisplayQtScopeWindow):
         layout.addWidget(self.existing_measurements)
         self._reset_existing_measurements_table()
 
-        buttons = QHBoxLayout()
-        buttons.addWidget(self._button("Read configured", self.read_existing_measurements))
-        buttons.addWidget(self._button("Load selected", self.load_selected_measurement_for_edit))
-        buttons.addWidget(self._accent_button("Apply edit", self.apply_selected_measurement_edit))
-        buttons.addWidget(self._button("Read value", self.read_selected_measurement_value))
-        buttons.addWidget(self._button("Delete selected", self.delete_selected_measurement))
-        layout.addLayout(buttons)
+        layout.addWidget(self._build_existing_measurements_actions())
         return self._prepare_drawer_card(card)
+
+    def _build_existing_measurements_actions(self) -> QWidget:
+        """Build large action buttons that remain usable in the narrow right panel."""
+        actions = QWidget()
+        actions.setObjectName("MeasurementManagerActions")
+        grid = QGridLayout(actions)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(8)
+        grid.setVerticalSpacing(8)
+
+        button_specs = (
+            (self._button("Read configured", self.read_existing_measurements), 0, 0, 1, 1),
+            (self._button("Load selected", self.load_selected_measurement_for_edit), 0, 1, 1, 1),
+            (self._accent_button("Apply edit", self.apply_selected_measurement_edit), 1, 0, 1, 1),
+            (self._button("Read value", self.read_selected_measurement_value), 1, 1, 1, 1),
+            (self._button("Delete selected", self.delete_selected_measurement), 2, 0, 1, 2),
+        )
+        for button, row, column, row_span, column_span in button_specs:
+            button.setMinimumHeight(MEASUREMENT_MANAGER_BUTTON_MIN_HEIGHT)
+            button.setMinimumWidth(MEASUREMENT_MANAGER_BUTTON_MIN_WIDTH)
+            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            grid.addWidget(button, row, column, row_span, column_span)
+        return actions
 
     def _reset_existing_measurements_table(self) -> None:
         for row, slot in enumerate(MEASUREMENT_SLOTS):
@@ -279,6 +299,8 @@ class QtScopeWindow(DisplayQtScopeWindow):
 
 __all__ = [
     "MEASUREMENT_MANAGEMENT_ACTIONS",
+    "MEASUREMENT_MANAGER_BUTTON_MIN_HEIGHT",
+    "MEASUREMENT_MANAGER_BUTTON_MIN_WIDTH",
     "MEASUREMENT_SETUP_QUERIES",
     "MEASUREMENT_TABLE_HEADERS",
     "QtScopeWindow",
