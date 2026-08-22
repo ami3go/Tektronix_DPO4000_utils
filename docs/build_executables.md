@@ -5,7 +5,7 @@ The current application package target is the PySide6 GUI:
 ```text
 dpo4000-gui-qt
   -> dpo4000_utils.gui_qt.runner.main
-  -> dpo4000_utils.gui_qt.display_window.QtScopeWindow
+  -> dpo4000_utils.gui_qt.measurement_window.QtScopeWindow
 ```
 
 The build scripts use PyInstaller and should be run on the same operating system as the artifact you want to distribute:
