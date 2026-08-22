@@ -15,8 +15,8 @@ from dpo4000_utils.gui_qt.display_window import (  # noqa: E402
     CONTROL_PAGE_BUILDERS,
     DISPLAY_PAGE_INDEX,
     FILE_PAGE_INDEX,
-    QtScopeWindow,
 )
+from dpo4000_utils.gui_qt.measurement_window import QtScopeWindow  # noqa: E402
 
 
 def _app():
@@ -54,6 +54,25 @@ def test_stable_qt_lazy_page_builds_on_selection():
         assert window.current_page_title.text() == "Acquisition"
         assert hasattr(window, "acquisition_mode")
         assert hasattr(window, "acquisition_record_length")
+    finally:
+        window.close()
+        window.deleteLater()
+        app.processEvents()
+
+
+def test_measurement_page_builds_existing_measurement_manager():
+    app = _app()
+    window = QtScopeWindow()
+    try:
+        window._select_drawer_page(2)
+        assert window._lazy_control_pages_built[2] is True
+        assert window.current_page_title.text() == "Measurement"
+        assert hasattr(window, "existing_measurements")
+        assert window.existing_measurements.rowCount() == 8
+        assert window.existing_measurements.columnCount() == 6
+        assert hasattr(window, "measurement_slot")
+        assert hasattr(window, "measurement_type")
+        assert hasattr(window, "measurement_source1")
     finally:
         window.close()
         window.deleteLater()
