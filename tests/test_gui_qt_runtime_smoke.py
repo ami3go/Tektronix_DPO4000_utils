@@ -10,8 +10,13 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 QtWidgets = pytest.importorskip("PySide6.QtWidgets")
 
-from dpo4000_utils.gui_qt.collapsible_window import CONTROL_PAGE_BUILDERS, WINDOW_TITLE  # noqa: E402
-from dpo4000_utils.gui_qt.display_window import QtScopeWindow  # noqa: E402
+from dpo4000_utils.gui_qt.collapsible_window import WINDOW_TITLE  # noqa: E402
+from dpo4000_utils.gui_qt.display_window import (  # noqa: E402
+    CONTROL_PAGE_BUILDERS,
+    DISPLAY_PAGE_INDEX,
+    FILE_PAGE_INDEX,
+    QtScopeWindow,
+)
 
 
 def _app():
@@ -55,12 +60,29 @@ def test_stable_qt_lazy_page_builds_on_selection():
         app.processEvents()
 
 
-def test_display_settings_card_is_added_to_settings_page():
+def test_file_page_keeps_file_output_settings_without_display_controls():
     app = _app()
     window = QtScopeWindow()
     try:
-        window._select_drawer_page(5)
-        assert window._lazy_control_pages_built[5] is True
+        window._select_drawer_page(FILE_PAGE_INDEX)
+        assert window._lazy_control_pages_built[FILE_PAGE_INDEX] is True
+        assert window.current_page_title.text() == "File"
+        assert hasattr(window, "output_folder")
+        assert hasattr(window, "png_prefix")
+        assert not hasattr(window, "display_backlight")
+    finally:
+        window.close()
+        window.deleteLater()
+        app.processEvents()
+
+
+def test_display_page_builds_display_controls():
+    app = _app()
+    window = QtScopeWindow()
+    try:
+        window._select_drawer_page(DISPLAY_PAGE_INDEX)
+        assert window._lazy_control_pages_built[DISPLAY_PAGE_INDEX] is True
+        assert window.current_page_title.text() == "Display"
         assert hasattr(window, "display_backlight")
         assert hasattr(window, "display_persistence")
         assert hasattr(window, "display_message_text")
