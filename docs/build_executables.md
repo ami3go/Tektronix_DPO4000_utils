@@ -1,14 +1,16 @@
-# Build GUI executables
+# Build DPO4000 Desk executables
 
-The current application package target is the PySide6 GUI:
+The current application package target is the PySide6 desktop GUI:
 
 ```text
-dpo4000-gui-qt
+dpo4000-desk
   -> dpo4000_utils.gui_qt.runner.main
   -> dpo4000_utils.gui_qt.titlebar_tabs_window.QtScopeWindow
 ```
 
-The main GUI uses a frameless Qt window so the page buttons sit in the same row as the window title. The build scripts use PyInstaller and should be run on the same operating system as the artifact you want to distribute:
+`dpo4000-gui-qt` remains available as a compatibility alias for the same application.
+
+DPO4000 Desk uses a frameless Qt window so the page buttons sit in the same row as the window title. The build scripts use PyInstaller and should be run on the same operating system as the artifact you want to distribute:
 
 - build Windows `.exe` artifacts on Windows
 - build Linux artifacts on Linux
@@ -24,21 +26,21 @@ The default mode is `onedir` because it is more reliable for Qt applications and
 Default application name:
 
 ```text
-TektronixDPO4000
+DPO4000Desk
 ```
 
 Default outputs:
 
 ```text
-Windows: dist\TektronixDPO4000\TektronixDPO4000.exe
-Linux:   dist/TektronixDPO4000/TektronixDPO4000
+Windows: dist\DPO4000Desk\DPO4000Desk.exe
+Linux:   dist/DPO4000Desk/DPO4000Desk
 ```
 
 Optional one-file outputs:
 
 ```text
-Windows: dist\TektronixDPO4000.exe
-Linux:   dist/TektronixDPO4000
+Windows: dist\DPO4000Desk.exe
+Linux:   dist/DPO4000Desk
 ```
 
 ## Windows `.exe`
@@ -65,7 +67,7 @@ scripts\build_windows_exe.bat
 Custom app name:
 
 ```powershell
-$env:APP_NAME="DPO4000Scope"
+$env:APP_NAME="DPO4000DeskLab"
 scripts\build_windows_exe.bat
 ```
 
@@ -93,7 +95,7 @@ BUILD_MODE=onefile scripts/build_linux_executable.sh
 Custom app name:
 
 ```bash
-APP_NAME=DPO4000Scope scripts/build_linux_executable.sh
+APP_NAME=DPO4000DeskLab scripts/build_linux_executable.sh
 ```
 
 Console/debug build:
@@ -107,7 +109,7 @@ python scripts/build_app.py --mode onedir --console
 Both platform wrappers call:
 
 ```bash
-python scripts/build_app.py --mode onedir --app-name TektronixDPO4000
+python scripts/build_app.py --mode onedir --app-name DPO4000Desk
 ```
 
 Useful options:
@@ -121,21 +123,21 @@ Useful options:
 
 `--skip-install` is useful when the virtual environment already has the project and build dependencies installed.
 
-The helper creates a small generated PyInstaller entry file under `build/pyinstaller_entry/` so package-relative imports behave like the installed `dpo4000-gui-qt` console script.
+The helper creates a small generated PyInstaller entry file under `build/pyinstaller_entry/` so package-relative imports behave like the installed `dpo4000-desk` console script.
 
 ## GitHub release assets
 
-The workflow `.github/workflows/build-gui-executables.yml` builds one-file assets for release:
+The workflow `.github/workflows/build-gui-executables.yml` builds one-file DPO4000 Desk assets for release:
 
 ```text
-TektronixDPO4000-windows.exe
-TektronixDPO4000-linux
+DPO4000Desk-windows.exe
+DPO4000Desk-linux
 ```
 
 Create/update the `v0.2.0` release manually from GitHub Actions:
 
 ```text
-Actions -> Build GUI Executables -> Run workflow
+Actions -> Build DPO4000 Desk Executables -> Run workflow
 release_tag: v0.2.0
 prerelease: false
 ```
@@ -163,6 +165,12 @@ For USB instruments, install the relevant USB/VISA driver. For Ethernet/VXI-11 o
 ## Smoke checks
 
 Before packaging, test from source:
+
+```bash
+dpo4000-desk
+```
+
+Compatibility command:
 
 ```bash
 dpo4000-gui-qt
