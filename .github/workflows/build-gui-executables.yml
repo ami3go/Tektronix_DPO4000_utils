@@ -2,6 +2,27 @@ name: Build GUI Executables
 
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Optional release tag to create/update, for example v0.2.0. Leave empty for artifact-only build."
+        required: false
+        default: ""
+      prerelease:
+        description: "Mark created GitHub release as prerelease"
+        required: false
+        default: false
+        type: boolean
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+# Release builds use one-file mode so the assets are easy to download/run.
+env:
+  APP_NAME: TektronixDPO4000
+  BUILD_MODE: onefile
 
 jobs:
   build-windows:
@@ -21,11 +42,17 @@ jobs:
         shell: cmd
         run: scripts\build_windows_exe.bat
 
+      - name: Rename Windows EXE asset
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release-assets
+          Copy-Item dist\TektronixDPO4000.exe release-assets\TektronixDPO4000-windows.exe
+
       - name: Upload Windows EXE
         uses: actions/upload-artifact@v4
         with:
-          name: TektronixScopeGUI-windows
-          path: dist/TektronixScopeGUI.exe
+          name: TektronixDPO4000-windows
+          path: release-assets/TektronixDPO4000-windows.exe
           if-no-files-found: error
 
   build-linux:
@@ -41,17 +68,52 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Install Tk runtime dependencies
+      - name: Install Qt runtime dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-tk tk
+          sudo apt-get install -y libegl1 libgl1 libxcb-cursor0 libxkbcommon-x11-0
 
       - name: Build Linux executable
         run: bash scripts/build_linux_executable.sh
 
+      - name: Rename Linux executable asset
+        run: |
+          mkdir -p release-assets
+          cp dist/TektronixDPO4000 release-assets/TektronixDPO4000-linux
+          chmod +x release-assets/TektronixDPO4000-linux
+
       - name: Upload Linux executable
         uses: actions/upload-artifact@v4
         with:
-          name: TektronixScopeGUI-linux
-          path: dist/TektronixScopeGUI
+          name: TektronixDPO4000-linux
+          path: release-assets/TektronixDPO4000-linux
           if-no-files-found: error
+
+  release:
+    name: GitHub Release
+    needs:
+      - build-windows
+      - build-linux
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/') || inputs.release_tag != ''
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Download release assets
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || inputs.release_tag }}
+          target_commitish: ${{ github.sha }}
+          name: dpo4000-utils ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || inputs.release_tag }}
+          body_path: docs/releases/v0.2.0.md
+          prerelease: ${{ inputs.prerelease || false }}
+          files: |
+            release-assets/TektronixDPO4000-windows/TektronixDPO4000-windows.exe
+            release-assets/TektronixDPO4000-linux/TektronixDPO4000-linux
