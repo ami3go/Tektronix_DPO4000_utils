@@ -5,11 +5,24 @@ cd "$(dirname "$0")/.."
 
 APP_NAME="${APP_NAME:-TektronixDPO4000}"
 BUILD_MODE="${BUILD_MODE:-onedir}"
+PYTHON_BIN="${PYTHON:-python3}"
 
 echo "Building ${APP_NAME} for Linux using PySide6 UI..."
 echo "BUILD_MODE=${BUILD_MODE}"
+echo "PYTHON=${PYTHON_BIN}"
 
-python3 scripts/build_app.py --mode "$BUILD_MODE" --app-name "$APP_NAME"
+if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+  echo "ERROR: Python executable not found: ${PYTHON_BIN}" >&2
+  echo "Activate your virtual environment or set PYTHON=/path/to/python." >&2
+  exit 1
+fi
+
+"$PYTHON_BIN" scripts/build_app.py --mode "$BUILD_MODE" --app-name "$APP_NAME" "$@"
+
+if [[ "$*" == *"--dry-run"* ]]; then
+  echo "Dry run completed; no executable was created."
+  exit 0
+fi
 
 if [[ "$BUILD_MODE" == "onefile" ]]; then
   chmod +x "dist/${APP_NAME}"
