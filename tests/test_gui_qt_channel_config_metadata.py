@@ -116,6 +116,23 @@ def test_qt_measurement_window_adds_existing_measurement_manager():
     assert "def read_selected_measurement_value" in content
 
 
+def test_qt_measurement_manager_uses_large_action_button_grid():
+    content = Path("dpo4000_utils/gui_qt/measurement_window.py").read_text(encoding="utf-8")
+
+    assert "QGridLayout" in content
+    assert "QSizePolicy" in content
+    assert "MEASUREMENT_MANAGER_BUTTON_MIN_HEIGHT = 38" in content
+    assert "MEASUREMENT_MANAGER_BUTTON_MIN_WIDTH = 150" in content
+    assert "def _build_existing_measurements_actions" in content
+    assert "MeasurementManagerActions" in content
+    assert "grid.setHorizontalSpacing(8)" in content
+    assert "grid.setVerticalSpacing(8)" in content
+    assert "button.setMinimumHeight(MEASUREMENT_MANAGER_BUTTON_MIN_HEIGHT)" in content
+    assert "button.setMinimumWidth(MEASUREMENT_MANAGER_BUTTON_MIN_WIDTH)" in content
+    assert "button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)" in content
+    assert "grid.addWidget(button, row, column, row_span, column_span)" in content
+
+
 def test_qt_measurement_manager_reads_and_edits_meas_scpi_slots():
     content = Path("dpo4000_utils/gui_qt/measurement_window.py").read_text(encoding="utf-8")
 
