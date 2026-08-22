@@ -26,14 +26,32 @@ def test_qt_stable_window_keeps_launch_contracts():
     assert "CONTROL_PAGE_BUILDERS" in content
 
 
-def test_qt_display_window_adds_scope_display_controls_to_settings_page():
+def test_qt_display_window_splits_file_and_display_pages():
     content = Path("dpo4000_utils/gui_qt/display_window.py").read_text(encoding="utf-8")
 
     assert "class QtScopeWindow(StableQtScopeWindow)" in content
+    assert "CONTROL_TAB_TITLES" in content
+    assert '"File"' in content
+    assert '"Display"' in content
+    assert "FILE_PAGE_INDEX = 5" in content
+    assert "DISPLAY_PAGE_INDEX = 6" in content
+    assert "LOG_PAGE_INDEX = 7" in content
+    assert "DISPLAY_PAGE_SHORTCUTS" in content
+    assert '"Ctrl+7", 6, "Display"' in content
+    assert '"Ctrl+8", 7, "Log"' in content
+    assert "def _build_file_tab" in content
+    assert "return super()._build_settings_tab()" in content
+    assert "def _build_display_tab" in content
+    assert "DisplayScrollArea" in content
+    assert "DisplayScrollBody" in content
+
+
+def test_qt_display_window_adds_scope_display_controls_to_display_page():
+    content = Path("dpo4000_utils/gui_qt/display_window.py").read_text(encoding="utf-8")
+
     assert "DISPLAY_PERSISTENCE_VALUES" in content
     assert "DISPLAY_SETUP_QUERIES" in content
     assert "DISPLAY_SCOPE_ACTIONS" in content
-    assert "def _build_settings_tab" in content
     assert "def _build_display_settings_card" in content
     assert "Display, persistence, and screen text" in content
     assert "Contrast / backlight %" in content
@@ -42,6 +60,7 @@ def test_qt_display_window_adds_scope_display_controls_to_settings_page():
     assert "Persistence" in content
     assert "Screen text" in content
     assert "Show text box on scope screen" in content
+    assert "def _build_settings_tab" not in content
 
 
 def test_qt_display_controls_use_dpo4000_display_and_message_scpi():
