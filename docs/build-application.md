@@ -1,6 +1,6 @@
 # Build DPO4000 Desk
 
-This guide builds the current PySide6 desktop application entry point:
+This guide builds the current DPO4000 Desk desktop application entry point:
 
 ```text
 dpo4000-desk
@@ -8,9 +8,7 @@ dpo4000-desk
   -> dpo4000_utils.gui_qt.titlebar_tabs_window.QtScopeWindow
 ```
 
-`dpo4000-gui-qt` remains available as a compatibility alias for the same Qt application.
-
-DPO4000 Desk uses a frameless Qt window so the page buttons can share the same row as the window title. Build on the same operating system you want to distribute for:
+DPO4000 Desk uses a frameless desktop window so the page buttons can share the same row as the window title. Build on the same operating system you want to distribute for:
 
 - build the Windows `.exe` on Windows
 - build the Linux executable on Linux
@@ -19,7 +17,7 @@ Cross-compiling with PyInstaller is not supported by these scripts.
 
 ## Output format
 
-Default output mode is `onedir` because it is more reliable for Qt applications and starts faster than `onefile`.
+Default output mode is `onedir` because it starts faster and is easier to debug than `onefile`.
 
 Default application name:
 
@@ -187,18 +185,6 @@ Run the app from source first:
 dpo4000-desk
 ```
 
-Compatibility command:
-
-```bash
-dpo4000-gui-qt
-```
-
-Run the Qt startup smoke check:
-
-```bash
-python scripts/qt_startup_check.py
-```
-
 Run packaging metadata tests:
 
 ```bash
@@ -207,7 +193,7 @@ python -m pytest -q tests/test_build_scripts_metadata.py
 
 ## Runtime requirements on the target PC
 
-The packaged application includes the Python code and PySide6/PyInstaller-collected dependencies, but real instrument communication still needs a VISA runtime/backend installed on the target machine.
+The packaged application includes the Python code and PyInstaller-collected dependencies, but real instrument communication still needs a VISA runtime/backend installed on the target machine.
 
 Typical choices:
 
