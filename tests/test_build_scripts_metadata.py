@@ -135,7 +135,7 @@ def test_application_build_guide_documents_platform_commands_and_outputs():
 
     assert "dpo4000-desk" in guide
     assert "dpo4000-gui-qt" not in guide
-    assert "titlebar_tabs_window.QtScopeWindow" in guide
+    assert "titlebar_tabs_window.QtScopeWindow" not in guide
     assert "scripts\\build_windows_exe.bat" in guide
     assert "scripts/build_linux_executable.sh" in guide
     assert "python scripts/build_app.py" in guide
