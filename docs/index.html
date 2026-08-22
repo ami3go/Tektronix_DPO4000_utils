@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tektronix DPO4000 Utilities</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b1220;
+      --panel: #111827;
+      --panel2: #1f2937;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --accent: #2563eb;
+      --border: #2b3544;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: radial-gradient(circle at top left, #172554 0, var(--bg) 34rem);
+      color: var(--text);
+      line-height: 1.55;
+    }
+    a { color: #93c5fd; }
+    header, main, footer { width: min(1120px, calc(100% - 32px)); margin: 0 auto; }
+    header { padding: 64px 0 32px; }
+    .eyebrow { color: #93c5fd; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; font-size: .82rem; }
+    h1 { font-size: clamp(2.3rem, 6vw, 4.6rem); line-height: 1.02; margin: 12px 0 16px; }
+    h2 { font-size: clamp(1.45rem, 3vw, 2rem); margin-top: 0; }
+    p.lead { color: #cbd5e1; font-size: clamp(1.05rem, 2.2vw, 1.35rem); max-width: 820px; }
+    .buttons { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
+    .button { display: inline-flex; align-items: center; justify-content: center; min-height: 42px; padding: 0 16px; border-radius: 10px; border: 1px solid var(--border); background: var(--panel2); color: var(--text); text-decoration: none; font-weight: 700; }
+    .button.primary { background: var(--accent); border-color: #60a5fa; color: white; }
+    .screenshot { background: var(--panel); border: 1px solid var(--border); border-radius: 18px; padding: 12px; box-shadow: 0 20px 80px rgba(0,0,0,.38); margin: 24px 0 36px; }
+    .screenshot img { display: block; width: 100%; border-radius: 12px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin: 24px 0 36px; }
+    .card { background: rgba(17, 24, 39, .88); border: 1px solid var(--border); border-radius: 16px; padding: 20px; }
+    .card h3 { margin: 0 0 8px; }
+    .card p, .card li { color: #cbd5e1; }
+    code, pre { background: #020617; border: 1px solid var(--border); border-radius: 10px; }
+    code { padding: 2px 6px; }
+    pre { overflow: auto; padding: 14px; }
+    section { margin: 44px 0; }
+    footer { color: var(--muted); padding: 32px 0 56px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="eyebrow">Tektronix DPO4000 / DPO4054</div>
+    <h1>Python driver and modern bench GUI for DPO4000 oscilloscopes.</h1>
+    <p class="lead">Use USB/VISA or Ethernet, capture scope screenshots, export waveform CSV files, manage displayed measurements, control trigger/acquisition settings, and package the GUI as Windows/Linux executables.</p>
+    <div class="buttons">
+      <a class="button primary" href="https://github.com/ami3go/Tektronix_DPO4000_utils">View on GitHub</a>
+      <a class="button" href="https://github.com/ami3go/Tektronix_DPO4000_utils/releases">Releases</a>
+      <a class="button" href="build-application.html">Build guide</a>
+    </div>
+  </header>
+
+  <main>
+    <div class="screenshot">
+      <img src="assets/titlebar-gui.png" alt="Tektronix DPO4000 PySide6 GUI screenshot" />
+    </div>
+
+    <section class="grid">
+      <article class="card">
+        <h3>PySide6 bench GUI</h3>
+        <p>Compact frameless titlebar with Connection, Channels, Measurement, Trigger, Acquisition, File, Display, and Log pages.</p>
+      </article>
+      <article class="card">
+        <h3>Shared driver API</h3>
+        <p>Scriptable DPO4054/DPO4000 control for labels, screenshots, waveform CSV export, measurements, setup save/restore, trigger, and acquisition.</p>
+      </article>
+      <article class="card">
+        <h3>Executable builds</h3>
+        <p>PyInstaller helper scripts and GitHub Actions workflow produce Windows and Linux GUI artifacts without requiring hardware during packaging.</p>
+      </article>
+    </section>
+
+    <section>
+      <h2>Quick start</h2>
+      <pre><code>python -m pip install -e .[pyside6]
+dpo4000-gui-qt</code></pre>
+      <p>For real instrument communication, install a VISA runtime/backend such as NI-VISA, TekVISA, Keysight VISA, or a compatible PyVISA backend.</p>
+    </section>
+
+    <section>
+      <h2>Core features</h2>
+      <ul>
+        <li>USB/VISA and Ethernet VISA resource support.</li>
+        <li>PNG scope hardcopy capture with preview and clipboard copy.</li>
+        <li>Enabled-channel waveform export to CSV.</li>
+        <li>Measurement slot management for MEAS1..MEAS8.</li>
+        <li>Trigger level, edge trigger, and acquisition controls.</li>
+        <li>Dedicated File and Display pages for output and front-panel display settings.</li>
+      </ul>
+    </section>
+  </main>
+
+  <footer>
+    <p>Hardware access requires a connected Tektronix DPO4000-family oscilloscope and a working VISA backend.</p>
+  </footer>
+</body>
+</html>
