@@ -1,14 +1,16 @@
-# Build the DPO4000 application
+# Build DPO4000 Desk
 
-This guide builds the current PySide6 application entry point:
+This guide builds the current PySide6 desktop application entry point:
 
 ```text
-dpo4000-gui-qt
+dpo4000-desk
   -> dpo4000_utils.gui_qt.runner.main
   -> dpo4000_utils.gui_qt.titlebar_tabs_window.QtScopeWindow
 ```
 
-The main GUI now uses a frameless Qt window so the page buttons can share the same row as the window title. Build on the same operating system you want to distribute for:
+`dpo4000-gui-qt` remains available as a compatibility alias for the same Qt application.
+
+DPO4000 Desk uses a frameless Qt window so the page buttons can share the same row as the window title. Build on the same operating system you want to distribute for:
 
 - build the Windows `.exe` on Windows
 - build the Linux executable on Linux
@@ -22,21 +24,21 @@ Default output mode is `onedir` because it is more reliable for Qt applications 
 Default application name:
 
 ```text
-TektronixDPO4000
+DPO4000Desk
 ```
 
 Default outputs:
 
 ```text
-Windows: dist\TektronixDPO4000\TektronixDPO4000.exe
-Linux:   dist/TektronixDPO4000/TektronixDPO4000
+Windows: dist\DPO4000Desk\DPO4000Desk.exe
+Linux:   dist/DPO4000Desk/DPO4000Desk
 ```
 
 Optional `onefile` outputs:
 
 ```text
-Windows: dist\TektronixDPO4000.exe
-Linux:   dist/TektronixDPO4000
+Windows: dist\DPO4000Desk.exe
+Linux:   dist/DPO4000Desk
 ```
 
 ## Windows build
@@ -68,7 +70,7 @@ scripts\build_windows_exe.bat
 Use a custom executable name:
 
 ```powershell
-$env:APP_NAME="DPO4000Scope"
+$env:APP_NAME="DPO4000DeskLab"
 scripts\build_windows_exe.bat
 ```
 
@@ -113,7 +115,7 @@ BUILD_MODE=onefile scripts/build_linux_executable.sh
 Use a custom executable name:
 
 ```bash
-APP_NAME=DPO4000Scope scripts/build_linux_executable.sh
+APP_NAME=DPO4000DeskLab scripts/build_linux_executable.sh
 ```
 
 Debug a startup failure with console output:
@@ -127,7 +129,7 @@ python scripts/build_app.py --mode onedir --console
 Both wrappers call the shared Python helper:
 
 ```bash
-python scripts/build_app.py --mode onedir --app-name TektronixDPO4000
+python scripts/build_app.py --mode onedir --app-name DPO4000Desk
 ```
 
 Useful options:
@@ -145,19 +147,19 @@ Useful options:
 
 ## Release workflow
 
-The GitHub Actions workflow `.github/workflows/build-gui-executables.yml` can build one-file release assets and create a GitHub release.
+The GitHub Actions workflow `.github/workflows/build-gui-executables.yml` can build one-file DPO4000 Desk release assets and create a GitHub release.
 
 Expected release assets:
 
 ```text
-TektronixDPO4000-windows.exe
-TektronixDPO4000-linux
+DPO4000Desk-windows.exe
+DPO4000Desk-linux
 ```
 
 Manual release from GitHub Actions:
 
 ```text
-Actions -> Build GUI Executables -> Run workflow
+Actions -> Build DPO4000 Desk Executables -> Run workflow
 release_tag: v0.2.0
 prerelease: false
 ```
@@ -180,6 +182,12 @@ docs/releases/v0.2.0.md
 ## Test before packaging
 
 Run the app from source first:
+
+```bash
+dpo4000-desk
+```
+
+Compatibility command:
 
 ```bash
 dpo4000-gui-qt
@@ -217,5 +225,5 @@ For USB instruments, install the relevant USB/VISA driver. For Ethernet/VXI-11 o
 - `onedir` is recommended for daily use and debugging.
 - `onefile` is convenient for transfer but starts slower because it extracts files at launch.
 - Build Windows packages on Windows and Linux packages on Linux.
-- The frameless title bar is experimental; verify drag, maximize, close, and resize behavior on the target desktop.
+- The frameless title bar should be checked on target desktops: drag, maximize, close, and resize behavior.
 - The old `scripts/build_exe.bat` remains as a compatibility wrapper for `scripts/build_windows_exe.bat`.
