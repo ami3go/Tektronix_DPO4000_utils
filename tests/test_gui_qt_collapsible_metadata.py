@@ -3,12 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 
 
-def test_qt_runner_launches_stable_window():
+def test_qt_runner_launches_display_window():
     runner = Path("dpo4000_utils/gui_qt/runner.py").read_text(encoding="utf-8")
     package_init = Path("dpo4000_utils/gui_qt/__init__.py").read_text(encoding="utf-8")
 
-    assert "from .stable_window import QtScopeWindow" in runner
-    assert "from .stable_window import QtScopeWindow" in package_init
+    assert "from .display_window import QtScopeWindow" in runner
+    assert "from .display_window import QtScopeWindow" in package_init
     assert "from .collapsible_window import QtScopeWindow" not in runner
     assert "from .collapsible_window import QtScopeWindow" not in package_init
 
