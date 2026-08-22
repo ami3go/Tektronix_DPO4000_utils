@@ -8,7 +8,7 @@ dpo4000-gui-qt
   -> dpo4000_utils.gui_qt.titlebar_tabs_window.QtScopeWindow
 ```
 
-This branch uses an experimental frameless Qt window so the page buttons can sit in the same row as the window title. The build scripts use PyInstaller and should be run on the same operating system as the artifact you want to distribute:
+The main GUI uses a frameless Qt window so the page buttons sit in the same row as the window title. The build scripts use PyInstaller and should be run on the same operating system as the artifact you want to distribute:
 
 - build Windows `.exe` artifacts on Windows
 - build Linux artifacts on Linux
@@ -123,6 +123,32 @@ Useful options:
 
 The helper creates a small generated PyInstaller entry file under `build/pyinstaller_entry/` so package-relative imports behave like the installed `dpo4000-gui-qt` console script.
 
+## GitHub release assets
+
+The workflow `.github/workflows/build-gui-executables.yml` builds one-file assets for release:
+
+```text
+TektronixDPO4000-windows.exe
+TektronixDPO4000-linux
+```
+
+Create/update the `v0.2.0` release manually from GitHub Actions:
+
+```text
+Actions -> Build GUI Executables -> Run workflow
+release_tag: v0.2.0
+prerelease: false
+```
+
+Or publish by pushing the tag:
+
+```bash
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+The release body is sourced from `docs/releases/v0.2.0.md`.
+
 ## Required runtime outside the executable
 
 Real scope access still requires a VISA backend/runtime on the target PC, for example:
@@ -154,15 +180,6 @@ Run packaging metadata tests:
 python -m pytest -q tests/test_build_scripts_metadata.py
 ```
 
-## Manual GitHub Actions artifact build
-
-If a workflow is configured, it should call the same scripts:
-
-```text
-scripts\build_windows_exe.bat
-scripts/build_linux_executable.sh
-```
-
 Hardware is not required for packaging. VISA runtime is needed only when the generated app is used with a real oscilloscope.
 
-The frameless title bar is experimental. Verify drag, double-click maximize, close/minimize/maximize controls, and resize behavior on the target desktop before merging this branch.
+The frameless title bar should be checked on target desktops: drag, double-click maximize, close/minimize/maximize controls, and resize behavior.
