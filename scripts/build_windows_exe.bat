@@ -3,13 +3,19 @@ setlocal enableextensions
 
 cd /d "%~dp0\.."
 
-if not defined BUILD_MODE set BUILD_MODE=onedir
-if not defined APP_NAME set APP_NAME=TektronixDPO4000
+if not defined BUILD_MODE set "BUILD_MODE=onedir"
+if not defined APP_NAME set "APP_NAME=TektronixDPO4000"
 
 echo Building %APP_NAME% for Windows using PySide6 UI...
 echo BUILD_MODE=%BUILD_MODE%
 
-py -3 scripts\build_app.py --mode %BUILD_MODE% --app-name %APP_NAME%
+python --version >nul 2>nul
+if errorlevel 1 (
+  echo ERROR: Python was not found on PATH. Activate your venv or install Python first.
+  exit /b 1
+)
+
+python scripts\build_app.py --mode "%BUILD_MODE%" --app-name "%APP_NAME%" %*
 if errorlevel 1 exit /b 1
 
 echo.
