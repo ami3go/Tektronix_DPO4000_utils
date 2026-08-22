@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Tektronix DPO4000 Utilities</title>
+  <title>DPO4000 Desk</title>
   <style>
     :root {
       color-scheme: dark;
@@ -48,9 +48,9 @@
 </head>
 <body>
   <header>
-    <div class="eyebrow">Tektronix DPO4000 / DPO4054</div>
-    <h1>Python driver and modern bench GUI for DPO4000 oscilloscopes.</h1>
-    <p class="lead">Use USB/VISA or Ethernet, capture scope screenshots, export waveform CSV files, manage displayed measurements, control trigger/acquisition settings, and package the GUI as Windows/Linux executables.</p>
+    <div class="eyebrow">dpo4000-utils desktop application</div>
+    <h1>DPO4000 Desk</h1>
+    <p class="lead">A modern bench desktop application for Tektronix DPO4000-family oscilloscopes, built on the dpo4000-utils Python driver. Use USB/VISA or Ethernet, capture scope screenshots, export waveform CSV files, manage measurements, control trigger/acquisition settings, and package the GUI as Windows/Linux executables.</p>
     <div class="buttons">
       <a class="button primary" href="https://github.com/ami3go/Tektronix_DPO4000_utils">View on GitHub</a>
       <a class="button" href="https://github.com/ami3go/Tektronix_DPO4000_utils/releases">Releases</a>
@@ -60,28 +60,29 @@
 
   <main>
     <div class="screenshot">
-      <img src="assets/titlebar-gui.png?v=20260822-1835" alt="Tektronix DPO4000 PySide6 GUI screenshot" />
+      <img src="assets/titlebar-gui.png?v=20260822-2224" alt="DPO4000 Desk PySide6 GUI screenshot" />
     </div>
 
     <section class="grid">
       <article class="card">
-        <h3>PySide6 bench GUI</h3>
+        <h3>DPO4000 Desk</h3>
         <p>Compact frameless titlebar with Connection, Channels, Measurement, Trigger, Acquisition, File, Display, and Log pages.</p>
       </article>
       <article class="card">
-        <h3>Shared driver API</h3>
+        <h3>dpo4000-utils API</h3>
         <p>Scriptable DPO4054/DPO4000 control for labels, screenshots, waveform CSV export, measurements, setup save/restore, trigger, and acquisition.</p>
       </article>
       <article class="card">
         <h3>Executable builds</h3>
-        <p>PyInstaller helper scripts and GitHub Actions workflow produce Windows and Linux GUI artifacts without requiring hardware during packaging.</p>
+        <p>PyInstaller helper scripts and GitHub Actions workflow produce DPO4000 Desk Windows and Linux artifacts without requiring hardware during packaging.</p>
       </article>
     </section>
 
     <section>
       <h2>Quick start</h2>
       <pre><code>python -m pip install -e .[pyside6]
-dpo4000-gui-qt</code></pre>
+dpo4000-desk</code></pre>
+      <p>The older <code>dpo4000-gui-qt</code> command remains as a compatibility alias.</p>
       <p>For real instrument communication, install a VISA runtime/backend such as NI-VISA, TekVISA, Keysight VISA, or a compatible PyVISA backend.</p>
     </section>
 
