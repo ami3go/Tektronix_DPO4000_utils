@@ -115,15 +115,16 @@ def test_windows_and_linux_wrappers_call_shared_build_helper_safely():
 def test_linux_release_packaging_script_builds_expected_formats():
     script = Path("scripts/package_linux_release.sh").read_text(encoding="utf-8")
 
+    assert "cd \"${ROOT}\"" in script
     assert "dpo4000-desk_${VERSION}_${DEB_ARCH}.deb" in script
-    assert "DPO4000Desk-${APPIMAGE_ARCH}.AppImage" in script
-    assert "DPO4000Desk.flatpak" in script
+    assert "${APP_NAME}-${APPIMAGE_ARCH}.AppImage" in script
+    assert "${APP_NAME}.flatpak" in script
     assert "dpkg-deb --build" in script
     assert "appimagetool-${APPIMAGE_ARCH}.AppImage" in script
     assert "flatpak-builder --force-clean" in script
     assert "flatpak build-bundle" in script
-    assert "io.github.ami3go.DPO4000Desk.desktop" in script
-    assert "io.github.ami3go.DPO4000Desk.metainfo.xml" in script
+    assert "${APP_ID}.desktop" in script
+    assert "${APP_ID}.metainfo.xml" in script
     assert "BUILD_FLATPAK=\"${BUILD_FLATPAK:-1}\"" in script
     assert "REQUIRE_FLATPAK" in script
 
