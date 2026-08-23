@@ -2,6 +2,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "${ROOT}"
+
 APP_NAME="${APP_NAME:-DPO4000Desk}"
 APP_ID="${APP_ID:-io.github.ami3go.DPO4000Desk}"
 APP_COMMAND="dpo4000-desk"
