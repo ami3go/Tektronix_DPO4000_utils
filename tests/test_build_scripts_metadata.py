@@ -121,7 +121,7 @@ def test_linux_release_packaging_script_builds_expected_formats():
     assert "${APP_NAME}.flatpak" in script
     assert "dpkg-deb --build" in script
     assert "appimagetool-${APPIMAGE_ARCH}.AppImage" in script
-    assert "flatpak-builder --force-clean" in script
+    assert "flatpak-builder --force-clean --default-branch=stable" in script
     assert "flatpak build-bundle" in script
     assert "${APP_ID}.desktop" in script
     assert "${APP_ID}.metainfo.xml" in script
@@ -142,7 +142,12 @@ def test_gui_executable_workflow_builds_and_publishes_release_assets():
     assert "contents: write" in workflow
     assert "APP_NAME: DPO4000Desk" in workflow
     assert "BUILD_MODE: onefile" in workflow
+    assert "PYTHON_VERSION: \"3.12\"" in workflow
     assert "FLATPAK_RUNTIME_VERSION: \"24.08\"" in workflow
+    assert "python-version: ${{ env.PYTHON_VERSION }}" in workflow
+    assert "Install Python build dependencies" in workflow
+    assert "BUILD_SKIP_INSTALL: \"1\"" in workflow
+    assert "Check resolved build command" in workflow
     assert "dist\\DPO4000Desk.exe" in workflow
     assert "DPO4000Desk-windows.exe" in workflow
     assert "Install Linux GUI and packaging dependencies" in workflow
@@ -157,8 +162,10 @@ def test_gui_executable_workflow_builds_and_publishes_release_assets():
     assert "softprops/action-gh-release@v2" in workflow
     assert "name: DPO4000 Desk" in workflow
     assert "body_path: docs/releases/v0.2.0.md" in workflow
+    assert "github.event.inputs.release_tag" in workflow
     assert "TektronixScopeGUI" not in workflow
     assert "TektronixDPO4000" not in workflow
+    assert "python-version: \"3.13\"" not in workflow
 
 
 def test_application_build_guide_documents_platform_commands_and_outputs():
