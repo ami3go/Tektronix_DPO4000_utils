@@ -10,6 +10,7 @@ DPO4000 Desk uses a frameless desktop window so the page buttons can share the s
 
 - build the Windows `.exe` on Windows
 - build the Linux executable on Linux
+- build Linux `.deb`, AppImage, and Flatpak bundle packages on Linux
 
 Cross-compiling with PyInstaller is not supported by these scripts.
 
@@ -120,6 +121,43 @@ Debug a startup failure with console output:
 python scripts/build_app.py --mode onedir --console
 ```
 
+## Linux release packages
+
+Build the Linux one-file binary first, then package it:
+
+```bash
+BUILD_MODE=onefile scripts/build_linux_executable.sh
+bash scripts/package_linux_release.sh
+```
+
+The packaging helper creates:
+
+```text
+release-assets/DPO4000Desk-linux
+release-assets/dpo4000-desk_0.2.0_amd64.deb
+release-assets/DPO4000Desk-x86_64.AppImage
+release-assets/DPO4000Desk.flatpak
+```
+
+Extra package tools are required for the full local Linux package set:
+
+```bash
+sudo apt-get install -y dpkg-dev desktop-file-utils flatpak flatpak-builder wget
+```
+
+Flatpak bundling also requires the configured Freedesktop runtime used by the workflow:
+
+```bash
+sudo flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+sudo flatpak install -y flathub org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08
+```
+
+Skip Flatpak locally when you only need `.deb` and AppImage:
+
+```bash
+BUILD_FLATPAK=0 bash scripts/package_linux_release.sh
+```
+
 ## Shared build helper
 
 Both wrappers call the shared Python helper:
@@ -143,13 +181,16 @@ Useful options:
 
 ## Release workflow
 
-The GitHub Actions workflow `.github/workflows/build-gui-executables.yml` can build one-file DPO4000 Desk release assets and create a GitHub release.
+The GitHub Actions workflow `.github/workflows/build-gui-executables.yml` can build DPO4000 Desk release assets and create a GitHub release.
 
 Expected release assets:
 
 ```text
 DPO4000Desk-windows.exe
 DPO4000Desk-linux
+dpo4000-desk_0.2.0_amd64.deb
+DPO4000Desk-x86_64.AppImage
+DPO4000Desk.flatpak
 ```
 
 Manual release from GitHub Actions:
