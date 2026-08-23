@@ -16,9 +16,15 @@ def test_project_version_is_v020_release():
     assert "## v0.2.0 - 2026-08-22" in changelog
     assert "DPO4000 Desk" in changelog
     assert "old desktop command alias was removed" in changelog
+    assert "dpo4000-desk_0.2.0_amd64.deb" in changelog
+    assert "DPO4000Desk-x86_64.AppImage" in changelog
+    assert "DPO4000Desk.flatpak" in changelog
     assert "# dpo4000-utils v0.2.0 / DPO4000 Desk" in release_notes
     assert "DPO4000Desk-windows.exe" in release_notes
     assert "DPO4000Desk-linux" in release_notes
+    assert "dpo4000-desk_0.2.0_amd64.deb" in release_notes
+    assert "DPO4000Desk-x86_64.AppImage" in release_notes
+    assert "DPO4000Desk.flatpak" in release_notes
     assert "dpo4000-gui-qt" not in release_notes
 
 
@@ -106,6 +112,22 @@ def test_windows_and_linux_wrappers_call_shared_build_helper_safely():
     assert "build_windows_exe.bat" in compat
 
 
+def test_linux_release_packaging_script_builds_expected_formats():
+    script = Path("scripts/package_linux_release.sh").read_text(encoding="utf-8")
+
+    assert "dpo4000-desk_${VERSION}_${DEB_ARCH}.deb" in script
+    assert "DPO4000Desk-${APPIMAGE_ARCH}.AppImage" in script
+    assert "DPO4000Desk.flatpak" in script
+    assert "dpkg-deb --build" in script
+    assert "appimagetool-${APPIMAGE_ARCH}.AppImage" in script
+    assert "flatpak-builder --force-clean" in script
+    assert "flatpak build-bundle" in script
+    assert "io.github.ami3go.DPO4000Desk.desktop" in script
+    assert "io.github.ami3go.DPO4000Desk.metainfo.xml" in script
+    assert "BUILD_FLATPAK=\"${BUILD_FLATPAK:-1}\"" in script
+    assert "REQUIRE_FLATPAK" in script
+
+
 def test_gui_executable_workflow_builds_and_publishes_release_assets():
     workflow = Path(".github/workflows/build-gui-executables.yml").read_text(encoding="utf-8")
 
@@ -119,10 +141,18 @@ def test_gui_executable_workflow_builds_and_publishes_release_assets():
     assert "contents: write" in workflow
     assert "APP_NAME: DPO4000Desk" in workflow
     assert "BUILD_MODE: onefile" in workflow
+    assert "FLATPAK_RUNTIME_VERSION: \"24.08\"" in workflow
     assert "dist\\DPO4000Desk.exe" in workflow
     assert "DPO4000Desk-windows.exe" in workflow
-    assert "cp dist/DPO4000Desk release-assets/DPO4000Desk-linux" in workflow
-    assert "Install Linux GUI runtime dependencies" in workflow
+    assert "Install Linux GUI and packaging dependencies" in workflow
+    assert "flatpak-builder" in workflow
+    assert "Install Flatpak runtime" in workflow
+    assert "scripts/package_linux_release.sh" in workflow
+    assert "DPO4000Desk-linux-packages" in workflow
+    assert "DPO4000Desk-linux" in workflow
+    assert "dpo4000-desk_*_amd64.deb" in workflow
+    assert "DPO4000Desk-x86_64.AppImage" in workflow
+    assert "DPO4000Desk.flatpak" in workflow
     assert "softprops/action-gh-release@v2" in workflow
     assert "name: DPO4000 Desk" in workflow
     assert "body_path: docs/releases/v0.2.0.md" in workflow
@@ -138,6 +168,7 @@ def test_application_build_guide_documents_platform_commands_and_outputs():
     assert "titlebar_tabs_window.QtScopeWindow" not in guide
     assert "scripts\\build_windows_exe.bat" in guide
     assert "scripts/build_linux_executable.sh" in guide
+    assert "scripts/package_linux_release.sh" in guide
     assert "python scripts/build_app.py" in guide
     assert "--dry-run" in guide
     assert "dist\\DPO4000Desk\\DPO4000Desk.exe" in guide
@@ -145,5 +176,8 @@ def test_application_build_guide_documents_platform_commands_and_outputs():
     assert "BUILD_MODE=onefile" in guide
     assert "DPO4000Desk-windows.exe" in guide
     assert "DPO4000Desk-linux" in guide
+    assert "dpo4000-desk_0.2.0_amd64.deb" in guide
+    assert "DPO4000Desk-x86_64.AppImage" in guide
+    assert "DPO4000Desk.flatpak" in guide
     assert "VISA runtime" in guide
     assert "TektronixDPO4000" not in guide
