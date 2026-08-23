@@ -16,11 +16,13 @@ def test_project_version_is_v020_release():
     assert "## v0.2.0 - 2026-08-22" in changelog
     assert "DPO4000 Desk" in changelog
     assert "old desktop command alias was removed" in changelog
+    assert "DPO4000Desk-windows.zip" in changelog
     assert "dpo4000-desk_0.2.0_amd64.deb" in changelog
     assert "DPO4000Desk-x86_64.AppImage" in changelog
     assert "DPO4000Desk.flatpak" in changelog
     assert "# dpo4000-utils v0.2.0 / DPO4000 Desk" in release_notes
-    assert "DPO4000Desk-windows.exe" in release_notes
+    assert "DPO4000Desk-windows.zip" in release_notes
+    assert "DPO4000Desk-windows.exe" not in release_notes
     assert "DPO4000Desk-linux" in release_notes
     assert "dpo4000-desk_0.2.0_amd64.deb" in release_notes
     assert "DPO4000Desk-x86_64.AppImage" in release_notes
@@ -142,14 +144,18 @@ def test_gui_executable_workflow_builds_and_publishes_release_assets():
     assert "contents: write" in workflow
     assert "APP_NAME: DPO4000Desk" in workflow
     assert "BUILD_MODE: onefile" in workflow
+    assert "BUILD_MODE: onedir" in workflow
+    assert "Windows ZIP" in workflow
+    assert "Package Windows ZIP asset" in workflow
+    assert "Compress-Archive" in workflow
+    assert "DPO4000Desk-windows.zip" in workflow
+    assert "dist\\DPO4000Desk\\DPO4000Desk.exe" in workflow
     assert "PYTHON_VERSION: \"3.12\"" in workflow
     assert "FLATPAK_RUNTIME_VERSION: \"24.08\"" in workflow
     assert "python-version: ${{ env.PYTHON_VERSION }}" in workflow
     assert "Install Python build dependencies" in workflow
     assert "BUILD_SKIP_INSTALL: \"1\"" in workflow
     assert "Check resolved build command" in workflow
-    assert "dist\\DPO4000Desk.exe" in workflow
-    assert "DPO4000Desk-windows.exe" in workflow
     assert "Install Linux GUI and packaging dependencies" in workflow
     assert "flatpak-builder" in workflow
     assert "Install Flatpak runtime" in workflow
@@ -182,7 +188,7 @@ def test_application_build_guide_documents_platform_commands_and_outputs():
     assert "dist\\DPO4000Desk\\DPO4000Desk.exe" in guide
     assert "dist/DPO4000Desk/DPO4000Desk" in guide
     assert "BUILD_MODE=onefile" in guide
-    assert "DPO4000Desk-windows.exe" in guide
+    assert "DPO4000Desk-windows.zip" in guide
     assert "DPO4000Desk-linux" in guide
     assert "dpo4000-desk_0.2.0_amd64.deb" in guide
     assert "DPO4000Desk-x86_64.AppImage" in guide
