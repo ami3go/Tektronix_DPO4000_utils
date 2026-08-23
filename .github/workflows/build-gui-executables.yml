@@ -23,6 +23,7 @@ permissions:
 env:
   APP_NAME: DPO4000Desk
   BUILD_MODE: onefile
+  FLATPAK_RUNTIME_VERSION: "24.08"
 
 jobs:
   build-windows:
@@ -56,7 +57,7 @@ jobs:
           if-no-files-found: error
 
   build-linux:
-    name: Linux executable
+    name: Linux binary and packages
     runs-on: ubuntu-latest
 
     steps:
@@ -68,25 +69,46 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Install Linux GUI runtime dependencies
+      - name: Install Linux GUI and packaging dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libegl1 libgl1 libxcb-cursor0 libxkbcommon-x11-0
+          sudo apt-get install -y \
+            appstream \
+            ca-certificates \
+            desktop-file-utils \
+            dpkg-dev \
+            fakeroot \
+            flatpak \
+            flatpak-builder \
+            libegl1 \
+            libgl1 \
+            libxcb-cursor0 \
+            libxkbcommon-x11-0 \
+            wget
+
+      - name: Install Flatpak runtime
+        run: |
+          sudo flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          sudo flatpak install -y flathub org.freedesktop.Platform//${FLATPAK_RUNTIME_VERSION} org.freedesktop.Sdk//${FLATPAK_RUNTIME_VERSION}
 
       - name: Build Linux executable
         run: bash scripts/build_linux_executable.sh
 
-      - name: Rename Linux executable asset
-        run: |
-          mkdir -p release-assets
-          cp dist/DPO4000Desk release-assets/DPO4000Desk-linux
-          chmod +x release-assets/DPO4000Desk-linux
+      - name: Package Linux release formats
+        env:
+          RELEASE_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || inputs.release_tag }}
+          REQUIRE_FLATPAK: "1"
+        run: bash scripts/package_linux_release.sh
 
-      - name: Upload Linux executable
+      - name: Upload Linux release assets
         uses: actions/upload-artifact@v4
         with:
-          name: DPO4000Desk-linux
-          path: release-assets/DPO4000Desk-linux
+          name: DPO4000Desk-linux-packages
+          path: |
+            release-assets/DPO4000Desk-linux
+            release-assets/dpo4000-desk_*_amd64.deb
+            release-assets/DPO4000Desk-x86_64.AppImage
+            release-assets/DPO4000Desk.flatpak
           if-no-files-found: error
 
   release:
@@ -116,4 +138,7 @@ jobs:
           prerelease: ${{ inputs.prerelease || false }}
           files: |
             release-assets/DPO4000Desk-windows/DPO4000Desk-windows.exe
-            release-assets/DPO4000Desk-linux/DPO4000Desk-linux
+            release-assets/DPO4000Desk-linux-packages/DPO4000Desk-linux
+            release-assets/DPO4000Desk-linux-packages/dpo4000-desk_*_amd64.deb
+            release-assets/DPO4000Desk-linux-packages/DPO4000Desk-x86_64.AppImage
+            release-assets/DPO4000Desk-linux-packages/DPO4000Desk.flatpak
