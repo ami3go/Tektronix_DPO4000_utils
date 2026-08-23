@@ -31,8 +31,10 @@ env:
 
 jobs:
   build-windows:
-    name: Windows EXE
+    name: Windows ZIP
     runs-on: windows-latest
+    env:
+      BUILD_MODE: onedir
 
     steps:
       - name: Check out repository
@@ -55,27 +57,27 @@ jobs:
           BUILD_SKIP_INSTALL: "1"
         run: scripts\build_windows_exe.bat --dry-run
 
-      - name: Build Windows EXE
+      - name: Build Windows application folder
         shell: cmd
         env:
           BUILD_SKIP_INSTALL: "1"
         run: scripts\build_windows_exe.bat
 
-      - name: Rename Windows EXE asset
+      - name: Package Windows ZIP asset
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path release-assets
-          if (-not (Test-Path dist\DPO4000Desk.exe)) {
+          if (-not (Test-Path dist\DPO4000Desk\DPO4000Desk.exe)) {
             Get-ChildItem -Recurse dist | Format-Table -AutoSize
-            throw "Expected Windows executable missing: dist\DPO4000Desk.exe"
+            throw "Expected Windows executable missing: dist\DPO4000Desk\DPO4000Desk.exe"
           }
-          Copy-Item dist\DPO4000Desk.exe release-assets\DPO4000Desk-windows.exe
+          Compress-Archive -Path dist\DPO4000Desk\* -DestinationPath release-assets\DPO4000Desk-windows.zip -Force
 
-      - name: Upload Windows EXE
+      - name: Upload Windows ZIP
         uses: actions/upload-artifact@v4
         with:
           name: DPO4000Desk-windows
-          path: release-assets/DPO4000Desk-windows.exe
+          path: release-assets/DPO4000Desk-windows.zip
           if-no-files-found: error
 
   build-linux:
@@ -171,7 +173,7 @@ jobs:
           body_path: docs/releases/v0.2.0.md
           prerelease: ${{ github.event.inputs.prerelease == 'true' }}
           files: |
-            release-assets/DPO4000Desk-windows/DPO4000Desk-windows.exe
+            release-assets/DPO4000Desk-windows/DPO4000Desk-windows.zip
             release-assets/DPO4000Desk-linux-packages/DPO4000Desk-linux
             release-assets/DPO4000Desk-linux-packages/dpo4000-desk_*_amd64.deb
             release-assets/DPO4000Desk-linux-packages/DPO4000Desk-x86_64.AppImage
