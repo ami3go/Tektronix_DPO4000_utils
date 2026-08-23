@@ -98,6 +98,7 @@ def test_windows_and_linux_wrappers_call_shared_build_helper_safely():
     assert "DPO4000Desk" in windows
     assert "TektronixDPO4000" not in windows
     assert "py -3 scripts\\build_app.py" not in windows
+    assert windows.rstrip().endswith("exit /b 0")
 
     assert 'PYTHON_BIN="${PYTHON:-python3}"' in linux
     assert '"$PYTHON_BIN" scripts/build_app.py' in linux
