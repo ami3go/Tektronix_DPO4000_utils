@@ -20,6 +20,7 @@
 - Runtime desktop smoke tests for the launched UI path.
 - Shared PyInstaller build helper plus Windows and Linux wrapper scripts.
 - Release-capable GitHub Actions workflow for Windows/Linux executable assets.
+- Linux packaging helper for raw binary, `.deb`, AppImage, and Flatpak bundle release assets.
 
 ### Changed
 
@@ -29,7 +30,7 @@
 - Display-related controls were moved out of File/Settings into **Display**.
 - Build target now resolves through `dpo4000_utils.gui_qt.titlebar_tabs_window.QtScopeWindow`.
 - Default packaged executable name changed to `DPO4000Desk`.
-- Release asset names changed to `DPO4000Desk-windows.exe` and `DPO4000Desk-linux`.
+- Release asset names changed to `DPO4000Desk-windows.exe`, `DPO4000Desk-linux`, `dpo4000-desk_0.2.0_amd64.deb`, `DPO4000Desk-x86_64.AppImage`, and `DPO4000Desk.flatpak`.
 - The old desktop command alias was removed; use `dpo4000-desk`.
 
 ### Notes
