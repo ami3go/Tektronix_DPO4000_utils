@@ -1,5 +1,9 @@
 name: Build DPO4000 Desk Executables
 
+run-name: >-
+  DPO4000 Desk release build
+  ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || github.event.inputs.release_tag || github.ref_name }}
+
 on:
   workflow_dispatch:
     inputs:
@@ -19,10 +23,10 @@ on:
 permissions:
   contents: write
 
-# Release builds use one-file mode so the assets are easy to download/run.
 env:
   APP_NAME: DPO4000Desk
   BUILD_MODE: onefile
+  PYTHON_VERSION: "3.12"
   FLATPAK_RUNTIME_VERSION: "24.08"
 
 jobs:
@@ -37,16 +41,34 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Python build dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[build,pyside6]"
+
+      - name: Check resolved build command
+        shell: cmd
+        env:
+          BUILD_SKIP_INSTALL: "1"
+        run: scripts\build_windows_exe.bat --dry-run
 
       - name: Build Windows EXE
         shell: cmd
+        env:
+          BUILD_SKIP_INSTALL: "1"
         run: scripts\build_windows_exe.bat
 
       - name: Rename Windows EXE asset
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path release-assets
+          if (-not (Test-Path dist\DPO4000Desk.exe)) {
+            Get-ChildItem -Recurse dist | Format-Table -AutoSize
+            throw "Expected Windows executable missing: dist\DPO4000Desk.exe"
+          }
           Copy-Item dist\DPO4000Desk.exe release-assets\DPO4000Desk-windows.exe
 
       - name: Upload Windows EXE
@@ -67,7 +89,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Install Linux GUI and packaging dependencies
         run: |
@@ -86,17 +108,29 @@ jobs:
             libxkbcommon-x11-0 \
             wget
 
+      - name: Install Python build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[build,pyside6]"
+
       - name: Install Flatpak runtime
         run: |
           sudo flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
           sudo flatpak install -y flathub org.freedesktop.Platform//${FLATPAK_RUNTIME_VERSION} org.freedesktop.Sdk//${FLATPAK_RUNTIME_VERSION}
 
+      - name: Check resolved build command
+        env:
+          BUILD_SKIP_INSTALL: "1"
+        run: bash scripts/build_linux_executable.sh --dry-run
+
       - name: Build Linux executable
+        env:
+          BUILD_SKIP_INSTALL: "1"
         run: bash scripts/build_linux_executable.sh
 
       - name: Package Linux release formats
         env:
-          RELEASE_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || inputs.release_tag }}
+          RELEASE_VERSION: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || github.event.inputs.release_tag }}
           REQUIRE_FLATPAK: "1"
         run: bash scripts/package_linux_release.sh
 
@@ -117,7 +151,7 @@ jobs:
       - build-windows
       - build-linux
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/') || inputs.release_tag != ''
+    if: startsWith(github.ref, 'refs/tags/') || github.event.inputs.release_tag != ''
 
     steps:
       - name: Check out repository
@@ -131,11 +165,11 @@ jobs:
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || inputs.release_tag }}
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || github.event.inputs.release_tag }}
           target_commitish: ${{ github.sha }}
-          name: DPO4000 Desk ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || inputs.release_tag }}
+          name: DPO4000 Desk ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || github.event.inputs.release_tag }}
           body_path: docs/releases/v0.2.0.md
-          prerelease: ${{ inputs.prerelease || false }}
+          prerelease: ${{ github.event.inputs.prerelease == 'true' }}
           files: |
             release-assets/DPO4000Desk-windows/DPO4000Desk-windows.exe
             release-assets/DPO4000Desk-linux-packages/DPO4000Desk-linux
