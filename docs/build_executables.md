@@ -8,7 +8,7 @@ dpo4000-desk
 
 DPO4000 Desk uses a frameless desktop window so the page buttons sit in the same row as the window title. The build scripts use PyInstaller and should be run on the same operating system as the artifact you want to distribute:
 
-- build Windows `.exe` artifacts on Windows
+- build Windows application-folder artifacts on Windows
 - build Linux artifacts on Linux
 - build Linux `.deb`, AppImage, and Flatpak bundle artifacts on Linux
 
@@ -40,7 +40,7 @@ Windows: dist\DPO4000Desk.exe
 Linux:   dist/DPO4000Desk
 ```
 
-## Windows `.exe`
+## Windows build
 
 From PowerShell or `cmd.exe` in the repository root:
 
@@ -54,7 +54,7 @@ Compatibility alias:
 scripts\build_exe.bat
 ```
 
-One-file build:
+One-file build for local testing:
 
 ```powershell
 $env:BUILD_MODE="onefile"
@@ -73,6 +73,14 @@ Console/debug build:
 ```powershell
 python scripts\build_app.py --mode onedir --console
 ```
+
+The GitHub release workflow uses `onedir` and compresses the result as:
+
+```text
+DPO4000Desk-windows.zip
+```
+
+After extracting the ZIP, run `DPO4000Desk.exe` from the extracted folder.
 
 ## Linux executable
 
@@ -170,10 +178,10 @@ The helper creates a small generated PyInstaller entry file under `build/pyinsta
 
 ## GitHub release assets
 
-The workflow `.github/workflows/build-gui-executables.yml` builds one-file DPO4000 Desk assets for release:
+The workflow `.github/workflows/build-gui-executables.yml` builds DPO4000 Desk assets for release:
 
 ```text
-DPO4000Desk-windows.exe
+DPO4000Desk-windows.zip
 DPO4000Desk-linux
 dpo4000-desk_0.2.0_amd64.deb
 DPO4000Desk-x86_64.AppImage
