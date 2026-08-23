@@ -224,7 +224,7 @@ modules:
 EOF_MANIFEST
 
   rm -rf "${flatpak_build}" "${flatpak_repo}"
-  flatpak-builder --force-clean --repo="${flatpak_repo}" "${flatpak_build}" "${manifest}"
+  flatpak-builder --force-clean --default-branch=stable --repo="${flatpak_repo}" "${flatpak_build}" "${manifest}"
   flatpak build-bundle "${flatpak_repo}" "${ASSETS_DIR}/${APP_NAME}.flatpak" "${APP_ID}" stable
 }
 
