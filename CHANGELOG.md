@@ -30,7 +30,8 @@
 - Display-related controls were moved out of File/Settings into **Display**.
 - Build target now resolves through `dpo4000_utils.gui_qt.titlebar_tabs_window.QtScopeWindow`.
 - Default packaged executable name changed to `DPO4000Desk`.
-- Release asset names changed to `DPO4000Desk-windows.exe`, `DPO4000Desk-linux`, `dpo4000-desk_0.2.0_amd64.deb`, `DPO4000Desk-x86_64.AppImage`, and `DPO4000Desk.flatpak`.
+- Windows release now uses `DPO4000Desk-windows.zip`, containing the `DPO4000Desk.exe` application folder, instead of forcing a fragile one-file Windows executable in CI.
+- Linux release asset names are `DPO4000Desk-linux`, `dpo4000-desk_0.2.0_amd64.deb`, `DPO4000Desk-x86_64.AppImage`, and `DPO4000Desk.flatpak`.
 - The old desktop command alias was removed; use `dpo4000-desk`.
 
 ### Notes
