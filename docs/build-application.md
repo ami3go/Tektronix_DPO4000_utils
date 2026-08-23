@@ -8,7 +8,7 @@ dpo4000-desk
 
 DPO4000 Desk uses a frameless desktop window so the page buttons can share the same row as the window title. Build on the same operating system you want to distribute for:
 
-- build the Windows `.exe` on Windows
+- build the Windows application folder on Windows
 - build the Linux executable on Linux
 - build Linux `.deb`, AppImage, and Flatpak bundle packages on Linux
 
@@ -57,11 +57,23 @@ Validate arguments without running PyInstaller:
 scripts\build_windows_exe.bat --dry-run --skip-install
 ```
 
-Build one-file `.exe` instead:
+Build one-file `.exe` locally instead:
 
 ```powershell
 $env:BUILD_MODE="onefile"
 scripts\build_windows_exe.bat
+```
+
+The GitHub release workflow intentionally uses the more reliable `onedir` Windows build and uploads it as:
+
+```text
+DPO4000Desk-windows.zip
+```
+
+After extracting the ZIP, run:
+
+```text
+DPO4000Desk.exe
 ```
 
 Use a custom executable name:
@@ -186,7 +198,7 @@ The GitHub Actions workflow `.github/workflows/build-gui-executables.yml` can bu
 Expected release assets:
 
 ```text
-DPO4000Desk-windows.exe
+DPO4000Desk-windows.zip
 DPO4000Desk-linux
 dpo4000-desk_0.2.0_amd64.deb
 DPO4000Desk-x86_64.AppImage
@@ -249,6 +261,7 @@ For USB instruments, install the relevant USB/VISA driver. For Ethernet/VXI-11 o
 
 - `onedir` is recommended for daily use and debugging.
 - `onefile` is convenient for transfer but starts slower because it extracts files at launch.
+- The GitHub Windows release uses `onedir` ZIP because it is more reliable for PySide6 applications on CI.
 - Build Windows packages on Windows and Linux packages on Linux.
 - The frameless title bar should be checked on target desktops: drag, maximize, close, and resize behavior.
 - The old `scripts/build_exe.bat` remains as a compatibility wrapper for `scripts/build_windows_exe.bat`.
