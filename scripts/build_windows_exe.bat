@@ -38,3 +38,4 @@ if /i "%BUILD_MODE%"=="onefile" (
 )
 echo NOTE: The target PC still needs a VISA runtime such as NI-VISA, TekVISA, or Keysight VISA.
 endlocal
+exit /b 0
