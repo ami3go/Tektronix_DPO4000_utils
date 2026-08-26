@@ -6,13 +6,19 @@ from .connection import (
     list_visa_resources,
     visaResourceAddr,
 )
+from .control import AcquisitionConfig, ChannelConfig, DisplayConfig, MathConfig, MeasurementConfig
 from .hardcopy import extract_png_bytes, strip_ieee_block_header
 from .instrument import DPO4000Scope, DPO4054
 from .waveform import parse_ascii_curve
 
 __all__ = [
+    "AcquisitionConfig",
+    "ChannelConfig",
     "DPO4000Scope",
     "DPO4054",
+    "DisplayConfig",
+    "MathConfig",
+    "MeasurementConfig",
     "visaResourceAddr",
     "build_tcpip_instr_resource",
     "build_tcpip_socket_resource",
