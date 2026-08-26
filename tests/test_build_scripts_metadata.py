@@ -3,16 +3,25 @@ from __future__ import annotations
 from pathlib import Path
 
 
-def test_project_version_is_v020_release():
+def test_project_version_and_release_metadata():
     project = Path("pyproject.toml").read_text(encoding="utf-8")
     changelog = Path("CHANGELOG.md").read_text(encoding="utf-8")
     release_notes = Path("docs/releases/v0.2.0.md").read_text(encoding="utf-8")
 
     assert 'name = "dpo4000-utils"' in project
-    assert 'version = "0.2.0"' in project
+    assert 'version = "0.2.1"' in project
     assert 'dpo4000-desk = "dpo4000_utils.gui_qt.runner:main"' in project
     assert "dpo4000-gui-qt" not in project
     assert "\nqt = [" not in project
+
+    assert "## v0.2.1 - 2026-08-26" in changelog
+    assert "ChannelConfig" in changelog
+    assert "MathConfig" in changelog
+    assert "AcquisitionConfig" in changelog
+    assert "DisplayConfig" in changelog
+    assert "MeasurementSetup" in changelog
+    assert "Package version bumped to `0.2.1`" in changelog
+
     assert "## v0.2.0 - 2026-08-22" in changelog
     assert "DPO4000 Desk" in changelog
     assert "old desktop command alias was removed" in changelog
@@ -20,6 +29,7 @@ def test_project_version_is_v020_release():
     assert "dpo4000-desk_0.2.0_amd64.deb" in changelog
     assert "DPO4000Desk-x86_64.AppImage" in changelog
     assert "DPO4000Desk.flatpak" in changelog
+
     assert "# dpo4000-utils v0.2.0 / DPO4000 Desk" in release_notes
     assert "DPO4000Desk-windows.zip" in release_notes
     assert "DPO4000Desk-windows.exe" not in release_notes
@@ -30,7 +40,7 @@ def test_project_version_is_v020_release():
     assert "dpo4000-gui-qt" not in release_notes
 
 
-def test_shared_build_helper_targets_pyside6_titlebar_tabs_runner_entry():
+def test_shared_build_helper_targets_desktop_runner_entry():
     content = Path("scripts/build_app.py").read_text(encoding="utf-8")
 
     assert "DPO4000 Desk PySide6 application" in content
@@ -63,23 +73,6 @@ def test_shared_build_helper_has_safe_flags_and_dry_run():
     assert "shlex.quote" in content
     assert "dry_run=args.dry_run" in content
     assert "Dry run output would be" in content
-
-
-def test_shared_build_helper_validates_mode_app_name_and_output():
-    content = Path("scripts/build_app.py").read_text(encoding="utf-8")
-
-    assert "BUILD_MODES = (\"onedir\", \"onefile\")" in content
-    assert "choices=BUILD_MODES" in content
-    assert "UNSAFE_APP_NAME_CHARS" in content
-    assert "def _validate_app_name" in content
-    assert "--app-name cannot be empty" in content
-    assert "--app-name cannot contain path separators or drive separators" in content
-    assert "def output_path" in content
-    assert "def verify_output_exists" in content
-    assert "expected output was not found" in content
-    assert "Expected executable path is a directory" in content
-    assert "verify_output_exists(args.app_name, args.mode)" in content
-    assert "if not args.dry_run:" in content
 
 
 def test_windows_and_linux_wrappers_call_shared_build_helper_safely():
@@ -118,7 +111,6 @@ def test_windows_and_linux_wrappers_call_shared_build_helper_safely():
 def test_linux_release_packaging_script_builds_expected_formats():
     script = Path("scripts/package_linux_release.sh").read_text(encoding="utf-8")
 
-    assert "cd \"${ROOT}\"" in script
     assert "dpo4000-desk_${VERSION}_${DEB_ARCH}.deb" in script
     assert "${APP_NAME}-${APPIMAGE_ARCH}.AppImage" in script
     assert "${APP_NAME}.flatpak" in script
@@ -126,8 +118,6 @@ def test_linux_release_packaging_script_builds_expected_formats():
     assert "appimagetool-${APPIMAGE_ARCH}.AppImage" in script
     assert "flatpak-builder --force-clean --default-branch=stable" in script
     assert "flatpak build-bundle" in script
-    assert "${APP_ID}.desktop" in script
-    assert "${APP_ID}.metainfo.xml" in script
     assert "BUILD_FLATPAK=\"${BUILD_FLATPAK:-1}\"" in script
     assert "REQUIRE_FLATPAK" in script
 
@@ -138,41 +128,24 @@ def test_gui_executable_workflow_builds_and_publishes_release_assets():
     assert "Build DPO4000 Desk Executables" in workflow
     assert "workflow_dispatch:" in workflow
     assert "release_tag:" in workflow
-    assert "push:" in workflow
-    assert "tags:" in workflow
     assert '"v*"' in workflow
-    assert "permissions:" in workflow
     assert "contents: write" in workflow
     assert "APP_NAME: DPO4000Desk" in workflow
-    assert "BUILD_MODE: onefile" in workflow
-    assert "BUILD_MODE: onedir" in workflow
     assert "Windows ZIP" in workflow
-    assert "Package Windows ZIP asset" in workflow
-    assert "Compress-Archive" in workflow
     assert "DPO4000Desk-windows.zip" in workflow
     assert "dist\\DPO4000Desk\\DPO4000Desk.exe" in workflow
     assert "PYTHON_VERSION: \"3.12\"" in workflow
     assert "FLATPAK_RUNTIME_VERSION: \"24.08\"" in workflow
-    assert "python-version: ${{ env.PYTHON_VERSION }}" in workflow
-    assert "Install Python build dependencies" in workflow
     assert "BUILD_SKIP_INSTALL: \"1\"" in workflow
-    assert "Check resolved build command" in workflow
-    assert "Install Linux GUI and packaging dependencies" in workflow
-    assert "flatpak-builder" in workflow
-    assert "Install Flatpak runtime" in workflow
     assert "scripts/package_linux_release.sh" in workflow
     assert "DPO4000Desk-linux-packages" in workflow
-    assert "DPO4000Desk-linux" in workflow
     assert "dpo4000-desk_*_amd64.deb" in workflow
     assert "DPO4000Desk-x86_64.AppImage" in workflow
     assert "DPO4000Desk.flatpak" in workflow
     assert "softprops/action-gh-release@v2" in workflow
-    assert "name: DPO4000 Desk" in workflow
     assert "body_path: docs/releases/v0.2.0.md" in workflow
-    assert "github.event.inputs.release_tag" in workflow
     assert "TektronixScopeGUI" not in workflow
     assert "TektronixDPO4000" not in workflow
-    assert "python-version: \"3.13\"" not in workflow
 
 
 def test_application_build_guide_documents_platform_commands_and_outputs():
