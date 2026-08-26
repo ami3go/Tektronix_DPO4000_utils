@@ -41,9 +41,7 @@ MEASUREMENT_TYPES_BY_GROUP: dict[str, tuple[str, ...]] = {
         "EDGES",
     ),
 }
-MEASUREMENT_TYPES = tuple(
-    item for group in MEASUREMENT_TYPES_BY_GROUP.values() for item in group
-)
+MEASUREMENT_TYPES = tuple(item for group in MEASUREMENT_TYPES_BY_GROUP.values() for item in group)
 
 TRIGGER_TYPES = ("EDGE", "PULSE", "RUNT", "TIMEOUT", "LOGIC", "VIDEO")
 TRIGGER_MODES = ("AUTO", "NORMAL")
@@ -51,6 +49,24 @@ TRIGGER_SOURCES = ("CH1", "CH2", "CH3", "CH4", "AUX", "LINE")
 TRIGGER_SLOPES = ("RISE", "FALL", "EITHER")
 TRIGGER_COUPLINGS = ("DC", "AC", "HFREJ", "LFREJ", "NOISEREJ")
 FORCE_TRIGGER_COMMAND = "TRIG FORC"
+
+RECORD_LENGTH_LABELS = (
+    "1k",
+    "10k",
+    "100k",
+    "1M",
+    "10M",
+)
+RECORD_LENGTH_POINTS_BY_LABEL = {
+    "1K": 1_000,
+    "10K": 10_000,
+    "100K": 100_000,
+    "1M": 1_000_000,
+    "10M": 10_000_000,
+}
+RECORD_LENGTH_LABEL_BY_POINTS = {
+    points: label for label, points in zip(RECORD_LENGTH_LABELS, RECORD_LENGTH_POINTS_BY_LABEL.values())
+}
 
 
 @dataclass(frozen=True)
@@ -138,6 +154,53 @@ def build_horizontal_position_query() -> str:
     return "HORIZONTAL:POSITION?"
 
 
+def normalize_record_length(record_length: str | float | int) -> int:
+    """Normalize a record-length setting to an integer point count.
+
+    Friendly labels such as ``1k`` and ``1M`` are accepted, but arbitrary
+    positive integer point counts are intentionally also allowed because exact
+    valid values can vary by DPO4000 model, option set, and acquisition mode.
+    """
+    if isinstance(record_length, bool):
+        raise ValueError("Record length must be a positive integer point count or label.")
+
+    if isinstance(record_length, str):
+        text = record_length.strip()
+        if not text:
+            raise ValueError("Record length cannot be empty.")
+        label_key = text.upper().replace(" ", "")
+        if label_key in RECORD_LENGTH_POINTS_BY_LABEL:
+            return RECORD_LENGTH_POINTS_BY_LABEL[label_key]
+        candidate = text
+    else:
+        candidate = record_length
+
+    try:
+        numeric = float(candidate)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            "Record length must be a positive integer point count or a supported label."
+        ) from exc
+
+    if not numeric.is_integer() or numeric <= 0:
+        raise ValueError("Record length must be a positive integer point count.")
+    return int(numeric)
+
+
+def record_length_label(record_length: str | float | int) -> str:
+    """Return a friendly label for common record lengths, otherwise the point count."""
+    points = normalize_record_length(record_length)
+    return RECORD_LENGTH_LABEL_BY_POINTS.get(points, str(points))
+
+
+def build_record_length_command(record_length: str | float | int) -> str:
+    return f"HORIZONTAL:RECORDLENGTH {normalize_record_length(record_length)}"
+
+
+def build_record_length_query() -> str:
+    return "HORIZONTAL:RECORDLENGTH?"
+
+
 def normalize_trigger_level(level: str | float | int) -> str:
     text = str(level).strip()
     if not text:
@@ -212,6 +275,15 @@ class ControlMixin:
         self.set_horizontal_position(next_position)
         return next_position
 
+    def set_record_length(self, record_length: str | float | int) -> None:
+        """Set horizontal acquisition record length in sample points."""
+        self.ensure_connected().write(build_record_length_command(record_length))
+
+    def get_record_length(self) -> int:
+        """Read horizontal acquisition record length as integer sample points."""
+        response = self.ensure_connected().query(build_record_length_query()).strip()
+        return normalize_record_length(response.split()[-1])
+
     def configure_edge_trigger(
         self,
         *,
@@ -259,6 +331,9 @@ __all__ = [
     "MEASUREMENT_SOURCES",
     "MEASUREMENT_TYPES",
     "MEASUREMENT_TYPES_BY_GROUP",
+    "RECORD_LENGTH_LABELS",
+    "RECORD_LENGTH_LABEL_BY_POINTS",
+    "RECORD_LENGTH_POINTS_BY_LABEL",
     "TRIGGER_COUPLINGS",
     "TRIGGER_MODES",
     "TRIGGER_SLOPES",
@@ -270,4 +345,8 @@ __all__ = [
     "build_horizontal_position_query",
     "build_measurement_commands",
     "build_measurement_value_query",
+    "build_record_length_command",
+    "build_record_length_query",
+    "normalize_record_length",
+    "record_length_label",
 ]
