@@ -1,13 +1,30 @@
 # Changelog
 
+## v0.2.1 - 2026-08-26
+
+### Added
+
+- Promoted current DPO4000 Desk scope actions into reusable `dpo4000_utils` APIs.
+- Public payload dataclasses: `ChannelConfig`, `MathConfig`, `AcquisitionConfig`, `DisplayConfig`, and `MeasurementSetup`.
+- Channel configuration helpers and methods for display, scale, position, offset, coupling, bandwidth, invert, and probe gain.
+- MATH waveform configuration helpers and methods for display, expression, vertical scale, and vertical position.
+- Acquisition setup helpers and methods for mode, average count, and record length.
+- Display/front-panel helpers and methods for backlight, waveform intensity, graticule intensity, persistence, screen text, and message clear.
+- Measurement setup readback helpers for one slot or all `MEAS1..MEAS8` slots.
+- `dpo4000_utils` record-length API helpers: `set_record_length()`, `get_record_length()`, `build_record_length_command()`, and `build_record_length_query()`.
+- Record-length normalization for common labels such as `1k`, `10k`, `100k`, `1M`, and `10M`, plus arbitrary positive integer point counts.
+
+### Changed
+
+- Package version bumped to `0.2.1`.
+- Package root now exports the GUI-backed configuration dataclasses for direct script use.
+
 ## v0.2.0 - 2026-08-22
 
 ### Added
 
 - **DPO4000 Desk** name for the desktop application.
 - `dpo4000-desk` console command as the primary desktop application launcher.
-- `dpo4000_utils` record-length API helpers: `set_record_length()`, `get_record_length()`, `build_record_length_command()`, and `build_record_length_query()`.
-- Record-length normalization for common labels such as `1k`, `10k`, `100k`, `1M`, and `10M`, plus arbitrary positive integer point counts.
 - Modern frameless titlebar with page buttons in the title row.
 - Draggable titlebar tabs with fallback manual move handling.
 - Dedicated **File** and **Display** top-level pages.
