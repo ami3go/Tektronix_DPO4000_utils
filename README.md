@@ -32,11 +32,14 @@ Common front-panel style actions are available from the preview toolbar, includi
 - Export enabled channel waveforms to CSV.
 - Save and restore oscilloscope setup strings through SCPI.
 - Read/write CH1..CH4 labels.
-- Configure channel and MATH settings from DPO4000 Desk.
-- Add, read, edit, and clear `MEAS1..MEAS8` measurement slots.
+- Configure full channel setup from the GUI and Python API: display, scale, position, offset, coupling, bandwidth, invert, and probe gain.
+- Configure MATH waveform setup from the GUI and Python API: display, expression, vertical scale, and vertical position.
+- Add, read, edit, and clear `MEAS1..MEAS8` measurement slots, including setup readback for one slot or all slots.
 - Guarded measurement edit/delete mode to reduce accidental measurement deletion.
 - Read/set trigger level and configure common edge-trigger options.
 - Run, stop, single, continuous, and force-trigger controls.
+- Configure acquisition setup: mode, average count, and record length.
+- Configure front-panel display setup: backlight, waveform intensity, graticule intensity, persistence, and on-screen message text.
 - Dedicated File and Display pages for output and front-panel display settings.
 - Persistent GUI preferences for connection resources, output folders, filenames, and trigger options.
 
@@ -108,16 +111,25 @@ Ctrl+1..8       Switch DPO4000 Desk pages
 ## Python API example
 
 ```python
-from dpo4000_utils import DPO4054
-from dpo4000_utils.control import MeasurementConfig
+from dpo4000_utils import (
+    AcquisitionConfig,
+    ChannelConfig,
+    DPO4054,
+    DisplayConfig,
+    MathConfig,
+    MeasurementConfig,
+)
 
 with DPO4054("USB0::0x0699::0x0401::C011280::INSTR", auto_connect=True) as scope:
-    print(scope.scope.query("*IDN?").strip())
+    print(scope.query_identity())
     print(scope.get_channel_labels())
-    print(scope.get_trigger_level(channel=1))
+
+    scope.configure_channel(ChannelConfig(channel=1, display=True, scale="0.5", coupling="DC"))
+    scope.configure_math(MathConfig(display=True, define="CH1+CH2", scale="1", position="0"))
     scope.add_measurement(MeasurementConfig(slot=1, measurement_type="FREQUENCY", source1="CH1"))
-    scope.set_horizontal_position(0)
+    scope.configure_acquisition(AcquisitionConfig(mode="AVERAGE", average_count=16, record_length="10k"))
     scope.configure_edge_trigger(source="CH1", slope="RISE", coupling="DC", mode="AUTO", level="1.0")
+    scope.apply_display_settings(DisplayConfig(persistence="AUTO", message_text="DPO4000 Desk", message_state=True))
 ```
 
 Common API calls:
@@ -128,6 +140,14 @@ scope.save_all_channels_to_single_csv("waveforms.csv")
 scope.save_scope_settings("setup.json", ask_before_overwrite=False)
 scope.apply_scope_settings("setup.json", wait_complete=False)
 scope.set_channel_label(1, "INPUT")
+scope.get_channel_configuration(1)
+scope.get_math_configuration()
+scope.get_measurement_setup(1)
+scope.get_all_measurement_setups()
+scope.set_record_length("10k")
+scope.get_acquisition_setup()
+scope.get_display_settings()
+scope.clear_display_message()
 scope.set_trigger_level(1.0, channel=1)
 scope.read_measurement_value(1)
 scope.disable_all_measurements()
