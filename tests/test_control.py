@@ -7,6 +7,10 @@ from dpo4000_utils.control import (
     build_horizontal_position_command,
     build_measurement_commands,
     build_measurement_value_query,
+    build_record_length_command,
+    build_record_length_query,
+    normalize_record_length,
+    record_length_label,
 )
 
 
@@ -42,6 +46,36 @@ def test_measurement_value_query():
 
 def test_horizontal_position_command():
     assert build_horizontal_position_command("12.5") == "HORIZONTAL:POSITION 12.5"
+
+
+def test_record_length_label_normalization():
+    assert normalize_record_length("1k") == 1000
+    assert normalize_record_length("10 K") == 10000
+    assert normalize_record_length("1M") == 1000000
+    assert normalize_record_length("1e6") == 1000000
+    assert normalize_record_length(1000.0) == 1000
+
+
+def test_record_length_validation_rejects_bad_values():
+    with pytest.raises(ValueError, match="Record length cannot be empty"):
+        normalize_record_length("")
+    with pytest.raises(ValueError, match="positive integer"):
+        normalize_record_length(0)
+    with pytest.raises(ValueError, match="positive integer"):
+        normalize_record_length("12.5")
+    with pytest.raises(ValueError, match="point count or label"):
+        normalize_record_length("deep")
+
+
+def test_record_length_command_and_query():
+    assert build_record_length_command("10k") == "HORIZONTAL:RECORDLENGTH 10000"
+    assert build_record_length_command(2500) == "HORIZONTAL:RECORDLENGTH 2500"
+    assert build_record_length_query() == "HORIZONTAL:RECORDLENGTH?"
+
+
+def test_record_length_label_for_common_and_custom_values():
+    assert record_length_label("100000") == "100k"
+    assert record_length_label(2500) == "2500"
 
 
 def test_edge_trigger_commands_channel_source():
