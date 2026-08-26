@@ -28,8 +28,8 @@ def build_tcpip_socket_resource(host: str, port: int | str = 4000) -> str:
     if not host:
         raise ValueError("host must not be empty")
     port_int = int(port)
-    if port_int <= 0:
-        raise ValueError("port must be a positive integer")
+    if port_int <= 0 or port_int > 65535:
+        raise ValueError("port must be between 1 and 65535")
     return f"TCPIP0::{host}::{port_int}::SOCKET"
 
 
@@ -51,6 +51,26 @@ def list_visa_resources() -> tuple[str, ...]:
 class ConnectionMixin:
     """Mixin providing VISA session lifecycle helpers."""
 
+    def _apply_session_configuration(self) -> None:
+        """Apply driver-owned VISA session options before the first query."""
+        if self.scope is None:
+            return
+
+        timeout_ms = getattr(self, "timeout_ms", None)
+        if timeout_ms is not None:
+            timeout_value = int(timeout_ms)
+            if timeout_value <= 0:
+                raise ValueError("timeout_ms must be a positive integer")
+            self.scope.timeout = timeout_value
+
+        read_termination = getattr(self, "read_termination", None)
+        if read_termination is not None:
+            self.scope.read_termination = read_termination
+
+        write_termination = getattr(self, "write_termination", None)
+        if write_termination is not None:
+            self.scope.write_termination = write_termination
+
     def connect(self):
         """Connect to the oscilloscope. Safe to call multiple times."""
         if self.scope is not None:
@@ -66,10 +86,22 @@ class ConnectionMixin:
             if self.rm is None:
                 self.rm = pyvisa.ResourceManager()
             self.scope = self.rm.open_resource(self.resource_name)
+            self._apply_session_configuration()
             idn = self.scope.query("*IDN?").strip()
             print(f"Connected to: {idn}")
         except Exception as exc:
-            self.scope = None
+            if self.scope is not None:
+                try:
+                    self.scope.close()
+                except Exception:
+                    pass
+                self.scope = None
+            if self.rm is not None:
+                try:
+                    self.rm.close()
+                except Exception:
+                    pass
+                self.rm = None
             raise ConnectionError(f"Failed to connect to the oscilloscope: {exc}") from exc
 
     def disconnect(self):

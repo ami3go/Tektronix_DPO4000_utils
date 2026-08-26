@@ -16,6 +16,7 @@ from .control import (
 )
 from .hardcopy import extract_png_bytes, strip_ieee_block_header
 from .instrument import DPO4000Scope, DPO4054
+from .session import scope_session
 from .waveform import parse_ascii_curve
 
 __all__ = [
@@ -31,6 +32,7 @@ __all__ = [
     "build_tcpip_instr_resource",
     "build_tcpip_socket_resource",
     "list_visa_resources",
+    "scope_session",
     "extract_png_bytes",
     "strip_ieee_block_header",
     "parse_ascii_curve",

@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.3.0 - 2026-08-26
+
+### Added
+
+- Public `scope_session()` context manager for short-lived, driver-owned instrument sessions.
+- `DPO4000Scope` constructor options for VISA timeout, read termination, and write termination.
+- API-only adapters for both launched GUIs: `gui.api_scope_gui.ScopeGui` and `gui_qt.api_window.QtScopeWindow`.
+- Architecture tests that prevent the launched GUI adapters from accessing `scope.scope` or raw hardcopy/settings/waveform transfer helpers.
+- `docs/architecture.md` describing the enforced GUI-to-driver boundary.
+
+### Changed
+
+- Package version bumped to `0.3.0`.
+- Tkinter and DPO4000 Desk launch paths now delegate instrument operations to the public `dpo4000_utils` API instead of owning SCPI/VISA behavior.
+- Screen capture now goes through `save_image_path()`; waveform export goes through `save_all_channels_to_single_csv()`; setup restore goes through `apply_scope_settings()`.
+- Channel, MATH, measurement, acquisition, trigger, and display actions in the launched Qt GUI now use the corresponding public driver methods and configuration dataclasses.
+- VISA timeout and line termination are applied by `ConnectionMixin` before the initial `*IDN?` query, improving raw TCP socket behavior.
+- Failed connection setup now closes both the partially opened VISA resource and resource manager.
+- Raw TCP socket resource validation now rejects ports above 65535.
+
+### Compatibility
+
+- Existing GUI inheritance modules remain available for widget/layout compatibility and historical imports, but the launched applications use the API-only adapter layer as their instrument boundary.
+- Existing `DPO4054(resource_name, auto_connect=...)` calls remain compatible; new session arguments are keyword-only.
+
 ## v0.2.1 - 2026-08-26
 
 ### Added

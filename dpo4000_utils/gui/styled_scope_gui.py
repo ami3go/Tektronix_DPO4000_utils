@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .scope_gui import ScopeGui as BaseScopeGui
+from .api_scope_gui import ScopeGui as BaseScopeGui
 from .style import apply_readable_combobox_style
 
 
