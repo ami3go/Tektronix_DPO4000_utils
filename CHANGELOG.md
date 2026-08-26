@@ -1,5 +1,29 @@
 # Changelog
 
+## v0.4.0 - 2026-08-26
+
+### Removed
+
+- Removed the Tk desktop frontend and all Tk-specific modules.
+- Removed the `dpo4000-gui` console command; `dpo4000-desk` is now the only GUI entry point.
+- Removed archived historical Tk GUI snapshots.
+- Removed Tk-specific tests and obsolete PySide6-vs-Tk refactoring notes.
+
+### Changed
+
+- Package version bumped to `0.4.0`.
+- DPO4000 Desk/PySide6 is now the sole supported desktop application.
+- `dpo4000_utils.gui` now contains only framework-neutral filename/preferences helpers and packaged assets; it is not a frontend.
+- The lazy `dpo4000_utils.gui_qt.QtScopeWindow` export now resolves to the API-only adapter.
+- The Windows helper `scripts/run_gui.bat` now launches the PySide6 application.
+- Added a dedicated PySide6 CI job using the offscreen Qt platform plugin.
+- Architecture tests now enforce that the package has no `tkinter` imports.
+
+### Compatibility
+
+- The reusable Python driver/API remains available under `dpo4000_utils` and legacy `tektronix_utils` driver imports remain supported.
+- Applications importing the removed Tk GUI modules must migrate to `dpo4000_utils.gui_qt` or the `dpo4000-desk` command.
+
 ## v0.3.0 - 2026-08-26
 
 ### Added
@@ -31,55 +55,23 @@
 
 - Promoted current DPO4000 Desk scope actions into reusable `dpo4000_utils` APIs.
 - Public payload dataclasses: `ChannelConfig`, `MathConfig`, `AcquisitionConfig`, `DisplayConfig`, and `MeasurementSetup`.
-- Channel configuration helpers and methods for display, scale, position, offset, coupling, bandwidth, invert, and probe gain.
-- MATH waveform configuration helpers and methods for display, expression, vertical scale, and vertical position.
-- Acquisition setup helpers and methods for mode, average count, and record length.
-- Display/front-panel helpers and methods for backlight, waveform intensity, graticule intensity, persistence, screen text, and message clear.
-- Measurement setup readback helpers for one slot or all `MEAS1..MEAS8` slots.
-- `dpo4000_utils` record-length API helpers: `set_record_length()`, `get_record_length()`, `build_record_length_command()`, and `build_record_length_query()`.
-- Record-length normalization for common labels such as `1k`, `10k`, `100k`, `1M`, and `10M`, plus arbitrary positive integer point counts.
+- Channel, MATH, acquisition, display, and measurement setup helpers used by DPO4000 Desk.
+- Record-length helpers supporting common labels and arbitrary positive integer point counts.
 
 ### Changed
 
 - Package version bumped to `0.2.1`.
-- Package root now exports the GUI-backed configuration dataclasses for direct script use.
+- Package root exports the GUI-backed configuration dataclasses for direct script use.
 
 ## v0.2.0 - 2026-08-22
 
 ### Added
 
-- **DPO4000 Desk** name for the desktop application.
-- `dpo4000-desk` console command as the primary desktop application launcher.
-- Modern frameless titlebar with page buttons in the title row.
-- Draggable titlebar tabs with fallback manual move handling.
-- Dedicated **File** and **Display** top-level pages.
-- Display controls for contrast/backlight, waveform intensity, graticule intensity, persistence, and on-screen message text.
-- Existing measurement manager for `MEAS1..MEAS8`:
-  - read configured measurement slots
-  - load selected slot into the editor
-  - apply edits back to the selected slot
-  - read selected measurement value
-  - delete/disable selected measurement
-- Larger measurement-manager action buttons for better usability.
-- Runtime desktop smoke tests for the launched UI path.
-- Shared PyInstaller build helper plus Windows and Linux wrapper scripts.
-- Release-capable GitHub Actions workflow for Windows/Linux executable assets.
-- Linux packaging helper for raw binary, `.deb`, AppImage, and Flatpak bundle release assets.
-
-### Changed
-
-- Main UI now uses compact custom titlebar tabs instead of a separate top menu row.
-- Preview panel no longer shows the obsolete `Screen preview` title or reserved title-band gap.
-- `Settings` page was renamed to **File**.
-- Display-related controls were moved out of File/Settings into **Display**.
-- Build target now resolves through `dpo4000_utils.gui_qt.titlebar_tabs_window.QtScopeWindow`.
-- Default packaged executable name changed to `DPO4000Desk`.
-- Windows release now uses `DPO4000Desk-windows.zip`, containing the `DPO4000Desk.exe` application folder, instead of forcing a fragile one-file Windows executable in CI.
-- Linux release asset names are `DPO4000Desk-linux`, `dpo4000-desk_0.2.0_amd64.deb`, `DPO4000Desk-x86_64.AppImage`, and `DPO4000Desk.flatpak`.
-- The old desktop command alias was removed; use `dpo4000-desk`.
+- **DPO4000 Desk** desktop application and `dpo4000-desk` console command.
+- Modern frameless titlebar with page buttons.
+- File and Display pages, measurement management, runtime GUI smoke tests, and Windows/Linux packaging workflows.
 
 ### Notes
 
-- Python package/distribution name remains `dpo4000-utils` and the Python import remains `dpo4000_utils`.
-- Real instrument access still requires a VISA runtime/backend on the target PC.
-- Hardware behavior was not automatically verified in CI; DPO4000/DPO4054 hardware should be checked manually before production use.
+- Python distribution name remains `dpo4000-utils` and the Python import remains `dpo4000_utils`.
+- Real instrument access requires a VISA runtime/backend on the target PC.

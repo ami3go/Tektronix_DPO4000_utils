@@ -1,8 +1,4 @@
-"""PySide6 GUI for Tektronix DPO4000 utilities.
-
-The package is separate from ``dpo4000_utils.gui`` so the existing Tkinter GUI
-remains available while the Qt interface matures.
-"""
+"""PySide6 desktop application for Tektronix DPO4000 utilities."""
 
 from __future__ import annotations
 
@@ -10,9 +6,9 @@ __all__ = ["QtScopeWindow"]
 
 
 def __getattr__(name: str):
-    """Load Qt classes lazily so importing the package does not require PySide6."""
+    """Load Qt classes lazily so importing the driver package does not require PySide6."""
     if name == "QtScopeWindow":
-        from .titlebar_tabs_window import QtScopeWindow
+        from .api_window import QtScopeWindow
 
         return QtScopeWindow
     raise AttributeError(name)

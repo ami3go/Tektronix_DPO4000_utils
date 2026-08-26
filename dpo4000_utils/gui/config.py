@@ -1,9 +1,4 @@
-"""GUI configuration helpers.
-
-This module contains GUI settings logic that can be tested without creating a
-Tkinter window. The active main window still owns the Tk variables; this module
-is the extraction target for filename/output settings.
-"""
+"""Framework-neutral output filename helpers for DPO4000 Desk."""
 
 from __future__ import annotations
 

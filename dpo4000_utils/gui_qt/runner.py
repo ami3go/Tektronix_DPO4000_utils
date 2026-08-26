@@ -1,4 +1,4 @@
-"""Console entry point for the PySide6 GUI."""
+"""Console entry point for the PySide6 DPO4000 Desk application."""
 
 from __future__ import annotations
 
@@ -8,13 +8,13 @@ STARTUP_CHECK_FLAG = "--startup-check"
 
 
 def main() -> int:
-    """Run the PySide6 GUI."""
+    """Run DPO4000 Desk."""
     try:
         from PySide6.QtCore import QTimer
         from PySide6.QtWidgets import QApplication
     except ModuleNotFoundError as exc:
         raise SystemExit(
-            "PySide6 is not installed. Install the optional PySide6 GUI dependencies with:\n"
+            "PySide6 is not installed. Install the DPO4000 Desk GUI dependencies with:\n"
             "  python -m pip install -e .[pyside6]\n"
             "or:\n"
             "  python -m pip install -r requirements-pyside6.txt\n"
@@ -36,6 +36,7 @@ def main() -> int:
     if debug_probe is not None:
         debug_probe.snapshot("before-window-construction")
     window = QtScopeWindow()
+    window.statusBar().showMessage("Ready. DPO4000 Desk (PySide6).")
     if debug_probe is not None:
         debug_probe.log("QtScopeWindow constructed")
         debug_probe.snapshot("after-window-construction-before-show")
@@ -44,7 +45,6 @@ def main() -> int:
     if debug_probe is not None:
         debug_probe.log("main window show() called")
         debug_probe.snapshot("after-main-window-show")
-        # Keep the probe alive for the whole application lifetime.
         app._dpo4000_startup_debug_probe = debug_probe  # type: ignore[attr-defined]
 
     if startup_check:

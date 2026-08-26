@@ -1,34 +1,37 @@
-# Architecture: driver owns instrument behavior
+# Architecture: PySide6 frontend, driver-owned instrument behavior
 
-Starting with **v0.3.0**, the launched Tkinter GUI and DPO4000 Desk use a strict application boundary:
+Starting with **v0.4.0**, DPO4000 Desk is the only desktop frontend and is implemented with PySide6.
 
 ```text
-Tkinter / PySide6 widgets
-        |
-        v
-GUI API adapter (UI orchestration only)
-        |
-        v
+PySide6 widgets
+      |
+      v
+DPO4000 Desk UI orchestration
+      |
+      v
+gui_qt.api_window.QtScopeWindow
+      |
+      v
 dpo4000_utils.scope_session()
-        |
-        v
+      |
+      v
 DPO4054 / DPO4000Scope public API
-        |
-        +-- ConnectionMixin
-        +-- ChannelMixin
-        +-- TriggerMixin
-        +-- ControlMixin
-        +-- HardcopyMixin
-        +-- WaveformMixin
-        +-- SettingsMixin
-        |
-        v
+      |
+      +-- ConnectionMixin
+      +-- ChannelMixin
+      +-- TriggerMixin
+      +-- ControlMixin
+      +-- HardcopyMixin
+      +-- WaveformMixin
+      +-- SettingsMixin
+      |
+      v
 PyVISA / VISA backend / oscilloscope
 ```
 
 ## Boundary rule
 
-Launched GUI code must not:
+Desktop GUI code must not:
 
 - access `DPO4000Scope.scope` directly;
 - issue SCPI through the underlying PyVISA object;
@@ -37,13 +40,13 @@ Launched GUI code must not:
 - implement waveform acquisition/CSV transfer logic;
 - configure raw VISA timeout or line termination itself.
 
-The GUI may still own presentation concerns such as dialogs, destination folders, generated filenames, preview rendering, widget state, preferences, logging, and background-worker orchestration.
+The GUI owns presentation concerns: dialogs, destination folders, generated filenames, preview rendering, widget state, preferences, logging, keyboard shortcuts, and background-worker orchestration.
 
-## Public driver calls used by the GUI
+## Driver calls used by DPO4000 Desk
 
-Representative calls are:
+Representative public operations include:
 
-- `scope_session(...)` for short-lived connection lifecycle;
+- `scope_session(...)`;
 - `query_identity()`;
 - `get_channel_label()` / `set_channel_label()`;
 - `get_channel_configuration()` / `configure_channel()`;
@@ -56,14 +59,21 @@ Representative calls are:
 - `save_all_channels_to_single_csv()`;
 - `save_scope_settings()` / `apply_scope_settings()`.
 
-## Session configuration
+## Session lifecycle
 
-`DPO4000Scope` now accepts optional `timeout_ms`, `read_termination`, and `write_termination` constructor settings. `ConnectionMixin.connect()` applies these settings immediately after opening the VISA resource and **before the initial `*IDN?` query**. This matters especially for raw TCP socket resources that require newline termination.
+`DPO4000Scope` accepts optional `timeout_ms`, `read_termination`, and `write_termination` constructor settings. `ConnectionMixin.connect()` applies these immediately after opening the VISA resource and before the initial `*IDN?` query.
 
-The convenience `scope_session()` context manager is the preferred frontend path. It opens a short-lived `DPO4054`, applies driver-owned session configuration, yields the public driver object, and always disconnects it.
+`scope_session()` is the preferred frontend lifecycle helper. It opens a short-lived `DPO4054`, applies driver-owned session settings, yields the public driver object, and always disconnects it.
 
-## Compatibility layers
+## GUI support package
 
-The repository retains older GUI inheritance modules because they contain mature widget/layout behavior and preserve historical imports. They are no longer the launched instrument-control boundary: the final Tk and Qt entry points are `gui.api_scope_gui.ScopeGui` and `gui_qt.api_window.QtScopeWindow`, respectively.
+`dpo4000_utils.gui` remains only as a framework-neutral support namespace for filename generation, persistent preferences, and packaged assets. It is not an alternate frontend and contains no Tk implementation.
 
-Architecture tests verify that those launched adapters do not regress to raw VISA access.
+## Enforcement
+
+`tests/test_gui_driver_boundary.py` verifies that:
+
+- `dpo4000-desk` resolves to the PySide6 runner;
+- the API adapter does not access `scope.scope`;
+- the API adapter does not import low-level hardcopy/settings/waveform transfer helpers;
+- Python source under `dpo4000_utils` contains no `tkinter` imports.

@@ -1,220 +1,168 @@
-# dpo4000-utils and DPO4000 Desk
+# dpo4000-utils / DPO4000 Desk
 
 `dpo4000-utils` is a Python driver and automation toolkit for Tektronix DPO4000-family oscilloscopes, developed around the DPO4054.
 
-**DPO4000 Desk** is the desktop GUI application built on top of `dpo4000-utils` for bench operation, screenshot capture, waveform export, measurement management, trigger control, and display setup.
+**DPO4000 Desk** is the project's single desktop GUI. It is implemented with **PySide6** and acts as a presentation/orchestration layer over the public `dpo4000_utils` driver API.
 
-The project provides:
-
-- a reusable Python driver/API distributed as `dpo4000-utils`
-- a stable Tkinter GUI through `dpo4000-gui`
-- the modern desktop app through `dpo4000-desk`
-- build scripts and GitHub Actions for Windows/Linux DPO4000 Desk executables
-
-## DPO4000 Desk desktop GUI
-
-![DPO4000 Desk GUI](docs/assets/titlebar-gui.png)
-
-DPO4000 Desk uses a compact frameless titlebar layout with page buttons in the top row:
+## Architecture
 
 ```text
-Connection | Channels | Measurement | Trigger | Acquisition | File | Display | Log
+PySide6 DPO4000 Desk
+        |
+        v
+GUI API adapter
+        |
+        v
+scope_session()
+        |
+        v
+DPO4054 / DPO4000Scope public API
+        |
+        v
+PyVISA / VISA backend / oscilloscope
 ```
 
-Common front-panel style actions are available from the preview toolbar, including capture, copy, PNG export, CSV export, run/stop/single/continuous acquisition, and force trigger.
+The GUI must not own SCPI commands, access the raw `scope.scope` VISA handle, parse hardcopy payloads, or implement waveform/settings transfer logic. Instrument behavior belongs in the reusable driver API.
+
+See `docs/architecture.md` for the enforced boundary.
 
 ## Features
 
-- USB/VISA and Ethernet VISA resource support.
-- Short-lived VISA sessions so other scope software is not blocked while the GUI is idle.
-- Screen capture as PNG with live preview.
-- Copy captured screen to clipboard with `Ctrl+C`.
-- Export enabled channel waveforms to CSV.
-- Save and restore oscilloscope setup strings through SCPI.
-- Read/write CH1..CH4 labels.
-- Configure full channel setup from the GUI and Python API: display, scale, position, offset, coupling, bandwidth, invert, and probe gain.
-- Configure MATH waveform setup from the GUI and Python API: display, expression, vertical scale, and vertical position.
-- Add, read, edit, and clear `MEAS1..MEAS8` measurement slots, including setup readback for one slot or all slots.
-- Guarded measurement edit/delete mode to reduce accidental measurement deletion.
-- Read/set trigger level and configure common edge-trigger options.
-- Run, stop, single, continuous, and force-trigger controls.
-- Configure acquisition setup: mode, average count, and record length.
-- Configure front-panel display setup: backlight, waveform intensity, graticule intensity, persistence, and on-screen message text.
-- Dedicated File and Display pages for output and front-panel display settings.
-- Persistent GUI preferences for connection resources, output folders, filenames, and trigger options.
+- PySide6 desktop application with Connection, Channels, Measurement, Trigger, Acquisition, File, Display, and Log pages.
+- USB/VISA and Ethernet VISA resources.
+- Short-lived driver-owned VISA sessions so other bench software is not blocked while the GUI is idle.
+- PNG screen capture with preview and clipboard copy.
+- Enabled-channel waveform export to CSV.
+- Scope setup save/restore through JSON.
+- CH1..CH4 labels and full channel configuration.
+- MATH waveform configuration.
+- MEAS1..MEAS8 measurement management.
+- Trigger level and edge-trigger configuration.
+- Run/stop/single/continuous acquisition and force trigger.
+- Acquisition mode, averaging, and record-length controls.
+- Front-panel display intensity, persistence, and message controls.
+- Windows/Linux PyInstaller build and release helpers.
 
 ## Install
 
-Minimum Python:
+Minimum Python version:
 
-```bash
-python >= 3.10
+```text
+Python 3.10+
 ```
 
-Core driver plus Tkinter GUI:
+Driver/API only:
 
 ```bash
 python -m pip install -e .
 ```
 
-DPO4000 Desk dependencies:
+Driver plus DPO4000 Desk:
 
 ```bash
 python -m pip install -e .[pyside6]
 ```
 
-Development tools:
+Development environment with the desktop GUI:
 
 ```bash
 python -m pip install -e .[dev,pyside6]
 ```
 
-Real instrument communication also requires a VISA runtime/backend such as NI-VISA, TekVISA, Keysight VISA, or a compatible PyVISA backend. PyVISA is the Python frontend; it does not replace the OS-level instrument driver stack.
+Real instrument communication also requires a VISA runtime/backend such as NI-VISA, TekVISA, Keysight VISA, or another backend supported by PyVISA.
 
-## Run
-
-Tkinter GUI:
-
-```bash
-dpo4000-gui
-```
-
-DPO4000 Desk:
+## Run DPO4000 Desk
 
 ```bash
 dpo4000-desk
 ```
 
-## DPO4000 Desk first-run flow
+Or directly from a repository checkout:
 
-1. Start `dpo4000-desk`.
-2. Select **USB/VISA** or **Ethernet**.
-3. Click **IDN** or **Retry** first.
-4. After a successful `*IDN?`, protected scope actions unlock.
-5. Use the top titlebar pages for setup: **Connection**, **Channels**, **Measurement**, **Trigger**, **Acquisition**, **File**, **Display**, and **Log**.
-6. Use the preview toolbar for common capture/export/acquisition actions.
+```bash
+python -m dpo4000_utils.gui_qt.runner
+```
 
 Useful shortcuts:
 
 ```text
 F5              Capture preview
-Ctrl+C          Copy preview after clicking the preview area
+Ctrl+C          Copy preview after focusing the preview
 Ctrl+S          Save PNG
 Ctrl+Shift+S    Save CSV
 F6              Run acquisition
 F7              Stop acquisition
 F8              Single acquisition
 Ctrl+L          Focus VISA resource field
-Ctrl+1..8       Switch DPO4000 Desk pages
+Ctrl+1..8       Switch application pages
 ```
 
 ## Python API example
 
 ```python
-from dpo4000_utils import (
-    AcquisitionConfig,
-    ChannelConfig,
-    DPO4054,
-    DisplayConfig,
-    MathConfig,
-    MeasurementConfig,
-)
+from dpo4000_utils import AcquisitionConfig, ChannelConfig, DPO4054
 
-with DPO4054("USB0::0x0699::0x0401::C011280::INSTR", auto_connect=True) as scope:
+with DPO4054(
+    "USB0::0x0699::0x0401::C011280::INSTR",
+    auto_connect=True,
+) as scope:
     print(scope.query_identity())
-    print(scope.get_channel_labels())
-
-    scope.configure_channel(ChannelConfig(channel=1, display=True, scale="0.5", coupling="DC"))
-    scope.configure_math(MathConfig(display=True, define="CH1+CH2", scale="1", position="0"))
-    scope.add_measurement(MeasurementConfig(slot=1, measurement_type="FREQUENCY", source1="CH1"))
-    scope.configure_acquisition(AcquisitionConfig(mode="AVERAGE", average_count=16, record_length="10k"))
-    scope.configure_edge_trigger(source="CH1", slope="RISE", coupling="DC", mode="AUTO", level="1.0")
-    scope.apply_display_settings(DisplayConfig(persistence="AUTO", message_text="DPO4000 Desk", message_state=True))
+    scope.configure_channel(
+        ChannelConfig(channel=1, display=True, scale="0.5", coupling="DC")
+    )
+    scope.configure_acquisition(
+        AcquisitionConfig(mode="AVERAGE", average_count=16, record_length="10k")
+    )
+    scope.save_image_path("scope_screen.png")
+    scope.save_all_channels_to_single_csv("waveforms.csv")
 ```
 
-Common API calls:
+For frontend-style short-lived sessions:
 
 ```python
-scope.save_image_path("scope_screen.png")
-scope.save_all_channels_to_single_csv("waveforms.csv")
-scope.save_scope_settings("setup.json", ask_before_overwrite=False)
-scope.apply_scope_settings("setup.json", wait_complete=False)
-scope.set_channel_label(1, "INPUT")
-scope.get_channel_configuration(1)
-scope.get_math_configuration()
-scope.get_measurement_setup(1)
-scope.get_all_measurement_setups()
-scope.set_record_length("10k")
-scope.get_acquisition_setup()
-scope.get_display_settings()
-scope.clear_display_message()
-scope.set_trigger_level(1.0, channel=1)
-scope.read_measurement_value(1)
-scope.disable_all_measurements()
-scope.single_acquisition()
-scope.force_trigger_event()
+from dpo4000_utils import scope_session
+
+with scope_session(
+    "TCPIP0::192.168.1.50::INSTR",
+    timeout_ms=20_000,
+) as scope:
+    print(scope.query_identity())
 ```
 
-Legacy imports using `from tektronix_utils import DPO4054` remain supported.
+## Build executables
 
-## Build DPO4000 Desk executables
-
-Windows `.exe`:
+Windows:
 
 ```bat
 scripts\build_windows_exe.bat
 ```
 
-Linux executable:
+Linux:
 
 ```bash
 chmod +x scripts/build_linux_executable.sh
 ./scripts/build_linux_executable.sh
 ```
 
-Default outputs:
-
-```text
-Windows: dist\DPO4000Desk\DPO4000Desk.exe
-Linux:   dist/DPO4000Desk/DPO4000Desk
-```
-
-One-file builds:
-
-```bash
-BUILD_MODE=onefile scripts/build_linux_executable.sh
-```
-
-```powershell
-$env:BUILD_MODE="onefile"
-scripts\build_windows_exe.bat
-```
-
-The packaged GUI includes Python and collected Python packages, but the target PC still needs a VISA runtime/backend for real scope access.
-
-See:
-
-- `docs/build-application.md`
-- `docs/build_executables.md`
-- `docs/releases/v0.2.0.md`
+See `docs/build-application.md` and `docs/build_executables.md` for packaging details.
 
 ## Tests
 
-Pure/helper tests:
+Core tests:
 
 ```bash
 python -m pip install -e .[dev]
 pytest -q
 ```
 
-DPO4000 Desk metadata/runtime smoke checks:
+Full desktop test environment:
 
 ```bash
 python -m pip install -e .[dev,pyside6]
-pytest -q tests/test_gui_qt_channel_config_metadata.py tests/test_gui_qt_runtime_smoke.py
+QT_QPA_PLATFORM=offscreen pytest -q
 ```
 
-Hardware tests are opt-in and require a connected DPO4000-family scope plus VISA runtime:
+Hardware tests remain opt-in:
 
 ```bash
 DPO4000_HARDWARE=1 \
@@ -222,28 +170,16 @@ DPO4000_RESOURCE='USB0::0x0699::0x0401::C011280::INSTR' \
 pytest -q -m hardware tests/hardware
 ```
 
-The optional label write/restore test is enabled only with `DPO4000_ENABLE_WRITE_TESTS=1`.
-
-## GitHub Pages
-
-The project page is built from `docs/` by `.github/workflows/pages.yml`.
-
-After the workflow runs, the expected Pages URL is:
-
-```text
-https://ami3go.github.io/Tektronix_DPO4000_utils/
-```
-
 ## Repository layout
 
 ```text
-dpo4000_utils/               package code
-dpo4000_utils/gui/           Tkinter GUI application
-dpo4000_utils/gui_qt/        DPO4000 Desk desktop application
-tektronix_utils.py           legacy compatibility import module
-examples/                    small usage examples
-scripts/                     helper scripts, including PyInstaller builds
-docs/                        documentation and GitHub Pages site
-tests/                       pure and opt-in hardware tests
-archive/gui_versions/        old GUI snapshots kept for reference
+dpo4000_utils/               reusable scope driver/API
+dpo4000_utils/gui_qt/        PySide6 DPO4000 Desk application
+dpo4000_utils/gui/           framework-neutral GUI support helpers/assets
+examples/                    driver/API examples
+scripts/                     build and packaging helpers
+docs/                        documentation and GitHub Pages
+tests/                       API, architecture, GUI, and hardware tests
 ```
+
+The former Tk frontend and its archived snapshots were removed in v0.4.0. `dpo4000-desk` is the only desktop application command.

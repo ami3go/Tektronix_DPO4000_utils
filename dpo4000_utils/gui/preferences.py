@@ -1,8 +1,4 @@
-"""Persistent preferences for the Tektronix DPO4000 GUI.
-
-This module deliberately has no Tkinter dependency so it can be tested without a
-display server and reused by future GUI frontends.
-"""
+"""Persistent user preferences for the PySide6 DPO4000 Desk application."""
 
 from __future__ import annotations
 
@@ -12,17 +8,16 @@ from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 from typing import Any
 
-
 APP_CONFIG_DIR_NAME = "DPO4000Utils"
 PREFERENCES_FILENAME = "gui_preferences.json"
 
 
 @dataclass(slots=True)
 class GuiPreferences:
-    """Serializable GUI preference state.
+    """Serializable desktop UI preference state.
 
-    Values mirror the user-facing GUI controls. Hardware state is intentionally
-    not persisted here; this file only stores last-used UI preferences.
+    Hardware state is intentionally not persisted here; this file stores only
+    last-used application preferences.
     """
 
     connection_mode: str = "visa"
@@ -88,12 +83,7 @@ def _coerce_bool(value: Any, default: bool) -> bool:
 
 
 def default_preferences_dir(app_name: str = APP_CONFIG_DIR_NAME) -> Path:
-    """Return the platform-appropriate preferences directory.
-
-    Windows: %APPDATA%\\DPO4000Utils
-    macOS:   ~/Library/Application Support/DPO4000Utils
-    Linux:   ${XDG_CONFIG_HOME:-~/.config}/DPO4000Utils
-    """
+    """Return the platform-appropriate preferences directory."""
     if os.name == "nt":
         root = os.environ.get("APPDATA")
         if root:
@@ -115,11 +105,7 @@ def default_preferences_path(app_name: str = APP_CONFIG_DIR_NAME) -> Path:
 
 
 def load_preferences(path: str | Path | None = None) -> GuiPreferences:
-    """Load GUI preferences.
-
-    Missing, invalid, or stale files fall back to defaults instead of preventing
-    the GUI from starting.
-    """
+    """Load GUI preferences, falling back to defaults on missing/invalid files."""
     preferences_path = Path(path) if path is not None else default_preferences_path()
     try:
         data = json.loads(preferences_path.read_text(encoding="utf-8"))
@@ -127,7 +113,6 @@ def load_preferences(path: str | Path | None = None) -> GuiPreferences:
         return GuiPreferences()
     except Exception:
         return GuiPreferences()
-
     return GuiPreferences.from_mapping(data)
 
 
