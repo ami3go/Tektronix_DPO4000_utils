@@ -6,6 +6,8 @@
 
 - **DPO4000 Desk** name for the desktop application.
 - `dpo4000-desk` console command as the primary desktop application launcher.
+- `dpo4000_utils` record-length API helpers: `set_record_length()`, `get_record_length()`, `build_record_length_command()`, and `build_record_length_query()`.
+- Record-length normalization for common labels such as `1k`, `10k`, `100k`, `1M`, and `10M`, plus arbitrary positive integer point counts.
 - Modern frameless titlebar with page buttons in the title row.
 - Draggable titlebar tabs with fallback manual move handling.
 - Dedicated **File** and **Display** top-level pages.
