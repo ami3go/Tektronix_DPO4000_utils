@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.6.0 - 2026-08-28
+
+### Added
+
+- Added `WaveformRequest`, `WaveformPreamble`, and `WaveformData` as the primary structured waveform acquisition API.
+- Added `DPOWaveformError` for malformed binary blocks, inconsistent preambles, point-count mismatches, alignment failures, and unsafe CSV export conditions.
+- Added strict IEEE-488.2 block parsing/compact integer decoding fallback plus PyVISA `query_binary_values()` support for normal VISA transports.
+- Added `docs/waveform-acquisition.md` with memory behavior, compatibility guidance, CSV identity rules, and hardware qualification instructions.
+- Added an opt-in real-hardware binary waveform test controlled by `DPO4000_WAVEFORM_POINTS`.
+
+### Fixed
+
+- Waveform acquisition no longer inherits stale front-panel/SCPI transfer state: source, start, stop, width, and encoding are written explicitly for every request.
+- Scaling metadata is captured before `CURVE?` and validated against the requested binary layout before samples are accepted.
+- Binary point count must exactly match the requested inclusive `DATA:START..DATA:STOP` range.
+- Combined CSV export can no longer lose a channel when multiple channels share the same editable label; source identity remains the unique key and headers are source-qualified.
+- Combined export now rejects mismatched sample counts, transfer ranges, X increments, X zero values, point offsets, or X units instead of indexing blindly.
+
+### Changed
+
+- `RIBINARY` two-byte signed integer transfer is now the default waveform path; ASCII remains an explicit compatibility/debug mode and is locally limited to the DPO4000 documented one-million-point maximum.
+- Structured waveform storage keeps compact integer `array.array` samples and derives time/voltage values on demand to reduce multi-million-point memory usage.
+- Existing tuple/list and CSV methods remain available as compatibility wrappers but now run through the deterministic structured binary acquisition path.
+- Envelope/min-max `PT_FMT=ENV` data is rejected explicitly rather than silently flattening ambiguous pairs into a normal voltage stream.
+- Package version bumped to `0.6.0`.
+
 ## v0.5.3 - 2026-08-28
 
 ### Added

@@ -44,6 +44,10 @@ class DPOSettingsError(DPOProtocolError):
     """Raised when scope setup save/restore data is invalid or cannot be applied."""
 
 
+class DPOWaveformError(RuntimeError, DPOProtocolError):
+    """Raised when waveform transfer, decoding, scaling, or alignment is invalid."""
+
+
 def _error_code_value(exc: BaseException) -> int | None:
     code: Any = getattr(exc, "error_code", None)
     if code is None:
@@ -102,6 +106,7 @@ __all__ = [
     "DPOSettingsError",
     "DPOTimeoutError",
     "DPOTransportError",
+    "DPOWaveformError",
     "VI_ERROR_TMO",
     "add_exception_note",
     "is_timeout_error",

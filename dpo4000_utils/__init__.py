@@ -25,12 +25,20 @@ from .errors import (
     DPOSettingsError,
     DPOTimeoutError,
     DPOTransportError,
+    DPOWaveformError,
 )
 from .hardcopy import extract_png_bytes, strip_ieee_block_header
 from .reference import ReferenceConfig
 from .instrument import DPO4000Scope, DPO4054
 from .session import scope_session
-from .waveform import parse_ascii_curve
+from .waveform import (
+    WaveformData,
+    WaveformPreamble,
+    WaveformRequest,
+    parse_ascii_curve,
+    read_channel_waveform_data,
+    read_waveform,
+)
 
 __all__ = [
     "AcquisitionConfig",
@@ -47,11 +55,15 @@ __all__ = [
     "DPOSettingsError",
     "DPOTimeoutError",
     "DPOTransportError",
+    "DPOWaveformError",
     "DisplayConfig",
     "MathConfig",
     "MeasurementConfig",
     "MeasurementSetup",
     "ReferenceConfig",
+    "WaveformData",
+    "WaveformPreamble",
+    "WaveformRequest",
     "visaResourceAddr",
     "build_tcpip_instr_resource",
     "build_tcpip_socket_resource",
@@ -60,4 +72,6 @@ __all__ = [
     "extract_png_bytes",
     "strip_ieee_block_header",
     "parse_ascii_curve",
+    "read_channel_waveform_data",
+    "read_waveform",
 ]

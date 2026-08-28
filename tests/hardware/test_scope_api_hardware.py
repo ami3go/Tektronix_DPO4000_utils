@@ -10,6 +10,7 @@ They are designed for a bench PC or self-hosted CI runner that has:
 
 from __future__ import annotations
 
+import math
 import os
 from collections.abc import Iterator
 
@@ -17,6 +18,7 @@ import pytest
 
 from dpo4000_utils import DPO4054
 from dpo4000_utils.connection import visaResourceAddr
+from dpo4000_utils.waveform import parse_channel_enabled
 
 
 _TRUE_VALUES = {"1", "true", "yes", "on"}
@@ -92,6 +94,48 @@ def test_hardware_standard_event_status_is_readable(scope: DPO4054) -> None:
     scope.scope.write("*CLS")
     esr = int(scope.scope.query("*ESR?").strip())
     assert esr == 0
+
+
+@pytest.mark.hardware
+def test_hardware_binary_waveform_transfer_is_deterministic(scope: DPO4054) -> None:
+    """Validate the v0.6 binary waveform API on a displayed analog channel.
+
+    The default is intentionally modest for routine bench runs. Set
+    ``DPO4000_WAVEFORM_POINTS`` to 10000, 100000, or a larger practical record
+    length to execute the Phase-4 qualification matrix on the connected scope.
+    """
+    assert scope.scope is not None
+    channel = int(os.getenv("DPO4000_TEST_CHANNEL", "1"))
+    if not parse_channel_enabled(scope.scope.query(f"SELECT:CH{channel}?").strip()):
+        pytest.skip(f"CH{channel} must be displayed for waveform transfer validation.")
+
+    record_text = scope.scope.query("HORIZONTAL:RECORDLENGTH?").strip().split()[-1]
+    record_length = int(float(record_text))
+    requested = int(os.getenv("DPO4000_WAVEFORM_POINTS", "1000"))
+    point_count = min(requested, record_length)
+    if point_count <= 0:
+        pytest.skip("Scope reported no waveform record points.")
+
+    waveform = scope.read_channel_waveform_data(
+        channel,
+        start_index=1,
+        point_count=point_count,
+        encoding="RIBINARY",
+        sample_width=2,
+    )
+
+    assert waveform.source == f"CH{channel}"
+    assert waveform.start_index == 1
+    assert waveform.stop_index == point_count
+    assert waveform.sample_count == point_count
+    assert waveform.preamble.byte_width == 2
+    assert waveform.preamble.binary_format == "RI"
+    assert waveform.preamble.byte_order == "MSB"
+    assert waveform.preamble.x_increment > 0
+    assert math.isfinite(waveform.time_at(0))
+    assert math.isfinite(waveform.time_at(waveform.sample_count - 1))
+    assert math.isfinite(waveform.voltage_at(0))
+    assert math.isfinite(waveform.voltage_at(waveform.sample_count - 1))
 
 
 @pytest.mark.hardware
