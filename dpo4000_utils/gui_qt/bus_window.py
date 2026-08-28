@@ -39,6 +39,73 @@ BUS_SCOPE_ACTIONS = {
 class QtScopeWindow(DesktopQtScopeWindow):
     """Final desktop window with DPO4000 BUS1..BUS4 configuration support."""
 
+    def _build_connection_tab(self):
+        """Add a persistent option controlling the automatic full scope readback."""
+        page = super()._build_connection_tab()
+        body = page.widget() if hasattr(page, "widget") else page
+        layout = body.layout() if body is not None else None
+        if layout is not None:
+            card = self._card("Connection options")
+            form = QFormLayout(card)
+            self._prepare_form(form)
+
+            self.read_all_parameters_after_connection = QCheckBox(
+                "Read all parameters after connection"
+            )
+            self.read_all_parameters_after_connection.setChecked(True)
+            form.addRow(self.read_all_parameters_after_connection)
+
+            hint = QLabel(
+                "Enabled: after a successful IDN test, read CH, MATH, REF, BUS, "
+                "measurements, trigger, acquisition, and display settings. Disabled: "
+                "stop after IDN for a faster connection test."
+            )
+            hint.setObjectName("MutedLabel")
+            hint.setWordWrap(True)
+            form.addRow(hint)
+
+            insert_index = max(0, layout.count() - 1)
+            layout.insertWidget(insert_index, card)
+        return page
+
+    def _apply_preferences(self, preferences) -> None:
+        super()._apply_preferences(preferences)
+        if hasattr(self, "read_all_parameters_after_connection"):
+            self.read_all_parameters_after_connection.setChecked(
+                preferences.read_all_parameters_after_connection
+            )
+
+    def _collect_preferences(self):
+        preferences = super()._collect_preferences()
+        if hasattr(self, "read_all_parameters_after_connection"):
+            preferences.read_all_parameters_after_connection = (
+                self.read_all_parameters_after_connection.isChecked()
+            )
+        return preferences
+
+    def test_connection(self) -> None:
+        """Run the normal IDN test while marking any following refresh as automatic."""
+        self._connection_test_parameter_refresh = True
+        try:
+            super().test_connection()
+        finally:
+            self._connection_test_parameter_refresh = False
+
+    def refresh_scope_parameters(self) -> None:
+        """Skip only the automatic post-IDN refresh when the Connection option is off."""
+        automatic_refresh = getattr(self, "_connection_test_parameter_refresh", False)
+        read_all = getattr(self, "read_all_parameters_after_connection", None)
+        if automatic_refresh and read_all is not None and not read_all.isChecked():
+            self._last_action = "IDN OK; parameter read skipped"
+            self._append_log("Full scope parameter read skipped by Connection setting")
+            self._update_scope_control_enabled()
+            self._update_status_strip()
+            self.statusBar().showMessage(
+                f"Connected: {self._last_idn} | parameter read skipped"
+            )
+            return
+        super().refresh_scope_parameters()
+
     def _build_channels_tab(self):
         """Add the BUS card after the existing analog/MATH/REF controls."""
         page = super()._build_channels_tab()
