@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.6.1 - 2026-08-28
+
+### Fixed
+
+- Corrected partial-waveform X-axis calculation: DPO4000 `WFMOutpre:XZERO` is the coordinate of the first outgoing point, so `DATA:START` is no longer added a second time.
+- Full-range waveform requests no longer derive `DATA:STOP` from potentially stale `WFMOutpre:NR_PT`; they reset `DATA:START`, write an oversized stop as supported by DPO4000 firmware, read back the scope-clipped `DATA:START/STOP`, and use that applied range.
+- `WFMOutpre:NR_PT` is now validated as the outgoing transfer point count instead of being treated as an absolute record stop index.
+- Explicit transfer ranges now detect and reject scope clipping instead of silently returning fewer points.
+- The raw IEEE-block fallback now disables read termination before issuing `CURVE?`, avoiding newline-sensitive binary reads on lightweight/custom VISA backends.
+
+### Changed
+
+- Waveform regression tests now model applied `DATA:START/STOP` readback, stale transfer state, partial-transfer X-axis semantics, and outgoing-point-count validation.
+- Added an opt-in real-hardware partial waveform test that validates transfer count and `XINCR` spacing on DPO4000 firmware.
+- Waveform acquisition documentation now distinguishes applied transfer range, outgoing point count, and transfer-local `XZERO` semantics.
+- Package version bumped to `0.6.1`.
+
 ## v0.6.0 - 2026-08-28
 
 ### Added

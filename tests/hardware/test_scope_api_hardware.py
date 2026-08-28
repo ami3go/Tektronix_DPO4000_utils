@@ -98,7 +98,7 @@ def test_hardware_standard_event_status_is_readable(scope: DPO4054) -> None:
 
 @pytest.mark.hardware
 def test_hardware_binary_waveform_transfer_is_deterministic(scope: DPO4054) -> None:
-    """Validate the v0.6 binary waveform API on a displayed analog channel.
+    """Validate the binary waveform API on a displayed analog channel.
 
     The default is intentionally modest for routine bench runs. Set
     ``DPO4000_WAVEFORM_POINTS`` to 10000, 100000, or a larger practical record
@@ -128,6 +128,7 @@ def test_hardware_binary_waveform_transfer_is_deterministic(scope: DPO4054) -> N
     assert waveform.start_index == 1
     assert waveform.stop_index == point_count
     assert waveform.sample_count == point_count
+    assert waveform.preamble.record_point_count == point_count
     assert waveform.preamble.byte_width == 2
     assert waveform.preamble.binary_format == "RI"
     assert waveform.preamble.byte_order == "MSB"
@@ -136,6 +137,42 @@ def test_hardware_binary_waveform_transfer_is_deterministic(scope: DPO4054) -> N
     assert math.isfinite(waveform.time_at(waveform.sample_count - 1))
     assert math.isfinite(waveform.voltage_at(0))
     assert math.isfinite(waveform.voltage_at(waveform.sample_count - 1))
+
+
+@pytest.mark.hardware
+def test_hardware_partial_waveform_uses_outgoing_xzero(scope: DPO4054) -> None:
+    """Exercise partial-transfer X-axis semantics on real DPO4000 firmware."""
+    assert scope.scope is not None
+    channel = int(os.getenv("DPO4000_TEST_CHANNEL", "1"))
+    if not parse_channel_enabled(scope.scope.query(f"SELECT:CH{channel}?").strip()):
+        pytest.skip(f"CH{channel} must be displayed for waveform transfer validation.")
+
+    record_text = scope.scope.query("HORIZONTAL:RECORDLENGTH?").strip().split()[-1]
+    record_length = int(float(record_text))
+    if record_length < 3:
+        pytest.skip("Waveform record is too short for partial-transfer validation.")
+
+    point_count = min(10, record_length - 1)
+    waveform = scope.read_channel_waveform_data(
+        channel,
+        start_index=2,
+        point_count=point_count,
+        encoding="RIBINARY",
+        sample_width=2,
+    )
+
+    assert waveform.start_index == 2
+    assert waveform.stop_index == point_count + 1
+    assert waveform.sample_count == point_count
+    assert waveform.preamble.record_point_count == point_count
+    assert waveform.time_at(0) == pytest.approx(
+        waveform.preamble.x_zero
+        - waveform.preamble.point_offset * waveform.preamble.x_increment
+    )
+    if waveform.sample_count > 1:
+        assert waveform.time_at(1) - waveform.time_at(0) == pytest.approx(
+            waveform.preamble.x_increment
+        )
 
 
 @pytest.mark.hardware

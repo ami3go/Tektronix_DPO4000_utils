@@ -1,6 +1,6 @@
 # Waveform Acquisition API
 
-DPO4000 Utils v0.6.0 uses deterministic binary waveform transfer as the primary acquisition path.
+DPO4000 Utils v0.6.1 uses deterministic binary waveform transfer as the primary acquisition path.
 
 ## Transfer policy
 
@@ -12,11 +12,29 @@ Every `WaveformRequest` explicitly sets:
 - `DATA:WIDTH`
 - `DATA:ENCDG`
 
-The driver then reads the complete outgoing waveform preamble before `CURVE?` and validates the returned byte width, binary format, byte order, record length, point format, and X/Y scaling metadata.
+The driver then reads back `DATA:START?` and `DATA:STOP?`, captures the outgoing waveform preamble before `CURVE?`, and validates the returned byte width, binary format, byte order, outgoing point count, point format, and X/Y scaling metadata.
+
+For an explicit range, the scope must report exactly the requested start and stop. If the scope clips an explicit request, the driver raises `DPOWaveformError` instead of silently shortening the acquisition.
+
+For a default full-waveform request, the driver writes `DATA:START 1` and an intentionally oversized `DATA:STOP`, then uses the scope-clipped `DATA:STOP?` value as the actual end of the record. This prevents a stale transfer window left by previous front-panel or SCPI activity from limiting a later default acquisition.
+
+`WFMOutpre:NR_Pt?` is treated as the number of points in the currently selected outgoing transfer. It must equal the inclusive applied range `DATA:STOP - DATA:START + 1`; it is not interpreted as an absolute record stop index.
 
 The default transfer format is `RIBINARY` with two-byte signed samples. On DPO4000-family oscilloscopes this is signed integer data with the most-significant byte transferred first.
 
 ASCII is retained only as an explicit compatibility/debug option. DPO4000 ASCII `CURVE?` transfers above one million points are rejected locally because the programmer manual documents that limit.
+
+## X-axis scaling
+
+The DPO4000 outgoing preamble defines `XZERO` as the X coordinate of the first point in the outgoing waveform. Consequently a partial transfer does **not** add `DATA:START` to the X equation a second time.
+
+For transferred sample index `i = 0..N-1`:
+
+```text
+X(i) = XZERO + XINCR * (i - PT_OFF)
+```
+
+The structured API stores the applied `start_index` / `stop_index` as transfer identity and validation metadata, but `WaveformData.time_at()` uses the outgoing-preamble coordinate system shown above.
 
 ## Structured API
 
@@ -44,6 +62,12 @@ For analog channels a convenience API is also available:
 
 ```python
 waveform = scope.read_channel_waveform_data(1, point_count=10_000)
+```
+
+To request the complete available record independent of previous `DATA:START/STOP` state:
+
+```python
+waveform = scope.read_channel_waveform_data(1)
 ```
 
 ## Memory behavior
@@ -76,7 +100,7 @@ Time (s),CH1 Voltage,CH2 Voltage
 Before combined export the driver verifies:
 
 - equal sample counts;
-- equal transfer ranges;
+- equal applied transfer ranges;
 - equal X increment;
 - equal X zero;
 - equal point offset;
@@ -86,7 +110,7 @@ A mismatch raises `DPOWaveformError` rather than silently truncating, overwritin
 
 ## Point formats
 
-The v0.6.0 structured API accepts normal `PT_FMT=Y` waveforms. Envelope/min-max pair data (`PT_FMT=ENV`) is rejected explicitly because flattening those pairs into one voltage column would be ambiguous and unsafe. Use SAMPLE, HIRES, or AVERAGE acquisition when exporting through the current structured API.
+The v0.6 structured API accepts normal `PT_FMT=Y` waveforms. Envelope/min-max pair data (`PT_FMT=ENV`) is rejected explicitly because flattening those pairs into one voltage column would be ambiguous and unsafe. Use SAMPLE, HIRES, or AVERAGE acquisition when exporting through the current structured API.
 
 ## Hardware qualification
 
@@ -108,7 +132,7 @@ Repeat with:
 <largest practical record length for the connected DPO4054/options>
 ```
 
-For each run verify point count, first/last timestamps, and first/last scaled voltage are finite and consistent with the scope setup.
+For each run verify point count, first/last timestamps, and first/last scaled voltage are finite and consistent with the scope setup. The hardware suite also performs a small partial transfer and checks that successive timestamps are separated by `XINCR`, exercising the `XZERO`/partial-range semantics.
 
 ## Compatibility
 
@@ -120,4 +144,4 @@ scope.save_all_channels_to_csv("capture")
 scope.save_all_channels_to_single_csv("all.csv")
 ```
 
-They now use the deterministic binary structured acquisition internally.
+They use the deterministic binary structured acquisition internally.
