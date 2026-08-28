@@ -2,17 +2,18 @@
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import Any
 
-from .control import (
-    normalize_optional_text,
-    normalize_scope_response_text,
-    quote_scpi_string,
-    scpi_bool,
-)
+from .control import normalize_scope_response_text, quote_scpi_string, scpi_bool
+from .errors import is_transport_error, transport_exception
+from .io_policy import optional_query
+from .scpi_values import format_scpi_number
 
 REFERENCE_SLOTS = (1, 2, 3, 4)
+REFERENCE_COUNT_QUERY = "CONFIGURATION:REFS:NUMREFS?"
+REFERENCE_CAPABILITY_TIMEOUT_MS = 1000
 REFERENCE_SOURCES = ("CH1", "CH2", "CH3", "CH4", "MATH", "REF1", "REF2", "REF3", "REF4")
 REFERENCE_CONFIG_QUERIES = {
     "display": "SELECT:REF{reference}?",
@@ -70,7 +71,7 @@ def build_reference_config_queries(reference: int | str) -> dict[str, str]:
 
 
 def build_reference_config_commands(config: ReferenceConfig) -> list[str]:
-    """Build SCPI writes for the writable properties of one reference waveform."""
+    """Build validated SCPI writes for one reference waveform."""
     reference = normalize_reference(config.reference)
     commands: list[str] = []
 
@@ -78,15 +79,26 @@ def build_reference_config_commands(config: ReferenceConfig) -> list[str]:
         label = str(config.label)[:30]
         commands.append(f"REF{reference}:LABEL {quote_scpi_string(label)}")
 
-    for value, command in (
-        (config.vertical_scale, f"REF{reference}:VERTICAL:SCALE"),
-        (config.vertical_position, f"REF{reference}:VERTICAL:POSITION"),
-        (config.horizontal_scale, f"REF{reference}:HORIZONTAL:SCALE"),
-        (config.horizontal_delay, f"REF{reference}:HORIZONTAL:DELAY:TIME"),
-    ):
-        text = normalize_optional_text(value)
-        if text:
-            commands.append(f"{command} {text}")
+    if config.vertical_scale is not None:
+        commands.append(
+            f"REF{reference}:VERTICAL:SCALE "
+            f"{format_scpi_number(config.vertical_scale, field='Reference vertical scale', positive=True)}"
+        )
+    if config.vertical_position is not None:
+        commands.append(
+            f"REF{reference}:VERTICAL:POSITION "
+            f"{format_scpi_number(config.vertical_position, field='Reference vertical position')}"
+        )
+    if config.horizontal_scale is not None:
+        commands.append(
+            f"REF{reference}:HORIZONTAL:SCALE "
+            f"{format_scpi_number(config.horizontal_scale, field='Reference horizontal scale', positive=True)}"
+        )
+    if config.horizontal_delay is not None:
+        commands.append(
+            f"REF{reference}:HORIZONTAL:DELAY:TIME "
+            f"{format_scpi_number(config.horizontal_delay, field='Reference horizontal delay')}"
+        )
 
     if config.display is not None:
         commands.append(f"SELECT:REF{reference} {scpi_bool(config.display)}")
@@ -103,28 +115,72 @@ def build_save_waveform_to_reference_command(source: str, reference: int | str) 
     return f"SAVE:WAVEFORM {waveform_source},REF{valid_reference}"
 
 
+def _capability_timeout_context(driver: Any, timeout_ms: int):
+    temporary_timeout = getattr(driver, "temporary_timeout", None)
+    if callable(temporary_timeout):
+        return temporary_timeout(timeout_ms)
+    return nullcontext()
+
+
+def _confirm_transport_alive(instrument: Any, failure: BaseException, operation: str) -> None:
+    if not is_transport_error(failure):
+        raise failure
+    try:
+        instrument.query("*IDN?")
+    except Exception as health_exc:
+        raise transport_exception(health_exc, f"{operation}; session health check") from health_exc
+
+
 class ReferenceMixin:
     """Public high-level API for DPO4000 reference waveforms."""
 
     @staticmethod
     def _query_reference_optional(instrument: Any, command: str) -> str:
-        try:
-            response = instrument.query(command).strip()
-        except Exception:
-            return ""
-        return normalize_scope_response_text(response)
+        return optional_query(instrument, command, normalizer=normalize_scope_response_text)
 
     def probe_reference_support(self, reference: int | str = 1) -> bool:
-        """Probe one REF slot with a single required query.
-
-        The required query propagates timeout/transport failures so automatic
-        discovery can skip the full REF family instead of retrying every field.
-        """
+        """Probe one REF slot with a single required query."""
         valid_reference = normalize_reference(reference)
         scope = self.ensure_connected()
         query = build_reference_config_queries(valid_reference)["display"]
         response = normalize_scope_response_text(scope.query(query).strip())
         return bool(response)
+
+    def get_reference_waveform_count(
+        self,
+        *,
+        timeout_ms: int = REFERENCE_CAPABILITY_TIMEOUT_MS,
+    ) -> int:
+        """Return reference count with bounded older-firmware fallback."""
+        instrument = self.ensure_connected()
+        with _capability_timeout_context(self, timeout_ms):
+            try:
+                response = normalize_scope_response_text(instrument.query(REFERENCE_COUNT_QUERY).strip())
+                count = int(float(response))
+                return max(0, min(len(REFERENCE_SLOTS), count))
+            except Exception as exc:
+                _confirm_transport_alive(instrument, exc, "Reading reference waveform count")
+
+            count = 0
+            for reference in REFERENCE_SLOTS:
+                query = build_reference_config_queries(reference)["display"]
+                try:
+                    response = normalize_scope_response_text(instrument.query(query).strip())
+                except Exception as exc:
+                    _confirm_transport_alive(instrument, exc, f"Probing REF{reference}")
+                    break
+                if not response:
+                    break
+                count = reference
+            return count
+
+    def get_available_reference_slots(
+        self,
+        *,
+        timeout_ms: int = REFERENCE_CAPABILITY_TIMEOUT_MS,
+    ) -> tuple[int, ...]:
+        """Return actual reference slot numbers exposed by the connected scope."""
+        return REFERENCE_SLOTS[: self.get_reference_waveform_count(timeout_ms=timeout_ms)]
 
     def get_reference_configuration(self, reference: int | str) -> dict[str, str]:
         """Read display parameters and storage metadata for one REF waveform."""
@@ -135,10 +191,10 @@ class ReferenceMixin:
         }
 
     def get_all_reference_configurations(self) -> dict[int, dict[str, str]]:
-        """Read REF1..REF4 configuration snapshots."""
+        """Read configurations only for reference slots exposed by the scope."""
         return {
             reference: self.get_reference_configuration(reference)
-            for reference in REFERENCE_SLOTS
+            for reference in self.get_available_reference_slots()
         }
 
     def configure_reference(self, config: ReferenceConfig) -> None:
@@ -155,7 +211,9 @@ class ReferenceMixin:
 
 
 __all__ = [
+    "REFERENCE_CAPABILITY_TIMEOUT_MS",
     "REFERENCE_CONFIG_QUERIES",
+    "REFERENCE_COUNT_QUERY",
     "REFERENCE_SLOTS",
     "REFERENCE_SOURCES",
     "ReferenceConfig",

@@ -43,8 +43,8 @@ def test_reference_config_commands_match_dpo4000_programmer_manual():
         "REF3:LABEL \"Golden 'pulse'\"",
         "REF3:VERTICAL:SCALE 0.1",
         "REF3:VERTICAL:POSITION -1.5",
-        "REF3:HORIZONTAL:SCALE 4E-6",
-        "REF3:HORIZONTAL:DELAY:TIME 2E-6",
+        "REF3:HORIZONTAL:SCALE 4e-06",
+        "REF3:HORIZONTAL:DELAY:TIME 2e-06",
         "SELECT:REF3 ON",
     ]
 

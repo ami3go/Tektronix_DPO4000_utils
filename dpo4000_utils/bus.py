@@ -3,17 +3,22 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 from typing import Any
 
-from .control import (
-    normalize_optional_text,
-    normalize_scope_response_text,
-    quote_scpi_string,
-    scpi_bool,
+from .control import normalize_scope_response_text, quote_scpi_string, scpi_bool
+from .errors import is_transport_error, transport_exception
+from .io_policy import optional_query
+from .scpi_values import (
+    ensure_single_scpi_value,
+    format_scpi_number,
+    normalize_scpi_enum,
 )
 
 BUS_SLOTS = (1, 2, 3, 4)
+BUS_COUNT_QUERY = "CONFIGURATION:BUSWAVEFORMS:NUMBUS?"
+BUS_CAPABILITY_TIMEOUT_MS = 1000
 BUS_TYPES = (
     "I2C",
     "SPI",
@@ -154,6 +159,13 @@ _BUS_TYPE_ALIASES = {
     "USB": "USB",
 }
 
+_BUS_DISPLAY_FORMAT_ALIASES = {
+    "BIN": "BINARY",
+    "HEX": "HEXADECIMAL",
+    "SIGNED": "SIGNEDDECIMAL",
+    "SIGNEDDEC": "SIGNEDDECIMAL",
+}
+
 
 @dataclass(frozen=True)
 class BusConfig:
@@ -181,11 +193,14 @@ def normalize_bus(bus: int | str) -> int:
 
 
 def canonical_bus_type(bus_type: str | None) -> str:
-    """Return a stable bus-type token for GUI/API use, preserving unknown types."""
-    raw = str(bus_type or "").strip().upper().replace("-", "").replace("_", "")
+    """Return a stable safe bus-type token, preserving unknown future types."""
+    if bus_type is None:
+        return ""
+    raw = ensure_single_scpi_value(bus_type, field="BUS type", allow_empty=True)
     if not raw:
         return ""
-    return _BUS_TYPE_ALIASES.get(raw, raw)
+    compact = raw.upper().replace("-", "").replace("_", "").replace(" ", "")
+    return _BUS_TYPE_ALIASES.get(compact, compact)
 
 
 def bus_protocol_fields(bus_type: str | None) -> tuple[str, ...]:
@@ -235,10 +250,10 @@ def build_bus_protocol_queries(bus: int | str, bus_type: str | None) -> dict[str
     }
 
 
-def _command_value(value: Any) -> str:
+def _command_value(value: Any, *, field: str) -> str:
     if isinstance(value, bool):
         return scpi_bool(value)
-    return normalize_optional_text(value)
+    return ensure_single_scpi_value(value, field=field)
 
 
 def build_bus_config_commands(config: BusConfig) -> list[str]:
@@ -260,24 +275,33 @@ def build_bus_config_commands(config: BusConfig) -> list[str]:
     for name, command in protocol_commands.items():
         if name not in provided:
             continue
-        text = _command_value(provided[name])
+        text = _command_value(provided[name], field=f"{bus_type} {name}")
         if text:
             commands.append(f"{command.format(bus=bus)} {text}")
 
     if config.label is not None:
         commands.append(f"BUS:B{bus}:LABEL {quote_scpi_string(str(config.label)[:30])}")
 
-    position = normalize_optional_text(config.position)
-    if position:
+    if config.position is not None:
+        position = format_scpi_number(config.position, field="BUS position")
         commands.append(f"BUS:B{bus}:POSITION {position}")
 
-    display_format = normalize_optional_text(config.display_format)
-    if display_format:
-        commands.append(f"BUS:B{bus}:DISPLAY:FORMAT {display_format.upper()}")
+    if config.display_format is not None:
+        display_format = normalize_scpi_enum(
+            config.display_format,
+            BUS_DISPLAY_FORMATS,
+            field="BUS display format",
+            aliases=_BUS_DISPLAY_FORMAT_ALIASES,
+        )
+        commands.append(f"BUS:B{bus}:DISPLAY:FORMAT {display_format}")
 
-    display_type = normalize_optional_text(config.display_type)
-    if display_type:
-        commands.append(f"BUS:B{bus}:DISPLAY:TYPE {display_type.upper()}")
+    if config.display_type is not None:
+        display_type = normalize_scpi_enum(
+            config.display_type,
+            BUS_DISPLAY_TYPES,
+            field="BUS display type",
+        )
+        commands.append(f"BUS:B{bus}:DISPLAY:TYPE {display_type}")
 
     if config.state is not None:
         commands.append(f"BUS:B{bus}:STATE {scpi_bool(config.state)}")
@@ -285,29 +309,65 @@ def build_bus_config_commands(config: BusConfig) -> list[str]:
     return commands
 
 
+def _capability_timeout_context(driver: Any, timeout_ms: int):
+    temporary_timeout = getattr(driver, "temporary_timeout", None)
+    if callable(temporary_timeout):
+        return temporary_timeout(timeout_ms)
+    return nullcontext()
+
+
+def _confirm_transport_alive(instrument: Any, failure: BaseException, operation: str) -> None:
+    """Allow unsupported-command timeouts only when the session still answers IDN."""
+    if not is_transport_error(failure):
+        raise failure
+    try:
+        instrument.query("*IDN?")
+    except Exception as health_exc:
+        raise transport_exception(health_exc, f"{operation}; session health check") from health_exc
+
+
 class BusMixin:
-    """Public high-level API for DPO4000 BUS1..BUS4 waveforms."""
+    """Public high-level API for DPO4000 BUS waveforms."""
 
     @staticmethod
     def _query_bus_optional(instrument: Any, command: str) -> str:
-        try:
-            response = instrument.query(command).strip()
-        except Exception:
-            return ""
-        return normalize_scope_response_text(response)
+        return optional_query(instrument, command, normalizer=normalize_scope_response_text)
 
     def probe_bus_support(self, bus: int | str = 1) -> bool:
-        """Probe one BUS slot with a single required query.
-
-        Unlike optional field reads this intentionally propagates transport/timeout
-        failures so callers can fail fast instead of multiplying the VISA timeout
-        across every BUS field and slot.
-        """
+        """Probe one BUS slot with a single required query."""
         valid_bus = normalize_bus(bus)
         scope = self.ensure_connected()
         query = build_bus_config_queries(valid_bus)["type"]
         response = normalize_scope_response_text(scope.query(query).strip())
         return bool(response)
+
+    def get_bus_waveform_count(self, *, timeout_ms: int = BUS_CAPABILITY_TIMEOUT_MS) -> int:
+        """Return BUS waveform count with bounded older-firmware fallback."""
+        instrument = self.ensure_connected()
+        with _capability_timeout_context(self, timeout_ms):
+            try:
+                response = normalize_scope_response_text(instrument.query(BUS_COUNT_QUERY).strip())
+                count = int(float(response))
+                return max(0, min(len(BUS_SLOTS), count))
+            except Exception as exc:
+                _confirm_transport_alive(instrument, exc, "Reading BUS waveform count")
+
+            count = 0
+            for bus in BUS_SLOTS:
+                query = build_bus_config_queries(bus)["type"]
+                try:
+                    response = normalize_scope_response_text(instrument.query(query).strip())
+                except Exception as exc:
+                    _confirm_transport_alive(instrument, exc, f"Probing BUS{bus}")
+                    break
+                if not response:
+                    break
+                count = bus
+            return count
+
+    def get_available_bus_slots(self, *, timeout_ms: int = BUS_CAPABILITY_TIMEOUT_MS) -> tuple[int, ...]:
+        """Return actual BUS slot numbers exposed by the connected scope."""
+        return BUS_SLOTS[: self.get_bus_waveform_count(timeout_ms=timeout_ms)]
 
     def get_bus_configuration(self, bus: int | str) -> dict[str, Any]:
         """Read common and active-protocol settings for one BUS waveform."""
@@ -327,8 +387,8 @@ class BusMixin:
         return values
 
     def get_all_bus_configurations(self) -> dict[int, dict[str, Any]]:
-        """Read BUS1..BUS4 configurations."""
-        return {bus: self.get_bus_configuration(bus) for bus in BUS_SLOTS}
+        """Read configurations only for BUS slots exposed by the scope."""
+        return {bus: self.get_bus_configuration(bus) for bus in self.get_available_bus_slots()}
 
     def configure_bus(self, config: BusConfig) -> None:
         """Apply common and protocol-specific settings to one BUS waveform."""
@@ -338,7 +398,9 @@ class BusMixin:
 
 
 __all__ = [
+    "BUS_CAPABILITY_TIMEOUT_MS",
     "BUS_COMMON_COMMANDS",
+    "BUS_COUNT_QUERY",
     "BUS_DISPLAY_FORMATS",
     "BUS_DISPLAY_TYPES",
     "BUS_PROTOCOL_COMMANDS",

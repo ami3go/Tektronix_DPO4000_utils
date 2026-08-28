@@ -1,9 +1,8 @@
 """Bounded, staged GUI-facing oscilloscope state snapshot reads.
 
-The automatic connection refresh deliberately does not reuse the individual GUI
-card read handlers. It has its own deterministic read plan so an optional or
-partially licensed feature cannot multiply the normal VISA timeout across dozens
-of queries.
+Capability discovery is owned by the public BUS/REF driver APIs. This module only
+orchestrates staged reads and never carries an independent Tektronix slot-count
+implementation.
 """
 
 from __future__ import annotations
@@ -12,22 +11,29 @@ from collections.abc import Iterable, Mapping
 from contextlib import nullcontext
 from typing import Any
 
-from .bus import build_bus_config_queries, build_bus_protocol_queries, canonical_bus_type
+from .bus import (
+    BUS_COUNT_QUERY,
+    build_bus_config_queries,
+    build_bus_protocol_queries,
+    canonical_bus_type,
+)
 from .control import normalize_scope_response_text
-from .reference import build_reference_config_queries
+from .errors import DPOTransportError, is_transport_error, transport_exception
+from .reference import REFERENCE_COUNT_QUERY, build_reference_config_queries
 
 DEFAULT_ANALOG_CHANNELS = (1, 2, 3, 4)
 DEFAULT_REFERENCE_CHANNELS = (1, 2, 3, 4)
 DEFAULT_BUS_CHANNELS = (1, 2, 3, 4)
 DEFAULT_OPTIONAL_FEATURE_TIMEOUT_MS = 1000
-BUS_COUNT_QUERY = "CONFIGURATION:BUSWAVEFORMS:NUMBUS?"
-REFERENCE_COUNT_QUERY = "CONFIGURATION:REFS:NUMREFS?"
-MAX_BUS_COUNT = 4
-MAX_REFERENCE_COUNT = 4
 
 
 def _error_text(exc: BaseException) -> str:
     return str(exc).strip() or exc.__class__.__name__
+
+
+def _raise_transport_if_typed(exc: BaseException) -> None:
+    if isinstance(exc, DPOTransportError):
+        raise exc
 
 
 def _empty_snapshot() -> dict[str, Any]:
@@ -103,15 +109,24 @@ def _query_normalized(instrument: Any, command: str) -> str:
     return normalize_scope_response_text(instrument.query(command).strip())
 
 
-def _query_count(instrument: Any, command: str, *, maximum: int) -> int:
-    """Read and clamp a Tektronix CONFIGuration count query."""
-    value = _query_normalized(instrument, command)
-    count = int(float(value))
-    return max(0, min(int(maximum), count))
-
-
-def _slots_within_count(slots: tuple[int, ...], count: int) -> tuple[int, ...]:
-    return tuple(slot for slot in slots if 1 <= slot <= count)
+def _requested_available_slots(
+    scope: Any,
+    requested: tuple[int, ...],
+    *,
+    available_method: str,
+    count_key: str,
+    snapshot: dict[str, Any],
+    timeout_ms: int | None,
+) -> tuple[int, ...]:
+    """Intersect caller-requested slots with the public driver capability API."""
+    reader = getattr(scope, available_method, None)
+    if not callable(reader):
+        return requested
+    kwargs = {} if timeout_ms is None else {"timeout_ms": timeout_ms}
+    available = tuple(int(slot) for slot in reader(**kwargs))
+    snapshot["capabilities"][count_key] = len(available)
+    available_set = set(available)
+    return tuple(slot for slot in requested if slot in available_set)
 
 
 def read_core_scope_snapshot(
@@ -127,10 +142,12 @@ def read_core_scope_snapshot(
         try:
             snapshot["labels"][channel] = scope.get_channel_label(channel)
         except Exception as exc:  # noqa: BLE001
+            _raise_transport_if_typed(exc)
             errors[f"label.ch{channel}"] = _error_text(exc)
         try:
             snapshot["channels"][channel] = scope.get_channel_configuration(channel)
         except Exception as exc:  # noqa: BLE001
+            _raise_transport_if_typed(exc)
             errors[f"channel.ch{channel}"] = _error_text(exc)
 
     section_readers = (
@@ -145,6 +162,7 @@ def read_core_scope_snapshot(
         try:
             snapshot[name] = reader()
         except Exception as exc:  # noqa: BLE001
+            _raise_transport_if_typed(exc)
             snapshot[name] = fallback
             errors[name] = _error_text(exc)
     return snapshot
@@ -155,7 +173,6 @@ def _read_reference_direct(
     references: tuple[int, ...],
     timeout_ms: int | None,
 ) -> dict[str, Any] | None:
-    """Read only reference slots reported by the instrument."""
     instrument = _instrument_for_snapshot(scope)
     if instrument is None:
         return None
@@ -165,34 +182,24 @@ def _read_reference_direct(
     if not references:
         return snapshot
 
-    with _optional_timeout_context(scope, timeout_ms):
-        try:
-            reference_count = _query_count(
-                instrument,
-                REFERENCE_COUNT_QUERY,
-                maximum=MAX_REFERENCE_COUNT,
-            )
-        except Exception:
-            # Older firmware may not implement the count query. Fall back to the
-            # original single-slot capability probe without turning that into a
-            # warning if REF1 itself responds.
-            first_queries = build_reference_config_queries(references[0])
-            try:
-                _query_normalized(instrument, first_queries["display"])
-            except Exception as exc:  # noqa: BLE001
-                errors["reference.support"] = _error_text(exc)
-                return snapshot
-            active_references = references
-        else:
-            snapshot["capabilities"]["reference_count"] = reference_count
-            active_references = _slots_within_count(references, reference_count)
+    active_references = _requested_available_slots(
+        scope,
+        references,
+        available_method="get_available_reference_slots",
+        count_key="reference_count",
+        snapshot=snapshot,
+        timeout_ms=timeout_ms,
+    )
 
+    with _optional_timeout_context(scope, timeout_ms):
         for reference in active_references:
             queries = build_reference_config_queries(reference)
             values: dict[str, str] = {}
             try:
                 values["display"] = _query_normalized(instrument, queries["display"])
             except Exception as exc:  # noqa: BLE001
+                if is_transport_error(exc):
+                    raise transport_exception(exc, f"Reading REF{reference} display") from exc
                 errors[f"reference.ref{reference}"] = _error_text(exc)
                 continue
 
@@ -214,7 +221,7 @@ def read_reference_scope_snapshot(
     references: Iterable[int] = DEFAULT_REFERENCE_CHANNELS,
     optional_feature_timeout_ms: int | None = DEFAULT_OPTIONAL_FEATURE_TIMEOUT_MS,
 ) -> dict[str, Any]:
-    """Read the reference-waveform slots exposed by the connected scope."""
+    """Read reference-waveform slots exposed by the connected scope."""
     reference_numbers = tuple(int(reference) for reference in references)
     direct = _read_reference_direct(scope, reference_numbers, optional_feature_timeout_ms)
     if direct is not None:
@@ -226,16 +233,15 @@ def read_reference_scope_snapshot(
     if not callable(reader):
         return snapshot
 
+    reference_numbers = _requested_available_slots(
+        scope,
+        reference_numbers,
+        available_method="get_available_reference_slots",
+        count_key="reference_count",
+        snapshot=snapshot,
+        timeout_ms=optional_feature_timeout_ms,
+    )
     with _optional_timeout_context(scope, optional_feature_timeout_ms):
-        count_reader = getattr(scope, "get_reference_waveform_count", None)
-        if callable(count_reader):
-            try:
-                reference_count = max(0, min(MAX_REFERENCE_COUNT, int(count_reader())))
-                snapshot["capabilities"]["reference_count"] = reference_count
-                reference_numbers = _slots_within_count(reference_numbers, reference_count)
-            except Exception:
-                pass
-
         probe = getattr(scope, "probe_reference_support", None)
         if callable(probe) and reference_numbers:
             try:
@@ -243,12 +249,14 @@ def read_reference_scope_snapshot(
                     errors["reference.support"] = "Reference waveform controls are unavailable."
                     return snapshot
             except Exception as exc:  # noqa: BLE001
+                _raise_transport_if_typed(exc)
                 errors["reference.support"] = _error_text(exc)
                 return snapshot
         for reference in reference_numbers:
             try:
                 snapshot["references"][reference] = reader(reference)
             except Exception as exc:  # noqa: BLE001
+                _raise_transport_if_typed(exc)
                 errors[f"reference.ref{reference}"] = _error_text(exc)
     return snapshot
 
@@ -258,7 +266,6 @@ def _read_bus_direct(
     buses: tuple[int, ...],
     timeout_ms: int | None,
 ) -> dict[str, Any] | None:
-    """Read BUS slots reported by CONFIGuration:BUSWAVEFORMS:NUMBUS?."""
     instrument = _instrument_for_snapshot(scope)
     if instrument is None:
         return None
@@ -268,24 +275,16 @@ def _read_bus_direct(
     if not buses:
         return snapshot
 
-    with _optional_timeout_context(scope, timeout_ms):
-        try:
-            bus_count = _query_count(instrument, BUS_COUNT_QUERY, maximum=MAX_BUS_COUNT)
-        except Exception:
-            # Compatibility fallback for firmware without NUMBUS?. Probe BUS1 and
-            # stop scanning at the first missing required slot because BUS slots
-            # are contiguous.
-            first_queries = build_bus_config_queries(buses[0])
-            try:
-                _query_normalized(instrument, first_queries["type"])
-            except Exception as exc:  # noqa: BLE001
-                errors["bus.support"] = _error_text(exc)
-                return snapshot
-            active_buses = buses
-        else:
-            snapshot["capabilities"]["bus_count"] = bus_count
-            active_buses = _slots_within_count(buses, bus_count)
+    active_buses = _requested_available_slots(
+        scope,
+        buses,
+        available_method="get_available_bus_slots",
+        count_key="bus_count",
+        snapshot=snapshot,
+        timeout_ms=timeout_ms,
+    )
 
+    with _optional_timeout_context(scope, timeout_ms):
         for bus in active_buses:
             queries = build_bus_config_queries(bus)
             values: dict[str, Any] = {"protocol": {}}
@@ -294,14 +293,12 @@ def _read_bus_direct(
                 try:
                     values[name] = _query_normalized(instrument, queries[name])
                 except Exception as exc:  # noqa: BLE001
+                    if is_transport_error(exc):
+                        raise transport_exception(exc, f"Reading BUS{bus} {name}") from exc
                     errors[f"bus.bus{bus}.{name}"] = _error_text(exc)
                     required_failed = True
                     break
             if required_failed:
-                # BUS slots are contiguous. Once a required query for a later slot
-                # does not respond, probing higher numbered slots adds no value.
-                if snapshot["buses"]:
-                    break
                 continue
 
             values["type"] = canonical_bus_type(values.get("type", ""))
@@ -332,7 +329,7 @@ def read_bus_scope_snapshot(
     buses: Iterable[int] = DEFAULT_BUS_CHANNELS,
     optional_feature_timeout_ms: int | None = DEFAULT_OPTIONAL_FEATURE_TIMEOUT_MS,
 ) -> dict[str, Any]:
-    """Read only BUS waveforms that the connected instrument reports as present."""
+    """Read only BUS waveforms that the public driver API reports as present."""
     bus_numbers = tuple(int(bus) for bus in buses)
     direct = _read_bus_direct(scope, bus_numbers, optional_feature_timeout_ms)
     if direct is not None:
@@ -344,16 +341,15 @@ def read_bus_scope_snapshot(
     if not callable(reader):
         return snapshot
 
+    bus_numbers = _requested_available_slots(
+        scope,
+        bus_numbers,
+        available_method="get_available_bus_slots",
+        count_key="bus_count",
+        snapshot=snapshot,
+        timeout_ms=optional_feature_timeout_ms,
+    )
     with _optional_timeout_context(scope, optional_feature_timeout_ms):
-        count_reader = getattr(scope, "get_bus_waveform_count", None)
-        if callable(count_reader):
-            try:
-                bus_count = max(0, min(MAX_BUS_COUNT, int(count_reader())))
-                snapshot["capabilities"]["bus_count"] = bus_count
-                bus_numbers = _slots_within_count(bus_numbers, bus_count)
-            except Exception:
-                pass
-
         probe = getattr(scope, "probe_bus_support", None)
         if callable(probe) and bus_numbers:
             try:
@@ -361,14 +357,14 @@ def read_bus_scope_snapshot(
                     errors["bus.support"] = "BUS waveform controls are unavailable or not licensed."
                     return snapshot
             except Exception as exc:  # noqa: BLE001
+                _raise_transport_if_typed(exc)
                 errors["bus.support"] = _error_text(exc)
                 return snapshot
         for bus in bus_numbers:
             try:
                 snapshot["buses"][bus] = reader(bus)
             except Exception as exc:  # noqa: BLE001
-                # Arbitrary high-level driver implementations may expose sparse
-                # logical slots; preserve the historical per-slot isolation here.
+                _raise_transport_if_typed(exc)
                 errors[f"bus.bus{bus}"] = _error_text(exc)
     return snapshot
 

@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.5.3 - 2026-08-28
+
+### Added
+
+- Added public BUS/REF capability APIs: `get_bus_waveform_count()`, `get_available_bus_slots()`, `get_reference_waveform_count()`, and `get_available_reference_slots()`.
+- Added centralized SCPI value validation helpers for finite numeric values, enums/tokens, quoted strings, and single-message safety.
+- Added a shared optional-query policy that distinguishes an unsupported optional command from a lost VISA session by checking instrument health before suppressing a transport-style failure.
+
+### Fixed
+
+- `get_all_bus_configurations()` and `get_all_reference_configurations()` now enumerate only slots reported by the connected oscilloscope instead of hard-coded programmer-manual maxima.
+- Staged GUI snapshots now consume public driver capability APIs instead of owning duplicate Tektronix BUS/REF count logic.
+- User-editable unquoted SCPI arguments now reject semicolons, physical line breaks, NULs, NaN/Inf, invalid enums, and malformed numeric values before any write is sent.
+- Channel labels are safely quoted and limited to 30 characters instead of being interpolated directly into SCPI.
+- Trigger-level writes validate numeric/TTL/ECL values, and image rearm no longer issues `*CLS`.
+
+### Changed
+
+- BUS protocol-specific values remain model/decoder dependent, but are now guaranteed to be a single SCPI argument/message before being emitted.
+- Numeric command builders use deterministic finite-number formatting.
+- Package version bumped to `0.5.3`.
+
 ## v0.5.2 - 2026-08-28
 
 ### Added

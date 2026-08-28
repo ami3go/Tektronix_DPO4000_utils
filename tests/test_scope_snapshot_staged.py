@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from dpo4000_utils.bus import BusMixin
 from dpo4000_utils.connection import ConnectionMixin
+from dpo4000_utils.reference import ReferenceMixin
 from dpo4000_utils.scope_snapshot import (
     BUS_COUNT_QUERY,
     DEFAULT_OPTIONAL_FEATURE_TIMEOUT_MS,
@@ -17,15 +19,12 @@ class FakeVisa:
         self.queries: list[tuple[str, int]] = []
         self.responses: dict[str, str | BaseException] = {
             BUS_COUNT_QUERY: ":CONFIGURATION:BUSWAVEFORMS:NUMBUS 2",
-            # Disabled BUS1 common state.
             "BUS:B1:TYPE?": ":BUS:B1:TYPE I2C",
             "BUS:B1:STATE?": ":BUS:B1:STATE 0",
             "BUS:B1:LABEL?": ':BUS:B1:LABEL "Dormant"',
             "BUS:B1:POSITION?": ":BUS:B1:POSITION 0",
             "BUS:B1:DISPLAY:FORMAT?": ":BUS:B1:DISPLAY:FORMAT HEXADECIMAL",
             "BUS:B1:DISPLAY:TYPE?": ":BUS:B1:DISPLAY:TYPE BUS",
-            # Enabled BUS2. Its CAN decoder answers one protocol field, then
-            # intentionally times out. The reader must stop that protocol loop.
             "BUS:B2:TYPE?": ":BUS:B2:TYPE CAN",
             "BUS:B2:STATE?": ":BUS:B2:STATE 1",
             "BUS:B2:LABEL?": ':BUS:B2:LABEL "Vehicle"',
@@ -46,7 +45,7 @@ class FakeVisa:
         return response
 
 
-class ScopeUnderTest(ConnectionMixin):
+class ScopeUnderTest(BusMixin, ConnectionMixin):
     def __init__(self):
         self.scope = FakeVisa()
 
@@ -122,7 +121,7 @@ class FakeReferenceVisa:
         return self.responses[command]
 
 
-class ReferenceScopeUnderTest(ConnectionMixin):
+class ReferenceScopeUnderTest(ReferenceMixin, ConnectionMixin):
     def __init__(self):
         self.scope = FakeReferenceVisa()
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 
 from .channels import validate_channel
+from .scpi_values import ensure_single_scpi_value, format_scpi_number
 
 
 class TriggerMixin:
@@ -28,19 +29,14 @@ class TriggerMixin:
         self.ensure_connected().write("TRIG FORC")
 
     def set_trigger_level(self, level, channel=None, verify=True):
-        """
-        Set A trigger level.
-
-        ``level`` may be a numeric voltage or the strings ``TTL`` / ``ECL``.
-        """
+        """Set A trigger level using a finite numeric value, TTL, or ECL."""
         scope = self.ensure_connected()
-
-        if isinstance(level, str):
-            level_value = level.strip().upper()
-            if level_value not in ("TTL", "ECL"):
-                raise ValueError("String level must be 'TTL' or 'ECL'.")
-        else:
-            level_value = float(level)
+        text = ensure_single_scpi_value(level, field="Trigger level")
+        preset = text.upper()
+        level_value = preset if preset in {"TTL", "ECL"} else format_scpi_number(
+            text,
+            field="Trigger level",
+        )
 
         if channel is None:
             command = "TRIGGER:A:LEVEL"
@@ -95,17 +91,20 @@ class TriggerMixin:
         self.ensure_connected().write(f"TRIGGER:A:EDGE:SOURCE CH{channel}")
 
     def rearm_trigger_after_image(self, trigger_channel=None, restore_level=True):
-        """Re-arm trigger/acquisition after screen image read."""
+        """Re-arm acquisition after image read without clearing instrument status.
+
+        Legacy firmware sometimes benefited from re-writing trigger mode/level after
+        hardcopy. Those values are validated before being written back. ``*CLS`` is
+        deliberately not used so image capture/rearm cannot erase diagnostic state.
+        """
         scope = self.ensure_connected()
         time.sleep(0.3)
 
         try:
-            scope.write("*CLS")
-        except Exception:
-            pass
-
-        try:
-            trig_mode = scope.query("TRIGGER:A:MODE?").strip().split()[-1]
+            trig_mode = ensure_single_scpi_value(
+                scope.query("TRIGGER:A:MODE?").strip().split()[-1],
+                field="Trigger mode readback",
+            )
             scope.write(f"TRIGGER:A:MODE {trig_mode}")
         except Exception:
             pass
@@ -113,13 +112,19 @@ class TriggerMixin:
         if restore_level:
             try:
                 if trigger_channel is None:
-                    level = scope.query("TRIGGER:A:LEVEL?").strip().split()[-1]
+                    level = format_scpi_number(
+                        scope.query("TRIGGER:A:LEVEL?").strip().split()[-1],
+                        field="Trigger level readback",
+                    )
                     scope.write(f"TRIGGER:A:LEVEL {level}")
                 else:
                     validate_channel(trigger_channel)
-                    level = scope.query(
-                        f"TRIGGER:A:LEVEL:CH{trigger_channel}?"
-                    ).strip().split()[-1]
+                    level = format_scpi_number(
+                        scope.query(
+                            f"TRIGGER:A:LEVEL:CH{trigger_channel}?"
+                        ).strip().split()[-1],
+                        field="Trigger level readback",
+                    )
                     scope.write(f"TRIGGER:A:LEVEL:CH{trigger_channel} {level}")
             except Exception:
                 pass

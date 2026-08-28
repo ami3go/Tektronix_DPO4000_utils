@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from .scpi_values import quote_scpi_string
+
 
 def validate_channel(channel: int) -> None:
     if channel < 1 or channel > 4:
@@ -12,10 +14,13 @@ class ChannelMixin:
     """Mixin for channel labels and simple channel measurements."""
 
     def set_channel_label(self, channel, label):
-        """Set a label for a specific channel and display it on the scope."""
+        """Set a safely quoted label for a specific channel."""
         validate_channel(channel)
-        self.channel_labels[channel] = label
-        self.ensure_connected().write(f"CH{channel}:LABEL \"{label}\"")
+        clean_label = str(label)[:30]
+        self.channel_labels[channel] = clean_label
+        self.ensure_connected().write(
+            f"CH{channel}:LABEL {quote_scpi_string(clean_label, max_length=30)}"
+        )
 
     def get_channel_label(self, channel):
         """Read label from a specific oscilloscope channel."""

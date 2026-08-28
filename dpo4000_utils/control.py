@@ -6,6 +6,13 @@ from dataclasses import dataclass
 from typing import Any
 
 from .channels import validate_channel
+from .io_policy import optional_query, required_query
+from .scpi_values import (
+    ensure_single_scpi_value,
+    format_scpi_number,
+    normalize_scpi_enum,
+    normalize_scpi_token,
+)
 
 
 MEASUREMENT_SLOTS = tuple(range(1, 9))
@@ -187,10 +194,7 @@ class MeasurementSetup:
 
 
 def _normalize_token(value: str, *, field: str) -> str:
-    token = str(value or "").strip().upper()
-    if not token:
-        raise ValueError(f"{field} cannot be empty.")
-    return token
+    return normalize_scpi_token(value, field=field, uppercase=True)
 
 
 def normalize_channel(channel: int | str) -> int:
@@ -220,14 +224,11 @@ def normalize_source(source: str, *, field: str = "Source") -> str:
 
 
 def normalize_measurement_type(measurement_type: str) -> str:
-    return _normalize_token(measurement_type, field="Measurement type")
+    return normalize_scpi_enum(measurement_type, MEASUREMENT_TYPES, field="Measurement type")
 
 
 def normalize_trigger_choice(value: str, allowed: tuple[str, ...], *, field: str) -> str:
-    token = _normalize_token(value, field=field)
-    if token not in allowed:
-        raise ValueError(f"Unsupported {field.lower()}: {value!r}.")
-    return token
+    return normalize_scpi_enum(value, allowed, field=field)
 
 
 def normalize_optional_text(value: Any) -> str:
@@ -256,18 +257,16 @@ def scpi_bool(value: bool) -> str:
 
 
 def quote_scpi_string(value: str) -> str:
-    """Quote a single-line SCPI string and replace embedded double quotes."""
+    """Quote one SCPI string while removing physical line breaks and unsafe quotes."""
     clean = " ".join(str(value).replace('"', "'").splitlines()).strip()
     return f'"{clean}"'
 
 
 def build_measurement_commands(config: MeasurementConfig) -> list[str]:
-    """Build SCPI commands that add/update one displayed measurement slot."""
     slot = validate_measurement_slot(config.slot)
     measurement_type = normalize_measurement_type(config.measurement_type)
     source1 = normalize_source(config.source1, field="Source 1")
     source2 = normalize_source(config.source2, field="Source 2") if config.source2 else None
-
     commands = [
         f"MEASUREMENT:MEAS{slot}:TYPE {measurement_type}",
         f"MEASUREMENT:MEAS{slot}:SOURCE1 {source1}",
@@ -298,22 +297,39 @@ def build_channel_config_queries(channel: int | str) -> dict[str, str]:
     }
 
 
+def _normalize_bandwidth(value: Any) -> str:
+    token = ensure_single_scpi_value(value, field="Channel bandwidth")
+    if token.upper() == "FULL":
+        return "FULL"
+    return format_scpi_number(token, field="Channel bandwidth", positive=True)
+
+
 def build_channel_config_commands(config: ChannelConfig) -> list[str]:
     channel = normalize_channel(config.channel)
     commands: list[str] = []
     if config.display is not None:
         commands.append(f"SELECT:CH{channel} {scpi_bool(config.display)}")
-    for field, command in (
-        (config.scale, f"CH{channel}:SCALE"),
-        (config.position, f"CH{channel}:POSITION"),
-        (config.offset, f"CH{channel}:OFFSET"),
-        (config.coupling, f"CH{channel}:COUPLING"),
-        (config.bandwidth, f"CH{channel}:BANDWIDTH"),
-        (config.probe_gain, f"CH{channel}:PROBE:GAIN"),
-    ):
-        text = normalize_optional_text(field)
-        if text:
-            commands.append(f"{command} {text.upper() if command.endswith(':COUPLING') else text}")
+    if config.scale is not None:
+        commands.append(
+            f"CH{channel}:SCALE {format_scpi_number(config.scale, field='Channel scale', positive=True)}"
+        )
+    if config.position is not None:
+        commands.append(
+            f"CH{channel}:POSITION {format_scpi_number(config.position, field='Channel position')}"
+        )
+    if config.offset is not None:
+        commands.append(
+            f"CH{channel}:OFFSET {format_scpi_number(config.offset, field='Channel offset')}"
+        )
+    if config.coupling is not None:
+        coupling = normalize_scpi_enum(config.coupling, ("AC", "DC", "GND"), field="Channel coupling")
+        commands.append(f"CH{channel}:COUPLING {coupling}")
+    if config.bandwidth is not None:
+        commands.append(f"CH{channel}:BANDWIDTH {_normalize_bandwidth(config.bandwidth)}")
+    if config.probe_gain is not None:
+        commands.append(
+            f"CH{channel}:PROBE:GAIN {format_scpi_number(config.probe_gain, field='Probe gain', positive=True)}"
+        )
     if config.invert is not None:
         commands.append(f"CH{channel}:INVERT {scpi_bool(config.invert)}")
     return commands
@@ -328,27 +344,25 @@ def build_math_config_commands(config: MathConfig) -> list[str]:
     expression = normalize_optional_text(config.define)
     if expression:
         commands.append(f"MATH:DEFINE {quote_scpi_string(expression)}")
-    for field, command in (
-        (config.scale, "MATH:VERTICAL:SCALE"),
-        (config.position, "MATH:VERTICAL:POSITION"),
-    ):
-        text = normalize_optional_text(field)
-        if text:
-            commands.append(f"{command} {text}")
+    if config.scale is not None:
+        commands.append(
+            f"MATH:VERTICAL:SCALE {format_scpi_number(config.scale, field='MATH scale', positive=True)}"
+        )
+    if config.position is not None:
+        commands.append(
+            f"MATH:VERTICAL:POSITION {format_scpi_number(config.position, field='MATH position')}"
+        )
     if config.display is not None:
         commands.append(f"SELECT:MATH {scpi_bool(config.display)}")
     return commands
 
 
 def normalize_horizontal_position(value: str | float | int) -> float:
-    try:
-        return float(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError("Horizontal position must be a numeric value.") from exc
+    return float(format_scpi_number(value, field="Horizontal position"))
 
 
 def build_horizontal_position_command(position: str | float | int) -> str:
-    return f"HORIZONTAL:POSITION {normalize_horizontal_position(position):g}"
+    return f"HORIZONTAL:POSITION {format_scpi_number(position, field='Horizontal position')}"
 
 
 def build_horizontal_position_query() -> str:
@@ -360,13 +374,7 @@ def normalize_acquisition_mode(mode: str) -> str:
 
 
 def normalize_average_count(count: str | int) -> int:
-    try:
-        value = int(str(count).strip())
-    except (TypeError, ValueError) as exc:
-        raise ValueError("Average count must be a positive integer.") from exc
-    if value <= 0:
-        raise ValueError("Average count must be a positive integer.")
-    return value
+    return int(format_scpi_number(count, field="Average count", positive=True, integer=True))
 
 
 def build_acquisition_mode_command(mode: str) -> str:
@@ -386,40 +394,27 @@ def build_average_count_query() -> str:
 
 
 def normalize_record_length(record_length: str | float | int) -> int:
-    """Normalize a record-length setting to an integer point count.
-
-    Friendly labels such as ``1k`` and ``1M`` are accepted, but arbitrary
-    positive integer point counts are intentionally also allowed because exact
-    valid values can vary by DPO4000 model, option set, and acquisition mode.
-    """
     if isinstance(record_length, bool):
         raise ValueError("Record length must be a positive integer point count or label.")
-
     if isinstance(record_length, str):
-        text = record_length.strip()
-        if not text:
-            raise ValueError("Record length cannot be empty.")
+        text = ensure_single_scpi_value(record_length, field="Record length")
         label_key = text.upper().replace(" ", "")
         if label_key in RECORD_LENGTH_POINTS_BY_LABEL:
             return RECORD_LENGTH_POINTS_BY_LABEL[label_key]
-        candidate = text
+        candidate: Any = text
     else:
         candidate = record_length
-
-    try:
-        numeric = float(candidate)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(
-            "Record length must be a positive integer point count or a supported label."
-        ) from exc
-
-    if not numeric.is_integer() or numeric <= 0:
-        raise ValueError("Record length must be a positive integer point count.")
-    return int(numeric)
+    return int(
+        format_scpi_number(
+            candidate,
+            field="Record length",
+            positive=True,
+            integer=True,
+        )
+    )
 
 
 def record_length_label(record_length: str | float | int) -> str:
-    """Return a friendly label for common record lengths, otherwise the point count."""
     points = normalize_record_length(record_length)
     return RECORD_LENGTH_LABEL_BY_POINTS.get(points, str(points))
 
@@ -449,16 +444,11 @@ def build_acquisition_setup_commands(config: AcquisitionConfig) -> list[str]:
 
 
 def normalize_trigger_level(level: str | float | int) -> str:
-    text = str(level).strip()
-    if not text:
-        raise ValueError("Trigger level cannot be empty.")
+    text = ensure_single_scpi_value(level, field="Trigger level")
     preset = text.upper()
     if preset in {"TTL", "ECL"}:
         return preset
-    try:
-        return f"{float(text):g}"
-    except ValueError as exc:
-        raise ValueError("Trigger level must be numeric volts, TTL, or ECL.") from exc
+    return format_scpi_number(text, field="Trigger level")
 
 
 def build_edge_trigger_commands(
@@ -469,13 +459,11 @@ def build_edge_trigger_commands(
     mode: str,
     level: str | float | int,
 ) -> list[str]:
-    """Build common A-trigger commands for edge-trigger setup."""
     trigger_source = normalize_trigger_choice(source, TRIGGER_SOURCES, field="Trigger source")
     trigger_slope = normalize_trigger_choice(slope, TRIGGER_SLOPES, field="Trigger slope")
     trigger_coupling = normalize_trigger_choice(coupling, TRIGGER_COUPLINGS, field="Trigger coupling")
     trigger_mode = normalize_trigger_choice(mode, TRIGGER_MODES, field="Trigger mode")
     trigger_level = normalize_trigger_level(level)
-
     commands = [
         "TRIGGER:A:TYPE EDGE",
         f"TRIGGER:A:EDGE:SOURCE {trigger_source}",
@@ -494,17 +482,36 @@ def build_display_setup_queries() -> dict[str, str]:
     return dict(DISPLAY_SETUP_QUERIES)
 
 
+def _normalize_display_intensity(value: Any, *, field: str) -> str:
+    text = ensure_single_scpi_value(value, field=field)
+    if text.upper() in {"LOW", "MEDIUM", "HIGH"}:
+        return text.upper()
+    return format_scpi_number(text, field=field, nonnegative=True)
+
+
+def _normalize_persistence(value: Any) -> str:
+    text = ensure_single_scpi_value(value, field="Display persistence")
+    if text.upper() in {"AUTO", "MINIMUM", "INFINITE", "CLEAR"}:
+        return text.upper()
+    return format_scpi_number(text, field="Display persistence", nonnegative=True)
+
+
 def build_display_settings_commands(config: DisplayConfig) -> list[str]:
     commands: list[str] = []
-    for field, command in (
-        (config.backlight, "DISPLAY:INTENSITY:BACKLIGHT"),
-        (config.waveform, "DISPLAY:INTENSITY:WAVEFORM"),
-        (config.graticule, "DISPLAY:INTENSITY:GRATICULE"),
-        (config.persistence, "DISPLAY:PERSISTENCE"),
-    ):
-        text = normalize_optional_text(field)
-        if text:
-            commands.append(f"{command} {text.upper() if command.endswith('PERSISTENCE') else text}")
+    if config.backlight is not None:
+        commands.append(
+            f"DISPLAY:INTENSITY:BACKLIGHT {_normalize_display_intensity(config.backlight, field='Backlight intensity')}"
+        )
+    if config.waveform is not None:
+        commands.append(
+            f"DISPLAY:INTENSITY:WAVEFORM {_normalize_display_intensity(config.waveform, field='Waveform intensity')}"
+        )
+    if config.graticule is not None:
+        commands.append(
+            f"DISPLAY:INTENSITY:GRATICULE {_normalize_display_intensity(config.graticule, field='Graticule intensity')}"
+        )
+    if config.persistence is not None:
+        commands.append(f"DISPLAY:PERSISTENCE {_normalize_persistence(config.persistence)}")
     message_text = normalize_optional_text(config.message_text)
     if message_text:
         commands.append(f"MESSAGE:SHOW {quote_scpi_string(message_text)}")
@@ -522,14 +529,14 @@ class ControlMixin:
 
     @staticmethod
     def _query_optional(instrument: Any, command: str) -> str:
-        try:
-            response = instrument.query(command).strip()
-        except Exception:
-            return ""
-        return normalize_scope_response_text(response)
+        return optional_query(instrument, command, normalizer=normalize_scope_response_text)
 
     def query_identity(self) -> str:
-        return self.ensure_connected().query("*IDN?").strip()
+        return required_query(
+            self.ensure_connected(),
+            "*IDN?",
+            operation="Reading oscilloscope identity",
+        )
 
     def add_measurement(self, config: MeasurementConfig) -> None:
         scope = self.ensure_connected()
@@ -627,11 +634,9 @@ class ControlMixin:
         return normalize_average_count(response.split()[-1])
 
     def set_record_length(self, record_length: str | float | int) -> None:
-        """Set horizontal acquisition record length in sample points."""
         self.ensure_connected().write(build_record_length_command(record_length))
 
     def get_record_length(self) -> int:
-        """Read horizontal acquisition record length as integer sample points."""
         response = self.ensure_connected().query(build_record_length_query()).strip()
         return normalize_record_length(response.split()[-1])
 
@@ -708,7 +713,6 @@ __all__ = [
     "MATH_CONFIG_FIELDS",
     "MATH_CONFIG_QUERIES",
     "MEASUREMENT_SETUP_QUERIES",
-    "MATH_CONFIG_FIELDS",
     "MathConfig",
     "MeasurementConfig",
     "MeasurementSetup",

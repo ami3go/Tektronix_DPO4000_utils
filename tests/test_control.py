@@ -87,7 +87,7 @@ def test_channel_config_commands_match_desk_fields():
         "CH2:POSITION 1",
         "CH2:OFFSET 0.1",
         "CH2:COUPLING AC",
-        "CH2:BANDWIDTH 20E6",
+        "CH2:BANDWIDTH 2e+07",
         "CH2:PROBE:GAIN 10",
         "CH2:INVERT OFF",
     ]
@@ -143,11 +143,11 @@ def test_record_length_label_normalization():
 def test_record_length_validation_rejects_bad_values():
     with pytest.raises(ValueError, match="Record length cannot be empty"):
         normalize_record_length("")
-    with pytest.raises(ValueError, match="positive integer"):
+    with pytest.raises(ValueError, match="greater than zero"):
         normalize_record_length(0)
-    with pytest.raises(ValueError, match="positive integer"):
+    with pytest.raises(ValueError, match="must be an integer"):
         normalize_record_length("12.5")
-    with pytest.raises(ValueError, match=r"point count.*label"):
+    with pytest.raises(ValueError, match="must be a numeric value"):
         normalize_record_length("deep")
 
 
@@ -164,7 +164,7 @@ def test_record_length_label_for_common_and_custom_values():
 
 def test_average_count_validation():
     assert normalize_average_count("16") == 16
-    with pytest.raises(ValueError, match="positive integer"):
+    with pytest.raises(ValueError, match="greater than zero"):
         normalize_average_count("0")
 
 
