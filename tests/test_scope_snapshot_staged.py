@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dpo4000_utils.connection import ConnectionMixin
 from dpo4000_utils.scope_snapshot import (
+    BUS_COUNT_QUERY,
     DEFAULT_OPTIONAL_FEATURE_TIMEOUT_MS,
     merge_scope_snapshots,
     read_bus_scope_snapshot,
@@ -13,7 +14,8 @@ class FakeVisa:
         self.timeout = 20_000
         self.queries: list[tuple[str, int]] = []
         self.responses: dict[str, str | BaseException] = {
-            # Family probe and disabled BUS1 common state.
+            BUS_COUNT_QUERY: ":CONFIGURATION:BUSWAVEFORMS:NUMBUS 2",
+            # Disabled BUS1 common state.
             "BUS:B1:TYPE?": ":BUS:B1:TYPE I2C",
             "BUS:B1:STATE?": ":BUS:B1:STATE 0",
             "BUS:B1:LABEL?": ':BUS:B1:LABEL "Dormant"',
@@ -52,6 +54,7 @@ def test_bus_auto_snapshot_reads_common_all_buses_but_protocol_only_when_enabled
 
     snapshot = read_bus_scope_snapshot(scope, buses=(1, 2))
 
+    assert snapshot["capabilities"]["bus_count"] == 2
     assert snapshot["buses"][1]["state"] == "0"
     assert snapshot["buses"][1]["type"] == "I2C"
     assert snapshot["buses"][1]["protocol"] == {}
@@ -62,17 +65,30 @@ def test_bus_auto_snapshot_reads_common_all_buses_but_protocol_only_when_enabled
     assert snapshot["errors"]["bus.bus2.protocol.probe"] == "CAN probe setting unavailable"
 
     commands = [command for command, _timeout in scope.scope.queries]
+    assert commands[0] == BUS_COUNT_QUERY
     assert not any(command.startswith("BUS:B1:I2C:") for command in commands)
     assert "BUS:B2:CAN:BITRATE?" in commands
     assert "BUS:B2:CAN:PROBE?" in commands
     assert "BUS:B2:CAN:SAMPLEPOINT?" not in commands
     assert "BUS:B2:CAN:SOURCE?" not in commands
 
-    optional_timeouts = {
-        timeout for command, timeout in scope.scope.queries if command.startswith("BUS:")
-    }
+    optional_timeouts = {timeout for _command, timeout in scope.scope.queries}
     assert optional_timeouts == {DEFAULT_OPTIONAL_FEATURE_TIMEOUT_MS}
     assert scope.scope.timeout == 20_000
+
+
+def test_bus_count_prevents_queries_for_nonexistent_bus3_and_bus4():
+    scope = ScopeUnderTest()
+
+    snapshot = read_bus_scope_snapshot(scope, buses=(1, 2, 3, 4))
+
+    commands = [command for command, _timeout in scope.scope.queries]
+    assert snapshot["capabilities"]["bus_count"] == 2
+    assert set(snapshot["buses"]) == {1, 2}
+    assert not any(command.startswith("BUS:B3:") for command in commands)
+    assert not any(command.startswith("BUS:B4:") for command in commands)
+    assert not any(key.startswith("bus.bus3") for key in snapshot["errors"])
+    assert not any(key.startswith("bus.bus4") for key in snapshot["errors"])
 
 
 def test_merge_scope_snapshots_preserves_core_state_while_optional_stages_arrive():
@@ -85,10 +101,12 @@ def test_merge_scope_snapshots_preserves_core_state_while_optional_stages_arrive
     }
     refs = {
         "references": {1: {"display": "1", "label": "Golden"}},
+        "capabilities": {"reference_count": 4},
         "errors": {},
     }
     buses = {
         "buses": {1: {"state": "0", "type": "I2C", "protocol": {}}},
+        "capabilities": {"bus_count": 2},
         "errors": {"bus.bus2.type": "not configured"},
     }
 
@@ -99,6 +117,7 @@ def test_merge_scope_snapshots_preserves_core_state_while_optional_stages_arrive
     assert merged["horizontal_position"] == 12.5
     assert merged["references"][1]["label"] == "Golden"
     assert merged["buses"][1]["type"] == "I2C"
+    assert merged["capabilities"] == {"reference_count": 4, "bus_count": 2}
     assert merged["errors"] == {
         "display": "optional display field unavailable",
         "bus.bus2.type": "not configured",
