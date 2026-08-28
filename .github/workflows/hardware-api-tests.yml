@@ -11,28 +11,62 @@ on:
         description: "Expected substring in *IDN? response"
         required: false
         default: "TEKTRONIX"
-      enable_write_tests:
-        description: "Enable tests that temporarily write and restore channel label"
+      profile:
+        description: "Hardware verification safety profile"
+        required: true
+        type: choice
+        options:
+          - read-only
+          - reversible
+          - full
+        default: read-only
+      test_channel:
+        description: "Analog channel used by qualification checks"
+        required: true
+        type: choice
+        options:
+          - "1"
+          - "2"
+          - "3"
+          - "4"
+        default: "1"
+      waveform_points:
+        description: "Structured binary waveform points"
+        required: true
+        default: "1000"
+      artifact_record_length:
+        description: "Temporary maximum record length for legacy CSV evidence"
+        required: true
+        default: "1000"
+      allow_reference_overwrite:
+        description: "Allow full profile to overwrite a disposable REF waveform"
         required: true
         type: boolean
         default: false
-      test_channel:
-        description: "Channel used by optional write tests"
+      reference_destination:
+        description: "Disposable REF destination when overwrite is enabled"
         required: true
-        default: "1"
+        type: choice
+        options:
+          - "1"
+          - "2"
+          - "3"
+          - "4"
+        default: "4"
 
 jobs:
   hardware-api:
-    name: DPO4000 hardware API pytest
+    name: DPO4000 full hardware verification
     runs-on: [self-hosted, dpo4000]
-    timeout-minutes: 15
+    timeout-minutes: 45
 
     env:
       DPO4000_HARDWARE: "1"
       DPO4000_RESOURCE: ${{ inputs.visa_resource }}
       DPO4000_EXPECT_IDN: ${{ inputs.expected_idn }}
-      DPO4000_ENABLE_WRITE_TESTS: ${{ inputs.enable_write_tests }}
+      DPO4000_ENABLE_WRITE_TESTS: ${{ inputs.profile != 'read-only' }}
       DPO4000_TEST_CHANNEL: ${{ inputs.test_channel }}
+      DPO4000_WAVEFORM_POINTS: ${{ inputs.waveform_points }}
 
     steps:
       - name: Check out repository
@@ -48,13 +82,54 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e .[dev]
 
-      - name: Show VISA resource
+      - name: Show VISA environment
         run: |
           python - <<'PY'
           import os
+          from dpo4000_utils import list_visa_resources
+
           print("DPO4000_RESOURCE=", os.environ.get("DPO4000_RESOURCE"))
+          print("DPO4000_EXPECT_IDN=", os.environ.get("DPO4000_EXPECT_IDN"))
           print("DPO4000_ENABLE_WRITE_TESTS=", os.environ.get("DPO4000_ENABLE_WRITE_TESTS"))
+          print("Visible VISA resources:")
+          for resource in list_visa_resources():
+              print("  ", resource)
           PY
 
-      - name: Run hardware API tests
+      - name: Run full public API verifier
+        id: verifier
+        continue-on-error: true
+        run: |
+          args=(
+            --resource "${{ inputs.visa_resource }}"
+            --profile "${{ inputs.profile }}"
+            --test-channel "${{ inputs.test_channel }}"
+            --waveform-points "${{ inputs.waveform_points }}"
+            --artifact-record-length "${{ inputs.artifact_record_length }}"
+            --reference-destination "${{ inputs.reference_destination }}"
+            --output-dir hardware_verification_reports/github-actions
+          )
+          if [[ "${{ inputs.allow_reference_overwrite }}" == "true" ]]; then
+            args+=(--allow-reference-overwrite)
+          fi
+          python scripts/run_hardware_verification.py "${args[@]}"
+
+      - name: Run focused pytest hardware suite
+        if: always()
         run: pytest -q -m hardware tests/hardware
+
+      - name: Upload hardware verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dpo4000-hardware-verification-${{ github.run_number }}
+          path: hardware_verification_reports/
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Enforce verifier result
+        if: always() && steps.verifier.outcome == 'failure'
+        run: |
+          echo "The full public API verifier reported failure or incomplete full-profile coverage."
+          echo "Download the hardware verification artifact for Markdown/HTML/JSON diagnostics."
+          exit 1

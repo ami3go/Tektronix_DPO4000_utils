@@ -41,6 +41,7 @@ See `docs/architecture.md` for the enforced boundary.
 - Run/stop/single/continuous acquisition and force trigger.
 - Acquisition mode, averaging, and record-length controls.
 - Front-panel display intensity, persistence, and message controls.
+- Full real-hardware public API qualification with Markdown/HTML/JSON evidence reports.
 - Windows/Linux PyInstaller build and release helpers.
 
 ## Install
@@ -162,13 +163,31 @@ python -m pip install -e .[dev,pyside6]
 QT_QPA_PLATFORM=offscreen pytest -q
 ```
 
-Hardware tests remain opt-in:
+Focused hardware pytest tests remain opt-in:
 
 ```bash
 DPO4000_HARDWARE=1 \
 DPO4000_RESOURCE='USB0::0x0699::0x0401::C011280::INSTR' \
 pytest -q -m hardware tests/hardware
 ```
+
+## Full real-hardware qualification report
+
+For release/bench qualification, use the self-auditing public API verifier. Start with the read-only profile:
+
+```bash
+python scripts/run_hardware_verification.py \
+  --resource 'USB0::0x0699::0x0401::C011280::INSTR' \
+  --profile read-only \
+  --test-channel 1 \
+  --waveform-points 1000
+```
+
+After the read-only run is clean, use `--profile reversible`, then `--profile full`. Write-capable profiles capture the initial scope setup and reapply it during final cleanup. Destructive REF waveform storage remains separately guarded and requires explicit overwrite authorization.
+
+Each run generates Markdown, HTML, and JSON verification reports plus setup/screenshot/waveform evidence under `hardware_verification_reports/`.
+
+See `docs/hardware-verification.md` for safety profiles, complete bench commands, exit-code semantics, waveform-size qualification, REF-overwrite handling, and self-hosted GitHub Actions usage.
 
 ## Repository layout
 
@@ -177,7 +196,7 @@ dpo4000_utils/               reusable scope driver/API
 dpo4000_utils/gui_qt/        PySide6 DPO4000 Desk application
 dpo4000_utils/gui/           framework-neutral GUI support helpers/assets
 examples/                    driver/API examples
-scripts/                     build and packaging helpers
+scripts/                     build, packaging, and hardware-verification helpers
 docs/                        documentation and GitHub Pages
 tests/                       API, architecture, GUI, and hardware tests
 ```

@@ -21,6 +21,7 @@ dist/
 # Runtime output from the scope GUI / examples
 scope_settings/
 scope_gui_output/
+hardware_verification_reports/
 *.png
 *.csv
 *.xlsx
