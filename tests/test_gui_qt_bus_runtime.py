@@ -9,11 +9,13 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 QtWidgets = pytest.importorskip("PySide6.QtWidgets")
 
-from dpo4000_utils.gui_qt.bus_window import QtScopeWindow  # noqa: E402
-from dpo4000_utils.gui_qt.desktop_window import (  # noqa: E402
-    CONNECTION_TEST_DESCRIPTION,
-    QtScopeWindow as DesktopQtScopeWindow,
+from dpo4000_utils.gui_qt.bus_window import (  # noqa: E402
+    BUS_PARAMETER_REFRESH_DESCRIPTION,
+    CORE_PARAMETER_REFRESH_DESCRIPTION,
+    REFERENCE_PARAMETER_REFRESH_DESCRIPTION,
+    QtScopeWindow,
 )
+from dpo4000_utils.gui_qt.desktop_window import CONNECTION_TEST_DESCRIPTION  # noqa: E402
 
 
 def _app():
@@ -41,29 +43,33 @@ def test_connection_page_has_read_all_parameters_option_enabled_by_default():
 def test_connection_checkbox_controls_automatic_parameter_refresh(monkeypatch):
     app = _app()
     window = QtScopeWindow()
-    refresh_calls: list[str] = []
+    actions: list[str] = []
     try:
-        monkeypatch.setattr(
-            window,
-            "_run_action",
-            lambda description, callback: (
-                "TEKTRONIX,DPO4054,C000001,CF:91.1" if description == CONNECTION_TEST_DESCRIPTION else None
-            ),
-        )
-        monkeypatch.setattr(
-            DesktopQtScopeWindow,
-            "refresh_scope_parameters",
-            lambda self: refresh_calls.append("refresh"),
-        )
+        monkeypatch.setattr(window, "_ensure_scope_parameter_pages_built", lambda: None)
+        monkeypatch.setattr(window, "_apply_scope_snapshot", lambda snapshot: None)
+
+        def fake_run_action(description, callback):
+            actions.append(description)
+            if description == CONNECTION_TEST_DESCRIPTION:
+                return "TEKTRONIX,DPO4054,C000001,CF:91.1"
+            return {"errors": {}}
+
+        monkeypatch.setattr(window, "_run_action", fake_run_action)
 
         window.read_all_parameters_after_connection.setChecked(False)
         window.test_connection()
-        assert refresh_calls == []
+        assert actions == [CONNECTION_TEST_DESCRIPTION]
         assert "parameter read skipped" in window.statusBar().currentMessage()
 
+        actions.clear()
         window.read_all_parameters_after_connection.setChecked(True)
         window.test_connection()
-        assert refresh_calls == ["refresh"]
+        assert actions == [
+            CONNECTION_TEST_DESCRIPTION,
+            CORE_PARAMETER_REFRESH_DESCRIPTION,
+            REFERENCE_PARAMETER_REFRESH_DESCRIPTION,
+            BUS_PARAMETER_REFRESH_DESCRIPTION,
+        ]
     finally:
         window.close()
         window.deleteLater()
