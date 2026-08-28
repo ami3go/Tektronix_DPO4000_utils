@@ -1,4 +1,4 @@
-"""BUS1..BUS4 Channels-page extension for the launched DPO4000 Desk window."""
+"""BUS Channels-page extension for the launched DPO4000 Desk window."""
 
 from __future__ import annotations
 
@@ -51,7 +51,7 @@ PARAMETER_REFRESH_ACTIONS = {
 
 
 class QtScopeWindow(DesktopQtScopeWindow):
-    """Final desktop window with DPO4000 BUS1..BUS4 configuration support."""
+    """Final desktop window with capability-driven DPO4000 BUS configuration."""
 
     def _build_connection_tab(self):
         """Add a persistent option controlling the automatic full scope readback."""
@@ -199,6 +199,8 @@ class QtScopeWindow(DesktopQtScopeWindow):
         self._prepare_form(form)
 
         self.bus_channel = QComboBox()
+        # Four is the programmer-manual maximum. After connection this selector
+        # is reduced to CONFIGuration:BUSWAVEFORMS:NUMBUS? reported slots.
         self.bus_channel.addItems(["1", "2", "3", "4"])
         self.bus_state = QCheckBox("Show / enable selected bus")
 
@@ -239,20 +241,18 @@ class QtScopeWindow(DesktopQtScopeWindow):
         form.addRow("Protocol setup", self.bus_protocol_table)
 
         hint = QLabel(
-            "BUS1..BUS4 are option-dependent decoded bus waveforms. The protocol table "
-            "covers the DPO4000 per-bus command set for I²C, SPI, CAN, RS-232/UART, "
-            "LIN, FlexRay, Audio, USB, and Parallel. Parallel is MSO4000-only; other "
-            "protocols require the corresponding application module. Unsupported "
-            "settings are rejected by the oscilloscope."
+            "The connected scope reports how many BUS waveforms it exposes. The "
+            "protocol table covers I²C, SPI, CAN, RS-232/UART, LIN, FlexRay, Audio, "
+            "USB, and Parallel where supported/licensed."
         )
         hint.setObjectName("MutedLabel")
         hint.setWordWrap(True)
         form.addRow(hint)
 
         buttons = QHBoxLayout()
-        read_button = self._button("Read BUS", self.read_bus_configuration)
-        apply_button = self._accent_button("Apply BUS", self.apply_bus_configuration)
-        for button in (read_button, apply_button):
+        self.bus_read_button = self._button("Read BUS", self.read_bus_configuration)
+        self.bus_apply_button = self._accent_button("Apply BUS", self.apply_bus_configuration)
+        for button in (self.bus_read_button, self.bus_apply_button):
             button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             buttons.addWidget(button)
         form.addRow(buttons)
@@ -361,6 +361,39 @@ class QtScopeWindow(DesktopQtScopeWindow):
         config = buses.get(bus, {}) if isinstance(buses, dict) else {}
         self._apply_bus_configuration_to_widgets(config or {})
 
+    def _sync_bus_slot_selector(self, snapshot: dict[str, Any]) -> None:
+        """Restrict BUS selection to the slots reported by the connected scope."""
+        if not hasattr(self, "bus_channel") or not isinstance(snapshot, dict):
+            return
+        capabilities = snapshot.get("capabilities", {})
+        if not isinstance(capabilities, dict) or "bus_count" not in capabilities:
+            return
+        try:
+            count = max(0, min(4, int(capabilities["bus_count"])))
+        except (TypeError, ValueError):
+            return
+
+        if count == 0:
+            self.bus_channel.setEnabled(False)
+            if hasattr(self, "bus_read_button"):
+                self.bus_read_button.setEnabled(False)
+            if hasattr(self, "bus_apply_button"):
+                self.bus_apply_button.setEnabled(False)
+            return
+
+        expected = [str(slot) for slot in range(1, count + 1)]
+        existing = [self.bus_channel.itemText(i) for i in range(self.bus_channel.count())]
+        if existing != expected:
+            current = self.bus_channel.currentText()
+            previous_block = self.bus_channel.blockSignals(True)
+            try:
+                self.bus_channel.clear()
+                self.bus_channel.addItems(expected)
+                self.bus_channel.setCurrentText(current if current in expected else expected[0])
+            finally:
+                self.bus_channel.blockSignals(previous_block)
+        self.bus_channel.setEnabled(True)
+
     def read_bus_configuration(self) -> None:
         bus = self._selected_bus_channel()
         result = self._run_action(
@@ -394,6 +427,7 @@ class QtScopeWindow(DesktopQtScopeWindow):
 
     def _apply_scope_snapshot(self, snapshot: dict[str, Any]) -> None:
         super()._apply_scope_snapshot(snapshot)
+        self._sync_bus_slot_selector(snapshot)
         self._apply_cached_bus_configuration()
 
 
