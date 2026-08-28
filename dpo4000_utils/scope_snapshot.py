@@ -7,6 +7,7 @@ from typing import Any
 
 DEFAULT_ANALOG_CHANNELS = (1, 2, 3, 4)
 DEFAULT_REFERENCE_CHANNELS = (1, 2, 3, 4)
+DEFAULT_BUS_CHANNELS = (1, 2, 3, 4)
 
 
 def _error_text(exc: BaseException) -> str:
@@ -18,6 +19,7 @@ def read_scope_snapshot(
     *,
     channels: Iterable[int] = DEFAULT_ANALOG_CHANNELS,
     references: Iterable[int] = DEFAULT_REFERENCE_CHANNELS,
+    buses: Iterable[int] = DEFAULT_BUS_CHANNELS,
 ) -> dict[str, Any]:
     """Read instrument-backed cards in one already-open driver session.
 
@@ -26,11 +28,13 @@ def read_scope_snapshot(
     """
     channel_numbers = tuple(int(channel) for channel in channels)
     reference_numbers = tuple(int(reference) for reference in references)
+    bus_numbers = tuple(int(bus) for bus in buses)
     errors: dict[str, str] = {}
     snapshot: dict[str, Any] = {
         "labels": {},
         "channels": {},
         "references": {},
+        "buses": {},
         "math": {},
         "measurements": {},
         "trigger": {},
@@ -59,6 +63,14 @@ def read_scope_snapshot(
             except Exception as exc:  # noqa: BLE001 - preserve other REF and scope sections.
                 errors[f"reference.ref{reference}"] = _error_text(exc)
 
+    bus_reader = getattr(scope, "get_bus_configuration", None)
+    if callable(bus_reader):
+        for bus in bus_numbers:
+            try:
+                snapshot["buses"][bus] = bus_reader(bus)
+            except Exception as exc:  # noqa: BLE001 - one unsupported bus must not stop refresh.
+                errors[f"bus.bus{bus}"] = _error_text(exc)
+
     section_readers = (
         ("math", scope.get_math_configuration, {}),
         ("measurements", scope.get_all_measurement_setups, {}),
@@ -79,6 +91,7 @@ def read_scope_snapshot(
 
 __all__ = [
     "DEFAULT_ANALOG_CHANNELS",
+    "DEFAULT_BUS_CHANNELS",
     "DEFAULT_REFERENCE_CHANNELS",
     "read_scope_snapshot",
 ]
