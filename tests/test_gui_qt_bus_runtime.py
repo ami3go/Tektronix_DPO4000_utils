@@ -165,3 +165,31 @@ def test_final_desktop_applies_cached_bus_snapshot_on_bus_selection():
         window.close()
         window.deleteLater()
         app.processEvents()
+
+
+def test_programmatic_bus_snapshot_update_does_not_emit_bus_type_change_signal():
+    app = _app()
+    window = QtScopeWindow()
+    emitted: list[str] = []
+    try:
+        window._ensure_control_page_built(1)
+        window.bus_type.currentTextChanged.connect(emitted.append)
+
+        window._apply_bus_configuration_to_widgets(
+            {
+                "state": "1",
+                "type": "CAN",
+                "label": "CAN",
+                "position": "0",
+                "display_format": "HEXADECIMAL",
+                "display_type": "BUS",
+                "protocol": {"bit_rate": "500000", "source": "CH1"},
+            }
+        )
+
+        assert window.bus_type.currentText() == "CAN"
+        assert emitted == []
+    finally:
+        window.close()
+        window.deleteLater()
+        app.processEvents()
