@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.4.1 - 2026-08-28
+
+### Changed
+
+- Scope connection tests are now non-modal: successful `*IDN?` information is shown in the bottom status bar and existing IDN status chip instead of a message box.
+- Connection-test failures now show the actual error text in the bottom status bar/status strip and log without opening an error dialog.
+- Other scope-operation errors retain their existing modal error behavior.
+- Added a final `desktop_window` presentation layer so connection-feedback UX remains separate from the API-only instrument adapter.
+- Package version bumped to `0.4.1`.
+
 ## v0.4.0 - 2026-08-26
 
 ### Removed
