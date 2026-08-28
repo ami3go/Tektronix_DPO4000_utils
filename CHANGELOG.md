@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.4.13 - 2026-08-28
+
+### Fixed
+
+- Automatic BUS refresh now queries `CONFIGURATION:BUSWAVEFORMS:NUMBUS?` and reads only BUS slots the connected oscilloscope reports as present, eliminating timeout warnings from probing nonexistent BUS3/BUS4 slots on two-BUS instruments.
+- Reference refresh now uses `CONFIGURATION:REFS:NUMREFS?` when available and limits REF interrogation to the scope-reported reference-memory count.
+- The Channels-page BUS selector is reduced after connection to the instrument-reported BUS count instead of permanently presenting inaccessible slots.
+- Firmware that does not implement the capability-count queries retains a bounded compatibility fallback and stops BUS scanning after the first missing higher slot.
+
+### Changed
+
+- Staged snapshots now carry discovered capability metadata so the GUI can adapt its controls to the connected instrument.
+- Added regression tests proving a reported BUS count of two generates no BUS3/BUS4 SCPI traffic, plus reference-count and dynamic BUS-selector tests.
+- Package version bumped to `0.4.13`.
+
 ## v0.4.12 - 2026-08-28
 
 ### Fixed
