@@ -9,6 +9,7 @@ from dpo4000_utils.hardware_verification import (
     PUBLIC_METHOD_RISK,
     VerificationCase,
     VerificationConfig,
+    VerificationResult,
     VerificationRisk,
     public_driver_methods,
     public_package_functions,
@@ -117,15 +118,15 @@ def test_exit_code_fails_for_failed_case_or_unverified_api(tmp_path):
     assert verifier.exit_code(report) == 1
 
     verifier.results.append(
-        type(
-            "Result",
-            (),
-            {
-                "status": "FAIL",
-                "covers_methods": [],
-                "covers_functions": [],
-            },
-        )()
+        VerificationResult(
+            case_id="simulated-failure",
+            title="Simulated failure",
+            risk="read-only",
+            status="FAIL",
+            duration_s=0.0,
+            error_type="RuntimeError",
+            error_message="simulated",
+        )
     )
     report = verifier.build_report()
     assert verifier.exit_code(report) == 1
