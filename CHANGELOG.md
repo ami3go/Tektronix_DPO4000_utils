@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.5.0 - 2026-08-28
+
+### Added
+
+- Promoted the hardware-validated PySide6 DPO4000 Desk and reusable driver stack to the 0.5 release line.
+- Added dedicated v0.5.0 release notes covering GUI architecture, staged scope-state refresh, REF/BUS support, packaging, and real DPO4054 validation.
+
+### Changed
+
+- Release automation now resolves the release tag from a pushed tag, manual workflow input, or the current package version when a versioned release-notes file is added to `main`.
+- GitHub release notes are selected dynamically from `docs/releases/<release-tag>.md` instead of the previous hardcoded v0.2.0 file.
+- Package version bumped to `0.5.0`.
+
+### Validated
+
+- Real DPO4054 hardware confirmed capability-driven BUS discovery reads BUS1/BUS2 without probing nonexistent BUS3/BUS4 slots or producing their former VISA timeout warnings.
+
 ## v0.4.14 - 2026-08-28
 
 ### Fixed
