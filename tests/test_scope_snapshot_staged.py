@@ -4,8 +4,10 @@ from dpo4000_utils.connection import ConnectionMixin
 from dpo4000_utils.scope_snapshot import (
     BUS_COUNT_QUERY,
     DEFAULT_OPTIONAL_FEATURE_TIMEOUT_MS,
+    REFERENCE_COUNT_QUERY,
     merge_scope_snapshots,
     read_bus_scope_snapshot,
+    read_reference_scope_snapshot,
 )
 
 
@@ -89,6 +91,53 @@ def test_bus_count_prevents_queries_for_nonexistent_bus3_and_bus4():
     assert not any(command.startswith("BUS:B4:") for command in commands)
     assert not any(key.startswith("bus.bus3") for key in snapshot["errors"])
     assert not any(key.startswith("bus.bus4") for key in snapshot["errors"])
+
+
+class FakeReferenceVisa:
+    def __init__(self):
+        self.timeout = 20_000
+        self.queries: list[str] = []
+        self.responses = {
+            REFERENCE_COUNT_QUERY: ":CONFIGURATION:REFS:NUMREFS 2",
+            "SELECT:REF1?": ":SELECT:REF1 0",
+            "REF1:LABEL?": ':REF1:LABEL "A"',
+            "REF1:VERTICAL:SCALE?": ":REF1:VERTICAL:SCALE 1",
+            "REF1:VERTICAL:POSITION?": ":REF1:VERTICAL:POSITION 0",
+            "REF1:HORIZONTAL:SCALE?": ":REF1:HORIZONTAL:SCALE 1E-3",
+            "REF1:HORIZONTAL:DELAY:TIME?": ":REF1:HORIZONTAL:DELAY:TIME 0",
+            "REF1:DATE?": ':REF1:DATE ""',
+            "REF1:TIME?": ':REF1:TIME ""',
+            "SELECT:REF2?": ":SELECT:REF2 0",
+            "REF2:LABEL?": ':REF2:LABEL "B"',
+            "REF2:VERTICAL:SCALE?": ":REF2:VERTICAL:SCALE 1",
+            "REF2:VERTICAL:POSITION?": ":REF2:VERTICAL:POSITION 0",
+            "REF2:HORIZONTAL:SCALE?": ":REF2:HORIZONTAL:SCALE 1E-3",
+            "REF2:HORIZONTAL:DELAY:TIME?": ":REF2:HORIZONTAL:DELAY:TIME 0",
+            "REF2:DATE?": ':REF2:DATE ""',
+            "REF2:TIME?": ':REF2:TIME ""',
+        }
+
+    def query(self, command: str) -> str:
+        self.queries.append(command)
+        return self.responses[command]
+
+
+class ReferenceScopeUnderTest(ConnectionMixin):
+    def __init__(self):
+        self.scope = FakeReferenceVisa()
+
+
+def test_reference_count_prevents_queries_beyond_reported_slots():
+    scope = ReferenceScopeUnderTest()
+
+    snapshot = read_reference_scope_snapshot(scope, references=(1, 2, 3, 4))
+
+    assert snapshot["capabilities"]["reference_count"] == 2
+    assert set(snapshot["references"]) == {1, 2}
+    assert scope.scope.queries[0] == REFERENCE_COUNT_QUERY
+    assert not any("REF3" in command or "REF4" in command for command in scope.scope.queries)
+    assert snapshot["errors"] == {}
+    assert scope.scope.timeout == 20_000
 
 
 def test_merge_scope_snapshots_preserves_core_state_while_optional_stages_arrive():
