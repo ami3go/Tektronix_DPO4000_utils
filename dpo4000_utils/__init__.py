@@ -1,5 +1,6 @@
 """Tektronix DPO4000 utility package."""
 
+from .bus import BusConfig
 from .connection import (
     build_tcpip_instr_resource,
     build_tcpip_socket_resource,
@@ -22,6 +23,7 @@ from .waveform import parse_ascii_curve
 
 __all__ = [
     "AcquisitionConfig",
+    "BusConfig",
     "ChannelConfig",
     "DPO4000Scope",
     "DPO4054",
