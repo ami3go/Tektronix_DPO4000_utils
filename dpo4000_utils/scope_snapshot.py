@@ -1,7 +1,7 @@
 """Bounded, staged GUI-facing oscilloscope state snapshot reads.
 
 The automatic connection refresh deliberately does not reuse the individual GUI
-card read handlers.  It has its own deterministic read plan so an optional or
+card read handlers. It has its own deterministic read plan so an optional or
 partially licensed feature cannot multiply the normal VISA timeout across dozens
 of queries.
 """
@@ -87,9 +87,10 @@ def _instrument_for_snapshot(scope: Any) -> Any | None:
     if not callable(ensure_connected):
         return None
     try:
-        return ensure_connected()
+        instrument = ensure_connected()
     except Exception:
         return None
+    return instrument if callable(getattr(instrument, "query", None)) else None
 
 
 def _query_normalized(instrument: Any, command: str) -> str:
@@ -108,9 +109,8 @@ def read_core_scope_snapshot(
     for channel in tuple(int(channel) for channel in channels):
         try:
             snapshot["labels"][channel] = scope.get_channel_label(channel)
-        except Exception as exc:  # noqa: BLE001 - one field must not abort the refresh.
+        except Exception as exc:  # noqa: BLE001
             errors[f"label.ch{channel}"] = _error_text(exc)
-
         try:
             snapshot["channels"][channel] = scope.get_channel_configuration(channel)
         except Exception as exc:  # noqa: BLE001
@@ -130,7 +130,6 @@ def read_core_scope_snapshot(
         except Exception as exc:  # noqa: BLE001
             snapshot[name] = fallback
             errors[name] = _error_text(exc)
-
     return snapshot
 
 
@@ -139,12 +138,7 @@ def _read_reference_direct(
     references: tuple[int, ...],
     timeout_ms: int | None,
 ) -> dict[str, Any] | None:
-    """Read REF fields with one-timeout-per-slot circuit breaking.
-
-    A REF slot first proves that its display query responds.  Detailed fields are
-    then attempted in command order; after the first transport/unsupported-query
-    failure for that slot the remaining optional fields are skipped.
-    """
+    """Read REF fields with one-timeout-per-slot circuit breaking."""
     instrument = _instrument_for_snapshot(scope)
     if instrument is None:
         return None
@@ -180,7 +174,6 @@ def _read_reference_direct(
                     errors[f"reference.ref{reference}.{name}"] = _error_text(exc)
                     break
             snapshot["references"][reference] = values
-
     return snapshot
 
 
@@ -246,9 +239,6 @@ def _read_bus_direct(
         for bus in buses:
             queries = build_bus_config_queries(bus)
             values: dict[str, Any] = {"protocol": {}}
-
-            # State and type are the minimum useful BUS identity. If either does
-            # not respond, skip the slot instead of walking every optional field.
             required_failed = False
             for name in ("state", "type"):
                 try:
@@ -261,8 +251,6 @@ def _read_bus_direct(
                 continue
 
             values["type"] = canonical_bus_type(values.get("type", ""))
-
-            # Common presentation fields are useful even for disabled buses.
             for name in ("label", "position", "display_format", "display_type"):
                 try:
                     values[name] = _query_normalized(instrument, queries[name])
@@ -270,9 +258,6 @@ def _read_bus_direct(
                     errors[f"bus.bus{bus}.{name}"] = _error_text(exc)
                     break
 
-            # Automatic connection refresh intentionally does not interrogate
-            # decoder-specific fields for dormant buses. The selected BUS card's
-            # explicit Read BUS action still performs the complete driver read.
             if _scope_bool(values.get("state")) and values.get("type"):
                 protocol_values: dict[str, str] = {}
                 for name, query in build_bus_protocol_queries(bus, values["type"]).items():
@@ -284,7 +269,6 @@ def _read_bus_direct(
                 values["protocol"] = protocol_values
 
             snapshot["buses"][bus] = values
-
     return snapshot
 
 
