@@ -28,11 +28,25 @@ from ..bus import (
     bus_protocol_fields,
     canonical_bus_type,
 )
+from ..scope_snapshot import (
+    merge_scope_snapshots,
+    read_bus_scope_snapshot,
+    read_core_scope_snapshot,
+    read_reference_scope_snapshot,
+)
 from .desktop_window import QtScopeWindow as DesktopQtScopeWindow
 
 BUS_SCOPE_ACTIONS = {
     "read_bus_configuration",
     "apply_bus_configuration",
+}
+CORE_PARAMETER_REFRESH_DESCRIPTION = "Reading core scope parameters"
+REFERENCE_PARAMETER_REFRESH_DESCRIPTION = "Reading reference parameters"
+BUS_PARAMETER_REFRESH_DESCRIPTION = "Reading BUS parameters"
+PARAMETER_REFRESH_ACTIONS = {
+    CORE_PARAMETER_REFRESH_DESCRIPTION,
+    REFERENCE_PARAMETER_REFRESH_DESCRIPTION,
+    BUS_PARAMETER_REFRESH_DESCRIPTION,
 }
 
 
@@ -92,7 +106,7 @@ class QtScopeWindow(DesktopQtScopeWindow):
             self._connection_test_parameter_refresh = False
 
     def refresh_scope_parameters(self) -> None:
-        """Skip only the automatic post-IDN refresh when the Connection option is off."""
+        """Read scope state in bounded stages instead of one monolithic query loop."""
         automatic_refresh = getattr(self, "_connection_test_parameter_refresh", False)
         read_all = getattr(self, "read_all_parameters_after_connection", None)
         if automatic_refresh and read_all is not None and not read_all.isChecked():
@@ -104,7 +118,70 @@ class QtScopeWindow(DesktopQtScopeWindow):
                 f"Connected: {self._last_idn} | parameter read skipped"
             )
             return
-        super().refresh_scope_parameters()
+
+        self._ensure_scope_parameter_pages_built()
+        completed_snapshots: list[dict[str, Any]] = []
+        stage_failures = 0
+        stages = (
+            (
+                CORE_PARAMETER_REFRESH_DESCRIPTION,
+                lambda scope: read_core_scope_snapshot(scope),
+            ),
+            (
+                REFERENCE_PARAMETER_REFRESH_DESCRIPTION,
+                lambda scope: read_reference_scope_snapshot(scope),
+            ),
+            (
+                BUS_PARAMETER_REFRESH_DESCRIPTION,
+                lambda scope: read_bus_scope_snapshot(scope),
+            ),
+        )
+
+        for description, reader in stages:
+            result = self._run_action(description, reader)
+            if not isinstance(result, dict):
+                stage_failures += 1
+                continue
+            completed_snapshots.append(result)
+            # Apply each completed stage immediately. Core scope state therefore
+            # reaches the GUI before optional REF/BUS discovery starts.
+            self._apply_scope_snapshot(merge_scope_snapshots(*completed_snapshots))
+
+        merged = merge_scope_snapshots(*completed_snapshots)
+        errors = merged.get("errors", {})
+        warning_count = (len(errors) if isinstance(errors, dict) else 0) + stage_failures
+
+        if warning_count:
+            self._last_action = f"Scope parameters loaded with {warning_count} warning(s)"
+            if isinstance(errors, dict):
+                for section, error in errors.items():
+                    self._append_log(f"Refresh warning [{section}]: {error}")
+            suffix = f"parameters loaded with {warning_count} warning(s)"
+        else:
+            self._last_action = "Scope parameters loaded"
+            suffix = "scope parameters loaded"
+
+        self._connection_ok = True
+        self._update_scope_control_enabled()
+        self._update_status_strip()
+        self.statusBar().showMessage(f"Connected: {self._last_idn} | {suffix}")
+
+    def _finish_scope_action_error(self, description: str, exc: BaseException) -> None:
+        """Keep staged automatic read failures non-modal and continue other stages."""
+        if description not in PARAMETER_REFRESH_ACTIONS:
+            return super()._finish_scope_action_error(description, exc)
+
+        error_text = str(exc).strip() or exc.__class__.__name__
+        self._operation_active = False
+        self._last_action = f"Refresh warning: {description}: {error_text}"
+        self._append_log(f"Refresh warning [{description}]: {error_text}")
+        # IDN has already succeeded. A failed optional/readback stage must not
+        # visually downgrade the connection itself.
+        self._connection_ok = True
+        self._update_scope_control_enabled()
+        self._update_status_strip()
+        self.statusBar().showMessage(f"{description} failed: {error_text}")
+        return None
 
     def _build_channels_tab(self):
         """Add the BUS card after the existing analog/MATH/REF controls."""
@@ -320,4 +397,11 @@ class QtScopeWindow(DesktopQtScopeWindow):
         self._apply_cached_bus_configuration()
 
 
-__all__ = ["BUS_SCOPE_ACTIONS", "QtScopeWindow"]
+__all__ = [
+    "BUS_PARAMETER_REFRESH_DESCRIPTION",
+    "BUS_SCOPE_ACTIONS",
+    "CORE_PARAMETER_REFRESH_DESCRIPTION",
+    "PARAMETER_REFRESH_ACTIONS",
+    "REFERENCE_PARAMETER_REFRESH_DESCRIPTION",
+    "QtScopeWindow",
+]
