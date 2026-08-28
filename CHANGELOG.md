@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.4.6 - 2026-08-28
+
+### Fixed
+
+- Made the Qt runtime smoke test tolerant of the one-pixel frame margin reported by Qt 6.11's offscreen style engine while still enforcing that the untitled preview reserves no title band.
+
+### Changed
+
+- Package version bumped to `0.4.6`.
+
 ## v0.4.5 - 2026-08-28
 
 ### Fixed
