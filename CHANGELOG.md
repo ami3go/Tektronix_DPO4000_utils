@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.4.8 - 2026-08-28
+
+### Added
+
+- Added BUS1..BUS4 decoded bus-waveform controls to the Channels page.
+- Added a reusable public `BusConfig` / `BusMixin` API for reading and configuring common BUS state/type/label/position/display properties.
+- Added protocol-specific BUS configuration coverage for I²C, SPI, CAN, RS-232/UART, LIN, FlexRay, Audio, USB, and Parallel, including all per-BUS fields documented by the DPO4000 programmer manual.
+- Added automatic BUS1..BUS4 readback to the post-connection scope snapshot so the GUI is populated from the instrument.
+- Added BUS driver contract, snapshot isolation, and offscreen PySide6 runtime tests.
+
+### Changed
+
+- Parallel BUS settings remain available for MSO4000-family hardware while DPO4000 option-dependent protocols are exposed without hiding firmware-supported combinations.
+- Package version bumped to `0.4.8`.
+
 ## v0.4.7 - 2026-08-28
 
 ### Added
