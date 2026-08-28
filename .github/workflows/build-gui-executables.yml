@@ -1,14 +1,12 @@
 name: Build DPO4000 Desk Executables
 
-run-name: >-
-  DPO4000 Desk release build
-  ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || github.event.inputs.release_tag || github.ref_name }}
+run-name: DPO4000 Desk release build ${{ github.ref_name }}
 
 on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Optional release tag to create/update, for example v0.2.0. Leave empty for artifact-only build."
+        description: "Optional release tag to create/update, for example v0.5.0. Leave empty for artifact-only build."
         required: false
         default: ""
       prerelease:
@@ -19,6 +17,10 @@ on:
   push:
     tags:
       - "v*"
+    branches:
+      - main
+    paths:
+      - "docs/releases/v*.md"
 
 permissions:
   contents: write
@@ -30,8 +32,42 @@ env:
   FLATPAK_RUNTIME_VERSION: "24.08"
 
 jobs:
+  prepare:
+    name: Resolve release version
+    runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.release.outputs.release_tag }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Resolve release tag
+        id: release
+        env:
+          INPUT_RELEASE_TAG: ${{ github.event.inputs.release_tag }}
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            tag="$INPUT_RELEASE_TAG"
+          elif [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            tag="$GITHUB_REF_NAME"
+          else
+            version=$(python - <<'PY'
+          import pathlib
+          try:
+              import tomllib
+          except ModuleNotFoundError:
+              import tomli as tomllib
+          data = tomllib.loads(pathlib.Path("pyproject.toml").read_text(encoding="utf-8"))
+          print(data["project"]["version"])
+          PY
+            )
+            tag="v${version}"
+          fi
+          echo "release_tag=$tag" >> "$GITHUB_OUTPUT"
+
   build-windows:
     name: Windows ZIP
+    needs: prepare
     runs-on: windows-latest
     env:
       BUILD_MODE: onedir
@@ -82,6 +118,7 @@ jobs:
 
   build-linux:
     name: Linux binary and packages
+    needs: prepare
     runs-on: ubuntu-latest
 
     steps:
@@ -132,7 +169,7 @@ jobs:
 
       - name: Package Linux release formats
         env:
-          RELEASE_VERSION: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || github.event.inputs.release_tag }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.release_tag }}
           REQUIRE_FLATPAK: "1"
         run: bash scripts/package_linux_release.sh
 
@@ -150,10 +187,11 @@ jobs:
   release:
     name: GitHub Release
     needs:
+      - prepare
       - build-windows
       - build-linux
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/') || github.event.inputs.release_tag != ''
+    if: needs.prepare.outputs.release_tag != ''
 
     steps:
       - name: Check out repository
@@ -167,10 +205,10 @@ jobs:
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || github.event.inputs.release_tag }}
+          tag_name: ${{ needs.prepare.outputs.release_tag }}
           target_commitish: ${{ github.sha }}
-          name: DPO4000 Desk ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || github.event.inputs.release_tag }}
-          body_path: docs/releases/v0.2.0.md
+          name: DPO4000 Desk ${{ needs.prepare.outputs.release_tag }}
+          body_path: docs/releases/${{ needs.prepare.outputs.release_tag }}.md
           prerelease: ${{ github.event.inputs.prerelease == 'true' }}
           files: |
             release-assets/DPO4000Desk-windows/DPO4000Desk-windows.zip
