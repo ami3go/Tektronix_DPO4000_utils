@@ -20,6 +20,10 @@ DEFAULT_ANALOG_CHANNELS = (1, 2, 3, 4)
 DEFAULT_REFERENCE_CHANNELS = (1, 2, 3, 4)
 DEFAULT_BUS_CHANNELS = (1, 2, 3, 4)
 DEFAULT_OPTIONAL_FEATURE_TIMEOUT_MS = 1000
+BUS_COUNT_QUERY = "CONFIGURATION:BUSWAVEFORMS:NUMBUS?"
+REFERENCE_COUNT_QUERY = "CONFIGURATION:REFS:NUMREFS?"
+MAX_BUS_COUNT = 4
+MAX_REFERENCE_COUNT = 4
 
 
 def _error_text(exc: BaseException) -> str:
@@ -38,6 +42,7 @@ def _empty_snapshot() -> dict[str, Any]:
         "horizontal_position": None,
         "acquisition": {},
         "display": {},
+        "capabilities": {},
         "errors": {},
     }
 
@@ -55,6 +60,7 @@ def merge_scope_snapshots(*snapshots: Mapping[str, Any]) -> dict[str, Any]:
         "trigger",
         "acquisition",
         "display",
+        "capabilities",
         "errors",
     }
     for snapshot in snapshots:
@@ -95,6 +101,17 @@ def _instrument_for_snapshot(scope: Any) -> Any | None:
 
 def _query_normalized(instrument: Any, command: str) -> str:
     return normalize_scope_response_text(instrument.query(command).strip())
+
+
+def _query_count(instrument: Any, command: str, *, maximum: int) -> int:
+    """Read and clamp a Tektronix CONFIGuration count query."""
+    value = _query_normalized(instrument, command)
+    count = int(float(value))
+    return max(0, min(int(maximum), count))
+
+
+def _slots_within_count(slots: tuple[int, ...], count: int) -> tuple[int, ...]:
+    return tuple(slot for slot in slots if 1 <= slot <= count)
 
 
 def read_core_scope_snapshot(
@@ -138,7 +155,7 @@ def _read_reference_direct(
     references: tuple[int, ...],
     timeout_ms: int | None,
 ) -> dict[str, Any] | None:
-    """Read REF fields with one-timeout-per-slot circuit breaking."""
+    """Read only reference slots reported by the instrument."""
     instrument = _instrument_for_snapshot(scope)
     if instrument is None:
         return None
@@ -149,14 +166,28 @@ def _read_reference_direct(
         return snapshot
 
     with _optional_timeout_context(scope, timeout_ms):
-        first_queries = build_reference_config_queries(references[0])
         try:
-            _query_normalized(instrument, first_queries["display"])
-        except Exception as exc:  # noqa: BLE001
-            errors["reference.support"] = _error_text(exc)
-            return snapshot
+            reference_count = _query_count(
+                instrument,
+                REFERENCE_COUNT_QUERY,
+                maximum=MAX_REFERENCE_COUNT,
+            )
+        except Exception:
+            # Older firmware may not implement the count query. Fall back to the
+            # original single-slot capability probe without turning that into a
+            # warning if REF1 itself responds.
+            first_queries = build_reference_config_queries(references[0])
+            try:
+                _query_normalized(instrument, first_queries["display"])
+            except Exception as exc:  # noqa: BLE001
+                errors["reference.support"] = _error_text(exc)
+                return snapshot
+            active_references = references
+        else:
+            snapshot["capabilities"]["reference_count"] = reference_count
+            active_references = _slots_within_count(references, reference_count)
 
-        for reference in references:
+        for reference in active_references:
             queries = build_reference_config_queries(reference)
             values: dict[str, str] = {}
             try:
@@ -183,7 +214,7 @@ def read_reference_scope_snapshot(
     references: Iterable[int] = DEFAULT_REFERENCE_CHANNELS,
     optional_feature_timeout_ms: int | None = DEFAULT_OPTIONAL_FEATURE_TIMEOUT_MS,
 ) -> dict[str, Any]:
-    """Read REF1..REF4 independently from the common scope state."""
+    """Read the reference-waveform slots exposed by the connected scope."""
     reference_numbers = tuple(int(reference) for reference in references)
     direct = _read_reference_direct(scope, reference_numbers, optional_feature_timeout_ms)
     if direct is not None:
@@ -196,6 +227,15 @@ def read_reference_scope_snapshot(
         return snapshot
 
     with _optional_timeout_context(scope, optional_feature_timeout_ms):
+        count_reader = getattr(scope, "get_reference_waveform_count", None)
+        if callable(count_reader):
+            try:
+                reference_count = max(0, min(MAX_REFERENCE_COUNT, int(count_reader())))
+                snapshot["capabilities"]["reference_count"] = reference_count
+                reference_numbers = _slots_within_count(reference_numbers, reference_count)
+            except Exception:
+                pass
+
         probe = getattr(scope, "probe_reference_support", None)
         if callable(probe) and reference_numbers:
             try:
@@ -218,7 +258,7 @@ def _read_bus_direct(
     buses: tuple[int, ...],
     timeout_ms: int | None,
 ) -> dict[str, Any] | None:
-    """Read BUS common fields for every slot and protocol fields only when enabled."""
+    """Read BUS slots reported by CONFIGuration:BUSWAVEFORMS:NUMBUS?."""
     instrument = _instrument_for_snapshot(scope)
     if instrument is None:
         return None
@@ -229,14 +269,24 @@ def _read_bus_direct(
         return snapshot
 
     with _optional_timeout_context(scope, timeout_ms):
-        first_queries = build_bus_config_queries(buses[0])
         try:
-            _query_normalized(instrument, first_queries["type"])
-        except Exception as exc:  # noqa: BLE001
-            errors["bus.support"] = _error_text(exc)
-            return snapshot
+            bus_count = _query_count(instrument, BUS_COUNT_QUERY, maximum=MAX_BUS_COUNT)
+        except Exception:
+            # Compatibility fallback for firmware without NUMBUS?. Probe BUS1 and
+            # stop scanning at the first missing required slot because BUS slots
+            # are contiguous.
+            first_queries = build_bus_config_queries(buses[0])
+            try:
+                _query_normalized(instrument, first_queries["type"])
+            except Exception as exc:  # noqa: BLE001
+                errors["bus.support"] = _error_text(exc)
+                return snapshot
+            active_buses = buses
+        else:
+            snapshot["capabilities"]["bus_count"] = bus_count
+            active_buses = _slots_within_count(buses, bus_count)
 
-        for bus in buses:
+        for bus in active_buses:
             queries = build_bus_config_queries(bus)
             values: dict[str, Any] = {"protocol": {}}
             required_failed = False
@@ -248,6 +298,10 @@ def _read_bus_direct(
                     required_failed = True
                     break
             if required_failed:
+                # BUS slots are contiguous. Once a required query for a later slot
+                # does not respond, probing higher numbered slots adds no value.
+                if snapshot["buses"]:
+                    break
                 continue
 
             values["type"] = canonical_bus_type(values.get("type", ""))
@@ -278,7 +332,7 @@ def read_bus_scope_snapshot(
     buses: Iterable[int] = DEFAULT_BUS_CHANNELS,
     optional_feature_timeout_ms: int | None = DEFAULT_OPTIONAL_FEATURE_TIMEOUT_MS,
 ) -> dict[str, Any]:
-    """Read BUS1..BUS4 with bounded, active-decoder-aware interrogation."""
+    """Read only BUS waveforms that the connected instrument reports as present."""
     bus_numbers = tuple(int(bus) for bus in buses)
     direct = _read_bus_direct(scope, bus_numbers, optional_feature_timeout_ms)
     if direct is not None:
@@ -291,6 +345,15 @@ def read_bus_scope_snapshot(
         return snapshot
 
     with _optional_timeout_context(scope, optional_feature_timeout_ms):
+        count_reader = getattr(scope, "get_bus_waveform_count", None)
+        if callable(count_reader):
+            try:
+                bus_count = max(0, min(MAX_BUS_COUNT, int(count_reader())))
+                snapshot["capabilities"]["bus_count"] = bus_count
+                bus_numbers = _slots_within_count(bus_numbers, bus_count)
+            except Exception:
+                pass
+
         probe = getattr(scope, "probe_bus_support", None)
         if callable(probe) and bus_numbers:
             try:
@@ -305,6 +368,8 @@ def read_bus_scope_snapshot(
                 snapshot["buses"][bus] = reader(bus)
             except Exception as exc:  # noqa: BLE001
                 errors[f"bus.bus{bus}"] = _error_text(exc)
+                if snapshot["buses"]:
+                    break
     return snapshot
 
 
@@ -333,10 +398,12 @@ def read_scope_snapshot(
 
 
 __all__ = [
+    "BUS_COUNT_QUERY",
     "DEFAULT_ANALOG_CHANNELS",
     "DEFAULT_BUS_CHANNELS",
     "DEFAULT_OPTIONAL_FEATURE_TIMEOUT_MS",
     "DEFAULT_REFERENCE_CHANNELS",
+    "REFERENCE_COUNT_QUERY",
     "merge_scope_snapshots",
     "read_bus_scope_snapshot",
     "read_core_scope_snapshot",
