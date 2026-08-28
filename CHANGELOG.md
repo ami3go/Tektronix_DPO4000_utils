@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.4.12 - 2026-08-28
+
+### Fixed
+
+- Rebuilt the automatic **Read all parameters after connection** path as three independent stages: core scope state, REF state, then BUS state.
+- Core CH/MATH/measurement/trigger/acquisition/display values are now applied to the GUI before optional REF/BUS interrogation starts.
+- Automatic BUS readback now reads common BUS1..BUS4 state/type/label/position/display fields for every responding bus, but decoder-specific protocol fields only for enabled BUS channels.
+- BUS and REF optional reads use a bounded 1 s VISA timeout with per-slot circuit breaking: after the first unsupported/timeout field, remaining optional fields for that slot are skipped instead of multiplying timeouts.
+- A failed optional BUS/REF refresh stage is non-modal and no longer downgrades a successful IDN connection.
+
+### Changed
+
+- The explicit **Read BUS** action still uses the complete public BUS driver read for the selected channel; only automatic connection refresh uses the bounded active-decoder policy.
+- Added staged snapshot merge tests, BUS timeout/circuit-breaker tests, and PySide6 runtime tests for Core → REF → BUS refresh ordering and optional-stage failure isolation.
+- Package version bumped to `0.4.12`.
+
 ## v0.4.11 - 2026-08-28
 
 ### Fixed
