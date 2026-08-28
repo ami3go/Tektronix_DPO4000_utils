@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.5.1 - 2026-08-28
+
+### Added
+
+- Added `docs/code-audit-remediation-task.md`, converting the v0.5.0 production-readiness audit into an ordered implementation plan with per-phase corrections, tests, acceptance criteria, hardware validation, and a 24/72-hour stability qualification gate.
+
+### Changed
+
+- Package version bumped to `0.5.1`.
+
 ## v0.5.0 - 2026-08-28
 
 ### Added
