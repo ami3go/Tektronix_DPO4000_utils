@@ -14,15 +14,22 @@ PNG = b"\x89PNG\r\n\x1a\nDATAIEND\xaeB`\x82"
 
 
 class FakeInstrument:
-    def __init__(self, payload: bytes):
+    def __init__(self, payload: bytes, *, hardcopy_format: str = "BMP"):
         self.payload = payload
         self.commands = []
         self.timeout = 1000
         self.read_termination = "\n"
         self.write_termination = None
+        self.hardcopy_format = hardcopy_format
+
+    def query(self, command: str) -> str:
+        self.commands.append(("query", command))
+        if command == "HARDCOPY:FORMAT?":
+            return self.hardcopy_format
+        raise AssertionError(command)
 
     def write(self, command: str) -> None:
-        self.commands.append(command)
+        self.commands.append(("write", command))
 
     def read_raw(self) -> bytes:
         return self.payload
@@ -50,11 +57,34 @@ def test_require_png_bytes_raises_with_diagnostic_prefix():
         require_png_bytes(b"not a png response")
 
 
-def test_capture_screen_png_validates_and_restores_session_settings():
-    inst = FakeInstrument(b"prefix" + PNG + b"trailing")
+def test_capture_screen_png_validates_and_restores_session_and_scope_format():
+    inst = FakeInstrument(b"prefix" + PNG + b"trailing", hardcopy_format="BMP")
 
     assert capture_screen_png(inst, command_delay_s=0) == PNG
-    assert "HARDCOPY START" in inst.commands
+
+    writes = [command for kind, command in inst.commands if kind == "write"]
+    assert writes == [
+        "HARDCOPY:FORMAT PNG",
+        "HARDCOPY START",
+        "HARDCOPY:FORMAT BMP",
+    ]
+    assert "*CLS" not in writes
+    assert all(not command.startswith("HEADER") for command in writes)
+    assert all(not command.startswith("VERBOSE") for command in writes)
+    assert all(not command.startswith("SAVE:IMAGE") for command in writes)
+    assert inst.timeout == 1000
+    assert inst.read_termination == "\n"
+    assert inst.write_termination is None
+
+
+def test_capture_failure_still_restores_hardcopy_format_and_session_attributes():
+    inst = FakeInstrument(b"not png", hardcopy_format="BMP")
+
+    with pytest.raises(HardcopyCaptureError):
+        capture_screen_png(inst, command_delay_s=0)
+
+    writes = [command for kind, command in inst.commands if kind == "write"]
+    assert writes[-1] == "HARDCOPY:FORMAT BMP"
     assert inst.timeout == 1000
     assert inst.read_termination == "\n"
     assert inst.write_termination is None

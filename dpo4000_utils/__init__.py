@@ -15,6 +15,17 @@ from .control import (
     MeasurementConfig,
     MeasurementSetup,
 )
+from .errors import (
+    DPOCleanupError,
+    DPOConnectionError,
+    DPOError,
+    DPOImageCaptureError,
+    DPONotConnectedError,
+    DPOProtocolError,
+    DPOSettingsError,
+    DPOTimeoutError,
+    DPOTransportError,
+)
 from .hardcopy import extract_png_bytes, strip_ieee_block_header
 from .reference import ReferenceConfig
 from .instrument import DPO4000Scope, DPO4054
@@ -27,6 +38,15 @@ __all__ = [
     "ChannelConfig",
     "DPO4000Scope",
     "DPO4054",
+    "DPOCleanupError",
+    "DPOConnectionError",
+    "DPOError",
+    "DPOImageCaptureError",
+    "DPONotConnectedError",
+    "DPOProtocolError",
+    "DPOSettingsError",
+    "DPOTimeoutError",
+    "DPOTransportError",
     "DisplayConfig",
     "MathConfig",
     "MeasurementConfig",

@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.5.2 - 2026-08-28
+
+### Added
+
+- Added stable public transport/timeout/cleanup exception types and exported them from the package API.
+- Added a shared temporary VISA-session attribute context manager that restores exact previous values, including `None`.
+- Added versioned settings-payload validation with Tektronix/DPO4000-family compatibility checks and legacy-file support.
+
+### Fixed
+
+- VISA disconnect is now exception-safe and idempotent: instrument and ResourceManager cleanup are both attempted and internal state is cleared before backend close calls.
+- `scope_session()` and driver context-manager cleanup no longer replace a primary operation exception with a secondary close failure.
+- Hardcopy capture no longer issues `*CLS`, changes HEADER/VERBOSE, or modifies SAVE:IMAGE state; the prior HARDCOPY format and VISA transfer attributes are restored.
+- Settings save/restore no longer relies on interactive `input()`/`print()` behavior and timeout restoration uses the shared VISA attribute helper.
+- Generic driver construction no longer creates the `scope_settings` directory or assumes a physical scope serial number when no resource is supplied.
+
+### Changed
+
+- `DPO4000Scope` defaults to side-effect-free construction (`auto_connect=False`, no default resource); the legacy `visaResourceAddr` symbol remains available for compatibility.
+- Package version bumped to `0.5.2`.
+
 ## v0.5.1 - 2026-08-28
 
 ### Added

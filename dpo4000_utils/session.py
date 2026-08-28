@@ -1,29 +1,32 @@
-"""Public short-lived DPO4000 session helpers.
-
-GUI applications and other front ends should use :func:`scope_session` instead of
-reaching into the driver's internal PyVISA handle.  Keeping VISA lifecycle and
-session tuning in the driver package gives every UI a single, testable boundary
-to the instrument layer.
-"""
+"""Public short-lived DPO4000 session helpers."""
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
 
-from .connection import visaResourceAddr
+from .errors import add_exception_note
 from .instrument import DPO4000Scope, DPO4054
+
+
+logger = logging.getLogger(__name__)
 
 
 @contextmanager
 def scope_session(
-    resource_name: str = visaResourceAddr,
+    resource_name: str,
     *,
     timeout_ms: int | None = None,
     read_termination: str | None = "\n",
     write_termination: str | None = "\n",
 ) -> Iterator[DPO4000Scope]:
-    """Open, yield, and close one short-lived, driver-configured session."""
+    """Open, yield, and close one short-lived, driver-configured session.
+
+    ``resource_name`` is intentionally explicit; the reusable library no longer
+    assumes one lab instrument serial number. Cleanup failures never replace an
+    exception raised by the caller's body.
+    """
     scope = DPO4054(
         resource_name,
         auto_connect=False,
@@ -31,11 +34,25 @@ def scope_session(
         read_termination=read_termination,
         write_termination=write_termination,
     )
+    primary_error: BaseException | None = None
     try:
         scope.connect()
-        yield scope
+        try:
+            yield scope
+        except BaseException as exc:
+            primary_error = exc
+            raise
     finally:
-        scope.disconnect()
+        try:
+            scope.disconnect()
+        except BaseException as cleanup_exc:
+            if primary_error is None:
+                raise
+            add_exception_note(primary_error, f"Scope-session cleanup failure: {cleanup_exc}")
+            logger.warning(
+                "Scope-session cleanup failure while propagating primary error: %s",
+                cleanup_exc,
+            )
 
 
 __all__ = ["scope_session"]
