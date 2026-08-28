@@ -10,6 +10,15 @@ from .channels import validate_channel
 class TriggerMixin:
     """Mixin for acquisition and A trigger helpers."""
 
+    @staticmethod
+    def _query_value(scope, command: str) -> str:
+        """Return the useful value token from a Tektronix query response."""
+        response = scope.query(command).strip()
+        if '"' in response:
+            return response.split('"', 1)[1].rsplit('"', 1)[0]
+        parts = response.split()
+        return parts[-1] if parts else ""
+
     def trigger(self):
         """Initiate a single acquisition trigger on the oscilloscope."""
         self.ensure_connected().write("ACQUIRE:STATE ON")
@@ -62,6 +71,23 @@ class TriggerMixin:
             return float(value_text)
         except ValueError:
             return response
+
+    def get_edge_trigger_configuration(self) -> dict[str, str]:
+        """Read the A edge-trigger fields used by DPO4000 Desk."""
+        scope = self.ensure_connected()
+        source = self._query_value(scope, "TRIGGER:A:EDGE:SOURCE?").upper()
+        level_query = (
+            f"TRIGGER:A:LEVEL:{source}?"
+            if source.startswith("CH") and source[2:].isdigit()
+            else "TRIGGER:A:LEVEL?"
+        )
+        return {
+            "mode": self._query_value(scope, "TRIGGER:A:MODE?").upper(),
+            "source": source,
+            "slope": self._query_value(scope, "TRIGGER:A:EDGE:SLOPE?").upper(),
+            "coupling": self._query_value(scope, "TRIGGER:A:EDGE:COUPLING?").upper(),
+            "level": self._query_value(scope, level_query),
+        }
 
     def set_edge_trigger_source(self, channel):
         """Set A edge trigger source to CH1..CH4."""

@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.4.2 - 2026-08-28
+
+### Added
+
+- Added a single-session scope snapshot reader used immediately after a successful IDN connection.
+- Added public edge-trigger readback for mode, source, slope, coupling, and the source-appropriate trigger level.
+
+### Changed
+
+- Successful connection now builds the lazy instrument-control pages and replaces their default values with live scope values.
+- Automatic refresh covers channel labels, all four channel configurations, MATH, configured measurements, trigger setup and horizontal position, acquisition setup, and display settings.
+- Switching the channel selector after connection reuses the freshly read channel snapshot instead of showing startup defaults.
+- Refresh sections are isolated: a failed optional read is logged as a warning while other cards continue to populate.
+- Connection and automatic-refresh failures remain non-modal and are reported in the bottom status bar.
+- Package version bumped to `0.4.2`.
+
 ## v0.4.1 - 2026-08-28
 
 ### Changed

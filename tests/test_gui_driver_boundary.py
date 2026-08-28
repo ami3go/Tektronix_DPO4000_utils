@@ -52,12 +52,14 @@ def test_pyside_boundary_does_not_import_raw_transfer_helpers():
             assert forbidden not in source
 
 
-def test_connection_test_feedback_is_non_modal_and_status_only():
+def test_connection_test_feedback_is_non_modal_and_refreshes_scope_cards():
     source = QT_DESKTOP_WINDOW.read_text(encoding="utf-8")
 
     assert "self._message(" not in source
     assert 'self.statusBar().showMessage(f"Connected: {idn}")' in source
-    assert 'self.statusBar().showMessage(f"Connection error: {error_text}")' in source
+    assert "self.refresh_scope_parameters()" in source
+    assert "read_scope_snapshot(scope)" in source
+    assert 'self.statusBar().showMessage(f"{prefix}: {error_text}")' in source
     assert 'self._last_idn = f"Error: {error_text}"' in source
     assert "return super()._finish_scope_action_error(description, exc)" in source
 
