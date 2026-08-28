@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from .bus import BusMixin
 from .channels import ChannelMixin
 from .connection import ConnectionMixin, visaResourceAddr
 from .control import ControlMixin
@@ -23,6 +24,7 @@ class DPO4000Scope(
     TriggerMixin,
     ControlMixin,
     ReferenceMixin,
+    BusMixin,
 ):
     """Tektronix DPO4000-family oscilloscope helper."""
 
