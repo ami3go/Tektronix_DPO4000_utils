@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.4.4 - 2026-08-28
+
+### Fixed
+
+- Restored Python 3.10 compatibility for TOML-based metadata tests by using the `tomli` backport when `tomllib` is unavailable.
+- Added explicit Qt/EGL runtime libraries to the offscreen PySide6 CI job so importing `PySide6.QtWidgets` works on the Ubuntu runner.
+
+### Changed
+
+- Added `tomli` as a Python-3.10-only development dependency.
+- Package version bumped to `0.4.4`.
+
 ## v0.4.3 - 2026-08-28
 
 ### Fixed

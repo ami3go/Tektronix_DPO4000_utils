@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import sys
-import tomllib
 from pathlib import Path
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10 support.
+    import tomli as tomllib
 
 
 def test_pyproject_exposes_pyside6_dependency_and_single_desktop_script():
