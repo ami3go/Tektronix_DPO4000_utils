@@ -6,7 +6,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 QT_API_ADAPTER = ROOT / "dpo4000_utils" / "gui_qt" / "api_window.py"
 QT_DESKTOP_WINDOW = ROOT / "dpo4000_utils" / "gui_qt" / "desktop_window.py"
-QT_BOUNDARY_FILES = (QT_API_ADAPTER, QT_DESKTOP_WINDOW)
+QT_BUS_WINDOW = ROOT / "dpo4000_utils" / "gui_qt" / "bus_window.py"
+QT_BOUNDARY_FILES = (QT_API_ADAPTER, QT_DESKTOP_WINDOW, QT_BUS_WINDOW)
 
 
 class RawScopeAttributeVisitor(ast.NodeVisitor):
@@ -24,8 +25,8 @@ def test_desktop_entrypoint_uses_final_pyside_window():
     package_init = (ROOT / "dpo4000_utils" / "gui_qt" / "__init__.py").read_text(encoding="utf-8")
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
 
-    assert "from .desktop_window import QtScopeWindow" in runner
-    assert "from .desktop_window import QtScopeWindow" in package_init
+    assert "from .bus_window import QtScopeWindow" in runner
+    assert "from .bus_window import QtScopeWindow" in package_init
     assert 'dpo4000-desk = "dpo4000_utils.gui_qt.runner:main"' in pyproject
     assert "dpo4000-gui" not in pyproject
 
@@ -50,6 +51,16 @@ def test_pyside_boundary_does_not_import_raw_transfer_helpers():
         source = path.read_text(encoding="utf-8")
         for forbidden in forbidden_imports:
             assert forbidden not in source
+
+
+def test_bus_window_uses_public_driver_api_not_bus_scpi():
+    source = QT_BUS_WINDOW.read_text(encoding="utf-8")
+
+    assert "scope.get_bus_configuration(bus)" in source
+    assert "scope.configure_bus(config)" in source
+    assert "BUS:B" not in source
+    assert ".query(" not in source
+    assert ".write(" not in source
 
 
 def test_connection_test_feedback_is_non_modal_and_refreshes_scope_cards():
