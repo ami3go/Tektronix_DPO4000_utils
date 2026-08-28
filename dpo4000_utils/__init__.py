@@ -15,6 +15,7 @@ from .control import (
     MeasurementSetup,
 )
 from .hardcopy import extract_png_bytes, strip_ieee_block_header
+from .reference import ReferenceConfig
 from .instrument import DPO4000Scope, DPO4054
 from .session import scope_session
 from .waveform import parse_ascii_curve
@@ -28,6 +29,7 @@ __all__ = [
     "MathConfig",
     "MeasurementConfig",
     "MeasurementSetup",
+    "ReferenceConfig",
     "visaResourceAddr",
     "build_tcpip_instr_resource",
     "build_tcpip_socket_resource",

@@ -6,6 +6,7 @@ from collections.abc import Iterable
 from typing import Any
 
 DEFAULT_ANALOG_CHANNELS = (1, 2, 3, 4)
+DEFAULT_REFERENCE_CHANNELS = (1, 2, 3, 4)
 
 
 def _error_text(exc: BaseException) -> str:
@@ -16,17 +17,20 @@ def read_scope_snapshot(
     scope: Any,
     *,
     channels: Iterable[int] = DEFAULT_ANALOG_CHANNELS,
+    references: Iterable[int] = DEFAULT_REFERENCE_CHANNELS,
 ) -> dict[str, Any]:
     """Read instrument-backed cards in one already-open driver session.
 
-    Each logical section is isolated.  A rejected optional query is recorded in
+    Each logical section is isolated. A rejected optional query is recorded in
     ``errors`` while the remaining cards continue to load.
     """
     channel_numbers = tuple(int(channel) for channel in channels)
+    reference_numbers = tuple(int(reference) for reference in references)
     errors: dict[str, str] = {}
     snapshot: dict[str, Any] = {
         "labels": {},
         "channels": {},
+        "references": {},
         "math": {},
         "measurements": {},
         "trigger": {},
@@ -47,6 +51,14 @@ def read_scope_snapshot(
         except Exception as exc:  # noqa: BLE001 - isolate optional/firmware-specific reads.
             errors[f"channel.ch{channel}"] = _error_text(exc)
 
+    reference_reader = getattr(scope, "get_reference_configuration", None)
+    if callable(reference_reader):
+        for reference in reference_numbers:
+            try:
+                snapshot["references"][reference] = reference_reader(reference)
+            except Exception as exc:  # noqa: BLE001 - preserve other REF and scope sections.
+                errors[f"reference.ref{reference}"] = _error_text(exc)
+
     section_readers = (
         ("math", scope.get_math_configuration, {}),
         ("measurements", scope.get_all_measurement_setups, {}),
@@ -65,4 +77,8 @@ def read_scope_snapshot(
     return snapshot
 
 
-__all__ = ["DEFAULT_ANALOG_CHANNELS", "read_scope_snapshot"]
+__all__ = [
+    "DEFAULT_ANALOG_CHANNELS",
+    "DEFAULT_REFERENCE_CHANNELS",
+    "read_scope_snapshot",
+]

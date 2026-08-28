@@ -1,26 +1,237 @@
 """Final desktop presentation policy for DPO4000 Desk.
 
-This layer specializes the API-only Qt window with non-modal connection feedback
-and a post-connection state refresh.  Instrument reads are collected through the
-public driver API in one session and then projected into the already-built Qt
-cards.
+This layer specializes the API-only Qt window with non-modal connection feedback,
+a post-connection state refresh, and reference-waveform controls. Instrument reads
+are collected through the public driver API in one session and projected into the
+already-built Qt cards.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QSizePolicy,
+)
+
+from ..reference import REFERENCE_SOURCES, ReferenceConfig
 from ..scope_snapshot import read_scope_snapshot
 from .api_window import QtScopeWindow as ApiQtScopeWindow, _record_length_display
 
 CONNECTION_TEST_DESCRIPTION = "Testing scope connection"
 SCOPE_REFRESH_DESCRIPTION = "Reading scope parameters"
 NON_MODAL_CONNECTION_ACTIONS = {CONNECTION_TEST_DESCRIPTION, SCOPE_REFRESH_DESCRIPTION}
+REFERENCE_SCOPE_ACTIONS = {
+    "read_reference_configuration",
+    "apply_reference_configuration",
+    "store_reference_waveform",
+}
 
 
 class QtScopeWindow(ApiQtScopeWindow):
     """Launched desktop window with status-only connection feedback."""
 
+    # ------------------------------------------------------------------
+    # Channels page extension: REF1..REF4
+    # ------------------------------------------------------------------
+    def _build_channels_tab(self):
+        """Add reference-waveform controls to the existing Channels page."""
+        page = super()._build_channels_tab()
+        body = page.widget() if hasattr(page, "widget") else page
+        layout = body.layout() if body is not None else None
+        if layout is not None:
+            insert_index = max(0, layout.count() - 1)
+            layout.insertWidget(insert_index, self._build_reference_waveform_card())
+        return page
+
+    def _build_reference_waveform_card(self) -> QGroupBox:
+        card = self._card("Reference waveforms")
+        form = QFormLayout(card)
+        self._prepare_form(form)
+
+        self.reference_channel = QComboBox()
+        self.reference_channel.addItems(["1", "2", "3", "4"])
+
+        self.reference_display = QCheckBox("Show selected reference waveform")
+        self.reference_label = QLineEdit()
+        self.reference_label.setMaxLength(30)
+        self.reference_vertical_scale = QLineEdit()
+        self.reference_vertical_position = QLineEdit()
+        self.reference_horizontal_scale = QLineEdit()
+        self.reference_horizontal_delay = QLineEdit()
+
+        self.reference_stored_at = QLineEdit()
+        self.reference_stored_at.setReadOnly(True)
+
+        self.reference_source = QComboBox()
+        self.reference_source.addItems(REFERENCE_SOURCES)
+
+        form.addRow("Reference", self.reference_channel)
+        form.addRow("Display", self.reference_display)
+        form.addRow("Label", self.reference_label)
+        form.addRow("Vertical scale / div", self.reference_vertical_scale)
+        form.addRow("Vertical position div", self.reference_vertical_position)
+        form.addRow("Horizontal scale s/div", self.reference_horizontal_scale)
+        form.addRow("Horizontal delay s", self.reference_horizontal_delay)
+        form.addRow("Stored date / time", self.reference_stored_at)
+        form.addRow("Store waveform source", self.reference_source)
+
+        hint = QLabel(
+            "REF1..REF4 are nonvolatile reference memories. Display scale/position "
+            "changes only the reference trace. Storing a waveform overwrites the "
+            "selected reference memory."
+        )
+        hint.setObjectName("MutedLabel")
+        hint.setWordWrap(True)
+        form.addRow(hint)
+
+        read_apply = QHBoxLayout()
+        read_button = self._button("Read REF", self.read_reference_configuration)
+        apply_button = self._accent_button("Apply REF", self.apply_reference_configuration)
+        for button in (read_button, apply_button):
+            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            read_apply.addWidget(button)
+        form.addRow(read_apply)
+
+        store_button = self._accent_button(
+            "Store source → selected REF",
+            self.store_reference_waveform,
+        )
+        store_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        form.addRow(store_button)
+
+        return self._prepare_channels_card(card)
+
+    def _callback_requires_scope(self, callback) -> bool:
+        if getattr(callback, "__name__", "") in REFERENCE_SCOPE_ACTIONS:
+            return True
+        return super()._callback_requires_scope(callback)
+
+    def _selected_reference_channel(self) -> int:
+        return int(self.reference_channel.currentText())
+
+    def _reference_config_from_widgets(self) -> ReferenceConfig:
+        return ReferenceConfig(
+            reference=self._selected_reference_channel(),
+            display=self.reference_display.isChecked(),
+            label=self.reference_label.text(),
+            vertical_scale=self.reference_vertical_scale.text().strip() or None,
+            vertical_position=self.reference_vertical_position.text().strip() or None,
+            horizontal_scale=self.reference_horizontal_scale.text().strip() or None,
+            horizontal_delay=self.reference_horizontal_delay.text().strip() or None,
+        )
+
+    def _apply_reference_configuration_to_widgets(self, config: dict[str, Any]) -> None:
+        self.reference_display.setChecked(
+            self._bool_from_scope_response(config.get("display", "0"))
+        )
+        self.reference_label.setText(str(config.get("label", "")))
+        self.reference_vertical_scale.setText(str(config.get("vertical_scale", "")))
+        self.reference_vertical_position.setText(str(config.get("vertical_position", "")))
+        self.reference_horizontal_scale.setText(str(config.get("horizontal_scale", "")))
+        self.reference_horizontal_delay.setText(str(config.get("horizontal_delay", "")))
+
+        date = str(config.get("date", "")).strip()
+        time = str(config.get("time", "")).strip()
+        self.reference_stored_at.setText(" ".join(part for part in (date, time) if part))
+
+    def _cache_reference_configuration(
+        self,
+        reference: int,
+        config: dict[str, Any],
+    ) -> None:
+        snapshot = getattr(self, "_scope_parameter_snapshot", None)
+        if not isinstance(snapshot, dict):
+            snapshot = {}
+            self._scope_parameter_snapshot = snapshot
+        references = snapshot.setdefault("references", {})
+        if isinstance(references, dict):
+            references[int(reference)] = dict(config)
+
+    def _apply_cached_reference_configuration(self, _text: str | None = None) -> None:
+        if not hasattr(self, "reference_channel"):
+            return
+        snapshot = getattr(self, "_scope_parameter_snapshot", {})
+        references = snapshot.get("references", {}) if isinstance(snapshot, dict) else {}
+        try:
+            reference = self._selected_reference_channel()
+        except ValueError:
+            return
+        config = references.get(reference, {}) if isinstance(references, dict) else {}
+        self._apply_reference_configuration_to_widgets(config or {})
+
+    def read_reference_configuration(self) -> None:
+        reference = self._selected_reference_channel()
+        result = self._run_action(
+            f"Reading REF{reference} configuration",
+            lambda scope: scope.get_reference_configuration(reference),
+        )
+        if isinstance(result, dict):
+            self._cache_reference_configuration(reference, result)
+            self._apply_reference_configuration_to_widgets(result)
+
+    def apply_reference_configuration(self) -> None:
+        config = self._reference_config_from_widgets()
+        reference = config.reference
+
+        def action(scope):
+            scope.configure_reference(config)
+            return scope.get_reference_configuration(reference)
+
+        result = self._run_action(
+            f"Applying REF{reference} configuration",
+            action,
+        )
+        if isinstance(result, dict):
+            self._cache_reference_configuration(reference, result)
+            self._apply_reference_configuration_to_widgets(result)
+
+    def store_reference_waveform(self) -> None:
+        reference = self._selected_reference_channel()
+        source = self.reference_source.currentText().strip().upper()
+        if source == f"REF{reference}":
+            self.statusBar().showMessage(
+                f"Cannot copy REF{reference} into itself; choose another source"
+            )
+            return
+
+        answer = QMessageBox.question(
+            self,
+            "Overwrite reference waveform",
+            (
+                f"Store {source} into REF{reference}?\n\n"
+                f"The existing REF{reference} waveform will be overwritten."
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            self.statusBar().showMessage("Reference waveform store cancelled")
+            return
+
+        def action(scope):
+            scope.save_waveform_to_reference(source, reference)
+            return scope.get_reference_configuration(reference)
+
+        result = self._run_action(
+            f"Storing {source} in REF{reference}",
+            action,
+        )
+        if isinstance(result, dict):
+            self._cache_reference_configuration(reference, result)
+            self._apply_reference_configuration_to_widgets(result)
+
+    # ------------------------------------------------------------------
+    # Connection and automatic live-state refresh
+    # ------------------------------------------------------------------
     def test_connection(self) -> None:
         """Test the selected scope, then replace card defaults with live scope values."""
         result = self._run_action(
@@ -82,6 +293,14 @@ class QtScopeWindow(ApiQtScopeWindow):
             )
             self._snapshot_channel_hook_installed = True
 
+        if hasattr(self, "reference_channel") and not getattr(
+            self, "_snapshot_reference_hook_installed", False
+        ):
+            self.reference_channel.currentTextChanged.connect(
+                self._apply_cached_reference_configuration
+            )
+            self._snapshot_reference_hook_installed = True
+
     def _apply_scope_snapshot(self, snapshot: dict[str, Any]) -> None:
         self._scope_parameter_snapshot = snapshot
 
@@ -90,6 +309,7 @@ class QtScopeWindow(ApiQtScopeWindow):
             edit.setText(str(labels.get(channel, "")))
 
         self._apply_cached_channel_configuration()
+        self._apply_cached_reference_configuration()
 
         math = snapshot.get("math", {}) or {}
         if hasattr(self, "math_config_display"):
@@ -233,6 +453,7 @@ class QtScopeWindow(ApiQtScopeWindow):
 __all__ = [
     "CONNECTION_TEST_DESCRIPTION",
     "NON_MODAL_CONNECTION_ACTIONS",
+    "REFERENCE_SCOPE_ACTIONS",
     "SCOPE_REFRESH_DESCRIPTION",
     "QtScopeWindow",
 ]

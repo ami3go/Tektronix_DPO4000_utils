@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.4.7 - 2026-08-28
+
+### Added
+
+- Added REF1..REF4 reference-waveform support to the Channels page.
+- Added public high-level APIs for reading and configuring reference waveform display state, labels, vertical scale/position, horizontal scale/delay, and storage date/time.
+- Added a guarded waveform-store action for copying CH1..CH4, MATH, or another REF waveform into a selected reference memory.
+- Added automatic REF1..REF4 readback to the post-connection scope snapshot so reference controls are populated from the instrument.
+
+### Changed
+
+- Package version bumped to `0.4.7`.
+
 ## v0.4.6 - 2026-08-28
 
 ### Fixed

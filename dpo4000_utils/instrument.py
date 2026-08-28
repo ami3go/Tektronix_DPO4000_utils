@@ -8,6 +8,7 @@ from .channels import ChannelMixin
 from .connection import ConnectionMixin, visaResourceAddr
 from .control import ControlMixin
 from .hardcopy import HardcopyMixin
+from .reference import ReferenceMixin
 from .settings import SettingsMixin
 from .trigger import TriggerMixin
 from .waveform import WaveformMixin
@@ -21,6 +22,7 @@ class DPO4000Scope(
     ChannelMixin,
     TriggerMixin,
     ControlMixin,
+    ReferenceMixin,
 ):
     """Tektronix DPO4000-family oscilloscope helper."""
 

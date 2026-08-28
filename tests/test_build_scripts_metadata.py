@@ -13,7 +13,7 @@ def test_project_version_and_desktop_metadata_are_current():
     changelog = Path("CHANGELOG.md").read_text(encoding="utf-8")
 
     assert project["project"]["name"] == "dpo4000-utils"
-    assert project["project"]["version"] == "0.4.6"
+    assert project["project"]["version"] == "0.4.7"
     assert project["project"]["scripts"] == {
         "dpo4000-desk": "dpo4000_utils.gui_qt.runner:main"
     }
@@ -22,8 +22,8 @@ def test_project_version_and_desktop_metadata_are_current():
         dependency.startswith("PySide6")
         for dependency in project["project"]["optional-dependencies"]["pyside6"]
     )
-    assert "## v0.4.6 - 2026-08-28" in changelog
-    assert "Package version bumped to `0.4.6`" in changelog
+    assert "## v0.4.7 - 2026-08-28" in changelog
+    assert "Package version bumped to `0.4.7`" in changelog
 
 
 def test_shared_build_helper_targets_generated_desktop_entry():
