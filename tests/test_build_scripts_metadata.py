@@ -10,10 +10,10 @@ except ModuleNotFoundError:  # Python 3.10 support.
 
 def test_project_version_and_desktop_metadata_are_current():
     project = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
-    changelog_entry = Path("CHANGELOG.d/v0.6.2.md").read_text(encoding="utf-8")
+    changelog_entry = Path("CHANGELOG.d/v0.6.3.md").read_text(encoding="utf-8")
 
     assert project["project"]["name"] == "dpo4000-utils"
-    assert project["project"]["version"] == "0.6.2"
+    assert project["project"]["version"] == "0.6.3"
     assert project["project"]["scripts"] == {
         "dpo4000-desk": "dpo4000_utils.gui_qt.runner:main"
     }
@@ -22,8 +22,8 @@ def test_project_version_and_desktop_metadata_are_current():
         dependency.startswith("PySide6")
         for dependency in project["project"]["optional-dependencies"]["pyside6"]
     )
-    assert "# v0.6.2 - 2026-08-28" in changelog_entry
-    assert "Package version bumped to `0.6.2`" in changelog_entry
+    assert "# v0.6.3 - 2026-08-28" in changelog_entry
+    assert "Package version bumped to `0.6.3`" in changelog_entry
 
 
 def test_shared_build_helper_targets_generated_desktop_entry():
