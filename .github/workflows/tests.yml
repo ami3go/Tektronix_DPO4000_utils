@@ -35,6 +35,7 @@ jobs:
   pyside6:
     name: PySide6 desktop GUI
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     env:
       QT_QPA_PLATFORM: offscreen
 

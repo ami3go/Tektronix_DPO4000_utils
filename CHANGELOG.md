@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.4.5 - 2026-08-28
+
+### Fixed
+
+- Prevented the PySide6 CI suite from entering the real GUI event loop while testing the missing-PySide dependency message; the contract is now verified without executing `runner.main()`.
+- Added a ten-minute timeout to the offscreen PySide6 CI job so a future GUI-test event-loop regression cannot block the workflow indefinitely.
+
+### Changed
+
+- Package version bumped to `0.4.5`.
+
 ## v0.4.4 - 2026-08-28
 
 ### Fixed

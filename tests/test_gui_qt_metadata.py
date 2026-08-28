@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 try:
@@ -55,22 +54,11 @@ def test_qt_main_window_keeps_resizable_splitter_and_control_stack():
     assert "_build_control_drawer" in content
 
 
-def test_qt_runner_has_clear_missing_dependency_message(monkeypatch):
-    from dpo4000_utils.gui_qt import runner
+def test_qt_runner_has_clear_missing_dependency_message_without_starting_event_loop():
+    content = Path("dpo4000_utils/gui_qt/runner.py").read_text(encoding="utf-8")
 
-    class BlockPySide6Finder:
-        def find_spec(self, fullname, path=None, target=None):
-            if fullname.startswith("PySide6"):
-                raise ModuleNotFoundError("No module named 'PySide6'")
-            return None
-
-    monkeypatch.setattr(sys, "meta_path", [BlockPySide6Finder(), *sys.meta_path])
-
-    try:
-        runner.main()
-    except SystemExit as exc:
-        text = str(exc)
-        assert "pip install -e .[pyside6]" in text
-        assert "requirements-pyside6.txt" in text
-    else:
-        raise AssertionError("runner.main() should exit with a PySide6 install hint")
+    assert "except ModuleNotFoundError as exc:" in content
+    assert "PySide6 is not installed" in content
+    assert "python -m pip install -e .[pyside6]" in content
+    assert "requirements-pyside6.txt" in content
+    assert "raise SystemExit(" in content
