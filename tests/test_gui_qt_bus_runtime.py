@@ -10,6 +10,10 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 QtWidgets = pytest.importorskip("PySide6.QtWidgets")
 
 from dpo4000_utils.gui_qt.bus_window import QtScopeWindow  # noqa: E402
+from dpo4000_utils.gui_qt.desktop_window import (  # noqa: E402
+    CONNECTION_TEST_DESCRIPTION,
+    QtScopeWindow as DesktopQtScopeWindow,
+)
 
 
 def _app():
@@ -17,6 +21,53 @@ def _app():
     if app is None:
         app = QtWidgets.QApplication([sys.executable, "bus-runtime-test"])
     return app
+
+
+def test_connection_page_has_read_all_parameters_option_enabled_by_default():
+    app = _app()
+    window = QtScopeWindow()
+    try:
+        assert hasattr(window, "read_all_parameters_after_connection")
+        assert window.read_all_parameters_after_connection.isChecked() is True
+        assert "Read all parameters after connection" == (
+            window.read_all_parameters_after_connection.text()
+        )
+    finally:
+        window.close()
+        window.deleteLater()
+        app.processEvents()
+
+
+def test_connection_checkbox_controls_automatic_parameter_refresh(monkeypatch):
+    app = _app()
+    window = QtScopeWindow()
+    refresh_calls: list[str] = []
+    try:
+        monkeypatch.setattr(
+            window,
+            "_run_action",
+            lambda description, callback: (
+                "TEKTRONIX,DPO4054,C000001,CF:91.1" if description == CONNECTION_TEST_DESCRIPTION else None
+            ),
+        )
+        monkeypatch.setattr(
+            DesktopQtScopeWindow,
+            "refresh_scope_parameters",
+            lambda self: refresh_calls.append("refresh"),
+        )
+
+        window.read_all_parameters_after_connection.setChecked(False)
+        window.test_connection()
+        assert refresh_calls == []
+        assert "parameter read skipped" in window.statusBar().currentMessage()
+
+        window.read_all_parameters_after_connection.setChecked(True)
+        window.test_connection()
+        assert refresh_calls == ["refresh"]
+    finally:
+        window.close()
+        window.deleteLater()
+        app.processEvents()
 
 
 def test_final_desktop_channels_page_builds_all_four_bus_channels_and_protocol_table():
