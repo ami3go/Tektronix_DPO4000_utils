@@ -251,7 +251,11 @@ class QtScopeWindow(DesktopQtScopeWindow):
     def _apply_bus_configuration_to_widgets(self, config: dict[str, Any]) -> None:
         self.bus_state.setChecked(self._bool_from_scope_response(config.get("state", "0")))
         bus_type = canonical_bus_type(str(config.get("type", "")))
-        self._set_combo_text(self.bus_type, bus_type)
+        previous_block = self.bus_type.blockSignals(True)
+        try:
+            self._set_combo_text(self.bus_type, bus_type)
+        finally:
+            self.bus_type.blockSignals(previous_block)
         self.bus_label.setText(str(config.get("label", "")))
         self.bus_position.setText(str(config.get("position", "")))
         self._set_combo_text(self.bus_display_format, str(config.get("display_format", "")))
