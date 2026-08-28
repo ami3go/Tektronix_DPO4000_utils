@@ -8,6 +8,7 @@ from typing import Any
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
+    QFrame,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -107,6 +108,7 @@ class QtScopeWindow(CompactQtScopeWindow):
         self._last_action = "Ready"
         self._acquisition_state = "Unknown"
         super().__init__(*args, **kwargs)
+        self._configure_bottom_status_bar()
         self._install_global_shortcuts()
         self._update_scope_control_enabled()
         self._update_status_strip()
@@ -254,6 +256,12 @@ class QtScopeWindow(CompactQtScopeWindow):
         return card
 
     def _build_status_strip(self) -> QWidget:
+        """Build the compact scope-state strip above the preview.
+
+        Resource and IDN are intentionally kept out of this strip; they live in
+        permanent sections of the bottom status bar where long identification
+        strings do not compete with the connection badge.
+        """
         strip = QWidget()
         strip.setObjectName("ScopeStatusStrip")
         layout = QHBoxLayout(strip)
@@ -261,14 +269,10 @@ class QtScopeWindow(CompactQtScopeWindow):
         layout.setSpacing(6)
 
         self.connection_badge = QLabel("● Not tested")
-        self.resource_status = QLabel("Resource: not selected")
-        self.idn_status = QLabel("IDN: not tested")
         self.acquisition_status = QLabel("Acq: unknown")
         self.last_action_status = QLabel("Last: ready")
         for label in (
             self.connection_badge,
-            self.resource_status,
-            self.idn_status,
             self.acquisition_status,
             self.last_action_status,
         ):
@@ -281,6 +285,40 @@ class QtScopeWindow(CompactQtScopeWindow):
         layout.addWidget(self._status_button("Refresh", self.refresh_visa_resources, "Refresh VISA resource list"))
         layout.addWidget(self._status_button("Disconnect", self.mark_disconnected, "Lock scope controls"))
         return strip
+
+    def _configure_bottom_status_bar(self) -> None:
+        """Add permanent Resource and IDN sections beside transient status messages."""
+        if getattr(self, "_bottom_status_sections_installed", False):
+            return
+
+        status = self.statusBar()
+        self._bottom_status_sections_installed = True
+        self.resource_status = QLabel("Resource: not selected")
+        self.idn_status = QLabel("IDN: not tested")
+
+        for label, tooltip, minimum_width, maximum_width in (
+            (self.resource_status, "Selected VISA resource", 220, 440),
+            (self.idn_status, "Last instrument identification response", 240, 460),
+        ):
+            label.setObjectName("BottomStatusSection")
+            label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            label.setToolTip(tooltip)
+            label.setMinimumWidth(minimum_width)
+            label.setMaximumWidth(maximum_width)
+            label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+
+        status.addPermanentWidget(self._bottom_status_separator())
+        status.addPermanentWidget(self.resource_status)
+        status.addPermanentWidget(self._bottom_status_separator())
+        status.addPermanentWidget(self.idn_status)
+
+    @staticmethod
+    def _bottom_status_separator() -> QFrame:
+        separator = QFrame()
+        separator.setObjectName("BottomStatusSeparator")
+        separator.setFrameShape(QFrame.Shape.VLine)
+        separator.setFrameShadow(QFrame.Shadow.Plain)
+        return separator
 
     def _status_button(self, text: str, callback: Callable[[], None], tooltip: str) -> QToolButton:
         button = QToolButton()
@@ -364,8 +402,11 @@ class QtScopeWindow(CompactQtScopeWindow):
         else:
             self.connection_badge.setText("● Not tested")
             self._set_connection_badge_state("Warn")
-        self.resource_status.setText(self._resource_summary())
-        self.idn_status.setText(f"IDN: {self._shorten_status_text(self._last_idn, 44)}")
+
+        if hasattr(self, "resource_status"):
+            self.resource_status.setText(self._resource_summary())
+        if hasattr(self, "idn_status"):
+            self.idn_status.setText(f"IDN: {self._shorten_status_text(self._last_idn, 54)}")
         self.acquisition_status.setText(f"Acq: {self._acquisition_state}")
         self.last_action_status.setText(f"Last: {self._shorten_status_text(self._last_action, 42)}")
 

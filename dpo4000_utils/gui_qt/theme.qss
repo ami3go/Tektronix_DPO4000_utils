@@ -363,3 +363,22 @@ QStatusBar {
     background: #0f172a;
     color: #93c5fd;
 }
+
+QStatusBar::item {
+    border: 0;
+}
+
+QLabel#BottomStatusSection {
+    background: #111827;
+    border: 0;
+    color: #d1d5db;
+    padding: 3px 10px;
+}
+
+QFrame#BottomStatusSeparator {
+    background: #374151;
+    border: 0;
+    margin: 3px 4px;
+    min-width: 1px;
+    max-width: 1px;
+}
