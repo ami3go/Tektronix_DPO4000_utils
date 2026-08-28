@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.4.14 - 2026-08-28
+
+### Fixed
+
+- Restored historical per-slot error isolation for generic/high-level BUS driver implementations that do not expose Tektronix capability-count queries.
+- The real DPO4000 direct-instrument path remains capability-driven by `CONFIGURATION:BUSWAVEFORMS:NUMBUS?`; this compatibility correction does not reintroduce BUS3/BUS4 probing when the scope reports two BUS slots.
+
+### Changed
+
+- Package version bumped to `0.4.14`.
+
 ## v0.4.13 - 2026-08-28
 
 ### Fixed
