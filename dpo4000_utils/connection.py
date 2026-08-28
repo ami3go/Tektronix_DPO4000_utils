@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+
 try:
     import pyvisa
 except Exception as exc:  # Import lazily enough that docs/tests can import package.
@@ -119,6 +121,34 @@ class ConnectionMixin:
         if self.scope is None:
             raise ConnectionError("Oscilloscope not connected. Call connect() first.")
         return self.scope
+
+    @contextmanager
+    def temporary_timeout(self, timeout_ms: int):
+        """Temporarily cap the active VISA timeout and restore it afterwards.
+
+        This is used by capability/optional-feature discovery so an unsupported
+        command cannot consume the full user-configured timeout repeatedly.
+        """
+        timeout_value = int(timeout_ms)
+        if timeout_value <= 0:
+            raise ValueError("timeout_ms must be a positive integer")
+
+        instrument = self.ensure_connected()
+        previous_timeout = getattr(instrument, "timeout", None)
+        if previous_timeout is None:
+            effective_timeout = timeout_value
+        else:
+            try:
+                effective_timeout = min(int(previous_timeout), timeout_value)
+            except (TypeError, ValueError):
+                effective_timeout = timeout_value
+
+        instrument.timeout = effective_timeout
+        try:
+            yield instrument
+        finally:
+            if previous_timeout is not None:
+                instrument.timeout = previous_timeout
 
     def __enter__(self):
         self.connect()

@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.4.11 - 2026-08-28
+
+### Fixed
+
+- Prevented automatic post-connection parameter refresh from multiplying the full VISA timeout across unsupported optional REF/BUS commands.
+- Added one-shot fail-fast REF and BUS capability probes before expanding into detailed optional-field reads.
+- Optional REF/BUS snapshot reads now run under a bounded 1.5 s timeout and restore the configured VISA timeout afterwards.
+- Programmatic BUS snapshot updates now block the BUS-type change signal while setting the combo box, avoiding a redundant protocol-table rebuild/update cascade.
+
+### Changed
+
+- Missing or unlicensed REF/BUS feature families are reported as snapshot warnings while the rest of the scope state continues loading.
+- Normal user-initiated scope operations keep the configured connection timeout; only optional automatic discovery is bounded.
+- Package version bumped to `0.4.11`.
+
 ## v0.4.10 - 2026-08-28
 
 ### Added
