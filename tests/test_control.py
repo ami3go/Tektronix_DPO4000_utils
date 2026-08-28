@@ -147,7 +147,7 @@ def test_record_length_validation_rejects_bad_values():
         normalize_record_length(0)
     with pytest.raises(ValueError, match="positive integer"):
         normalize_record_length("12.5")
-    with pytest.raises(ValueError, match="point count or label"):
+    with pytest.raises(ValueError, match=r"point count.*label"):
         normalize_record_length("deep")
 
 

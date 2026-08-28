@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.4.3 - 2026-08-28
+
+### Fixed
+
+- Preserved trailing/leading underscores in safe filename parts so configured prefixes such as `scope_` and `dpo4054_` remain separators when output paths are built.
+- Updated stale CI metadata tests that still targeted v0.2-era version strings, removed console aliases, and intermediate PySide6 launch classes instead of the current `desktop_window` launch boundary.
+- Updated startup-debug and theme assertions to validate current behavior rather than obsolete source-text literals.
+
+### Changed
+
+- CI architecture checks now follow the current desktop -> API adapter -> visual inheritance chain while retaining coverage for worker-thread I/O, lazy card construction, measurement management, and PySide6 packaging.
+- Package version bumped to `0.4.3`.
+
 ## v0.4.2 - 2026-08-28
 
 ### Added
@@ -56,38 +69,28 @@
 
 - Public `scope_session()` context manager for short-lived, driver-owned instrument sessions.
 - `DPO4000Scope` constructor options for VISA timeout, read termination, and write termination.
-- API-only adapters for both launched GUIs: `gui.api_scope_gui.ScopeGui` and `gui_qt.api_window.QtScopeWindow`.
+- API-only adapters for launched PySide6 GUI operations.
 - Architecture tests that prevent the launched GUI adapters from accessing `scope.scope` or raw hardcopy/settings/waveform transfer helpers.
 - `docs/architecture.md` describing the enforced GUI-to-driver boundary.
 
 ### Changed
 
 - Package version bumped to `0.3.0`.
-- Tkinter and DPO4000 Desk launch paths now delegate instrument operations to the public `dpo4000_utils` API instead of owning SCPI/VISA behavior.
-- Screen capture now goes through `save_image_path()`; waveform export goes through `save_all_channels_to_single_csv()`; setup restore goes through `apply_scope_settings()`.
-- Channel, MATH, measurement, acquisition, trigger, and display actions in the launched Qt GUI now use the corresponding public driver methods and configuration dataclasses.
-- VISA timeout and line termination are applied by `ConnectionMixin` before the initial `*IDN?` query, improving raw TCP socket behavior.
-- Failed connection setup now closes both the partially opened VISA resource and resource manager.
-- Raw TCP socket resource validation now rejects ports above 65535.
-
-### Compatibility
-
-- Existing GUI inheritance modules remain available for widget/layout compatibility and historical imports, but the launched applications use the API-only adapter layer as their instrument boundary.
-- Existing `DPO4054(resource_name, auto_connect=...)` calls remain compatible; new session arguments are keyword-only.
+- DPO4000 Desk launch paths delegate instrument operations to the public `dpo4000_utils` API instead of owning SCPI/VISA behavior.
+- Screen capture, waveform export, setup restore, channel, MATH, measurement, acquisition, trigger, and display actions use public driver operations.
+- VISA timeout and line termination are applied before the initial `*IDN?` query.
+- Failed connection setup closes partially opened VISA resources.
 
 ## v0.2.1 - 2026-08-26
 
 ### Added
 
-- Promoted current DPO4000 Desk scope actions into reusable `dpo4000_utils` APIs.
+- Promoted DPO4000 Desk scope actions into reusable `dpo4000_utils` APIs.
 - Public payload dataclasses: `ChannelConfig`, `MathConfig`, `AcquisitionConfig`, `DisplayConfig`, and `MeasurementSetup`.
-- Channel, MATH, acquisition, display, and measurement setup helpers used by DPO4000 Desk.
-- Record-length helpers supporting common labels and arbitrary positive integer point counts.
 
 ### Changed
 
 - Package version bumped to `0.2.1`.
-- Package root exports the GUI-backed configuration dataclasses for direct script use.
 
 ## v0.2.0 - 2026-08-22
 

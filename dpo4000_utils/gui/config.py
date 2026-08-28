@@ -21,10 +21,15 @@ class FileNaming:
 
 
 def safe_filename_part(text: str, fallback: str = "file") -> str:
-    """Return a filesystem-safe filename component for Windows/Linux."""
+    """Return a filesystem-safe filename component for Windows/Linux.
+
+    Leading and trailing underscores are valid filename characters and are
+    intentionally preserved because GUI prefixes commonly use a trailing
+    underscore as the separator between prefix and base name.
+    """
     value = (text or "").strip() or fallback
     cleaned = "".join("_" if ch in INVALID_FILENAME_CHARS or ord(ch) < 32 else ch for ch in value)
-    cleaned = cleaned.strip(" ._")
+    cleaned = cleaned.strip(" .")
     return cleaned or fallback
 
 
