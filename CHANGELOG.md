@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.4.9 - 2026-08-28
+
+### Fixed
+
+- Updated the remaining PySide6 architecture metadata tests to follow the final `bus_window -> desktop_window -> api_window -> visual layers` launch chain after BUS support was added.
+
+### Changed
+
+- Package version bumped to `0.4.9`.
+
 ## v0.4.8 - 2026-08-28
 
 ### Added
