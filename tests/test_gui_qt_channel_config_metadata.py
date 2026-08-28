@@ -3,14 +3,17 @@ from __future__ import annotations
 from pathlib import Path
 
 
-def test_qt_runner_uses_final_desktop_window_and_keeps_api_adapter_chain():
+def test_qt_runner_uses_final_bus_window_and_keeps_desktop_api_adapter_chain():
     runner = Path("dpo4000_utils/gui_qt/runner.py").read_text(encoding="utf-8")
     package_init = Path("dpo4000_utils/gui_qt/__init__.py").read_text(encoding="utf-8")
+    bus = Path("dpo4000_utils/gui_qt/bus_window.py").read_text(encoding="utf-8")
     desktop = Path("dpo4000_utils/gui_qt/desktop_window.py").read_text(encoding="utf-8")
     api = Path("dpo4000_utils/gui_qt/api_window.py").read_text(encoding="utf-8")
 
-    assert "from .desktop_window import QtScopeWindow" in runner
-    assert "from .desktop_window import QtScopeWindow" in package_init
+    assert "from .bus_window import QtScopeWindow" in runner
+    assert "from .bus_window import QtScopeWindow" in package_init
+    assert "class QtScopeWindow(DesktopQtScopeWindow)" in bus
+    assert "from .desktop_window import QtScopeWindow as DesktopQtScopeWindow" in bus
     assert "class QtScopeWindow(ApiQtScopeWindow)" in desktop
     assert "from .api_window import QtScopeWindow as ApiQtScopeWindow" in desktop
     assert "from .titlebar_tabs_window import QtScopeWindow as UiQtScopeWindow" in api
