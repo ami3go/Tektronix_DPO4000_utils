@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.4.10 - 2026-08-28
+
+### Added
+
+- Added a persistent **Read all parameters after connection** checkbox to the Connection page.
+- When enabled, a successful IDN connection continues to read the complete CH/MATH/REF/BUS/measurement/trigger/acquisition/display snapshot.
+- When disabled, connection testing stops after IDN for a faster lightweight connection check.
+
+### Changed
+
+- The read-all-parameters preference defaults to enabled to preserve existing behavior and is stored in `gui_preferences.json`.
+- Package version bumped to `0.4.10`.
+
 ## v0.4.9 - 2026-08-28
 
 ### Fixed
