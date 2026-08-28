@@ -114,6 +114,18 @@ class ReferenceMixin:
             return ""
         return normalize_scope_response_text(response)
 
+    def probe_reference_support(self, reference: int | str = 1) -> bool:
+        """Probe one REF slot with a single required query.
+
+        The required query propagates timeout/transport failures so automatic
+        discovery can skip the full REF family instead of retrying every field.
+        """
+        valid_reference = normalize_reference(reference)
+        scope = self.ensure_connected()
+        query = build_reference_config_queries(valid_reference)["display"]
+        response = normalize_scope_response_text(scope.query(query).strip())
+        return bool(response)
+
     def get_reference_configuration(self, reference: int | str) -> dict[str, str]:
         """Read display parameters and storage metadata for one REF waveform."""
         scope = self.ensure_connected()
