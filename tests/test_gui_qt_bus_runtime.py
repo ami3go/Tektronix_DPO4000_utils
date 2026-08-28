@@ -76,7 +76,7 @@ def test_connection_checkbox_controls_automatic_parameter_refresh(monkeypatch):
         app.processEvents()
 
 
-def test_final_desktop_channels_page_builds_all_four_bus_channels_and_protocol_table():
+def test_final_desktop_channels_page_builds_manual_maximum_before_connection():
     app = _app()
     window = QtScopeWindow()
     try:
@@ -115,7 +115,7 @@ def test_final_desktop_channels_page_builds_all_four_bus_channels_and_protocol_t
         app.processEvents()
 
 
-def test_final_desktop_applies_cached_bus_snapshot_on_bus_selection():
+def test_final_desktop_applies_cached_bus_snapshot_and_scope_reported_count():
     app = _app()
     window = QtScopeWindow()
     try:
@@ -150,9 +150,14 @@ def test_final_desktop_applies_cached_bus_snapshot_on_bus_selection():
             "horizontal_position": None,
             "acquisition": {},
             "display": {},
+            "capabilities": {"bus_count": 2},
             "errors": {},
         }
         window._apply_scope_snapshot(snapshot)
+        assert [window.bus_channel.itemText(i) for i in range(window.bus_channel.count())] == [
+            "1",
+            "2",
+        ]
         assert window.bus_label.text() == "ECU"
         assert window.bus_type.currentText() == "I2C"
 
