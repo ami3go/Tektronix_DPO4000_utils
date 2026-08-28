@@ -296,6 +296,19 @@ class BusMixin:
             return ""
         return normalize_scope_response_text(response)
 
+    def probe_bus_support(self, bus: int | str = 1) -> bool:
+        """Probe one BUS slot with a single required query.
+
+        Unlike optional field reads this intentionally propagates transport/timeout
+        failures so callers can fail fast instead of multiplying the VISA timeout
+        across every BUS field and slot.
+        """
+        valid_bus = normalize_bus(bus)
+        scope = self.ensure_connected()
+        query = build_bus_config_queries(valid_bus)["type"]
+        response = normalize_scope_response_text(scope.query(query).strip())
+        return bool(response)
+
     def get_bus_configuration(self, bus: int | str) -> dict[str, Any]:
         """Read common and active-protocol settings for one BUS waveform."""
         valid_bus = normalize_bus(bus)
