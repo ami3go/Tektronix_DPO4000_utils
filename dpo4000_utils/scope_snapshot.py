@@ -367,9 +367,9 @@ def read_bus_scope_snapshot(
             try:
                 snapshot["buses"][bus] = reader(bus)
             except Exception as exc:  # noqa: BLE001
+                # Arbitrary high-level driver implementations may expose sparse
+                # logical slots; preserve the historical per-slot isolation here.
                 errors[f"bus.bus{bus}"] = _error_text(exc)
-                if snapshot["buses"]:
-                    break
     return snapshot
 
 
