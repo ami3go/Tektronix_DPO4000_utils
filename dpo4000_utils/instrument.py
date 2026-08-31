@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from .acquisition_modes import AcquisitionModeReadbackMixin
 from .bus import BusMixin
 from .channels import ChannelMixin
 from .connection import ConnectionMixin
@@ -22,6 +23,7 @@ class DPO4000Scope(
     WaveformMixin,
     ChannelMixin,
     TriggerMixin,
+    AcquisitionModeReadbackMixin,
     ControlMixin,
     ReferenceMixin,
     BusMixin,
