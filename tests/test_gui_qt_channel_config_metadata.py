@@ -3,15 +3,18 @@ from __future__ import annotations
 from pathlib import Path
 
 
-def test_qt_runner_uses_final_bus_window_and_keeps_desktop_api_adapter_chain():
+def test_qt_runner_uses_preview_actions_above_bus_desktop_api_chain():
     runner = Path("dpo4000_utils/gui_qt/runner.py").read_text(encoding="utf-8")
     package_init = Path("dpo4000_utils/gui_qt/__init__.py").read_text(encoding="utf-8")
+    preview = Path("dpo4000_utils/gui_qt/preview_actions_window.py").read_text(encoding="utf-8")
     bus = Path("dpo4000_utils/gui_qt/bus_window.py").read_text(encoding="utf-8")
     desktop = Path("dpo4000_utils/gui_qt/desktop_window.py").read_text(encoding="utf-8")
     api = Path("dpo4000_utils/gui_qt/api_window.py").read_text(encoding="utf-8")
 
-    assert "from .bus_window import QtScopeWindow" in runner
-    assert "from .bus_window import QtScopeWindow" in package_init
+    assert "from .preview_actions_window import QtScopeWindow" in runner
+    assert "from .preview_actions_window import QtScopeWindow" in package_init
+    assert "from .bus_window import QtScopeWindow as BusQtScopeWindow" in preview
+    assert "class QtScopeWindow(BusQtScopeWindow)" in preview
     assert "class QtScopeWindow(DesktopQtScopeWindow)" in bus
     assert "from .desktop_window import QtScopeWindow as DesktopQtScopeWindow" in bus
     assert "class QtScopeWindow(ApiQtScopeWindow)" in desktop
