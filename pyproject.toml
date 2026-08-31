@@ -16,7 +16,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest",
-    "ruff",
+    "ruff>=0.16,<0.17",
     "tomli>=2; python_version < '3.11'",
 ]
 build = [
@@ -48,3 +48,12 @@ markers = [
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+
+# Selected explicitly because Ruff's default rule set is not stable across releases:
+# the same code reported 0 findings under one version's defaults and 153 under a
+# later one. Pinning the rules here keeps CI and local runs in agreement.
+# These groups are clean today. Not yet enabled, with current counts: B (3), C4 (1),
+# N (3), PTH (2), RET (3), UP (8), SIM (11), I (36), DTZ (5), ARG (61), RUF (64),
+# E501 (172 - the configured line-length is not currently met).
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "W", "PIE"]
