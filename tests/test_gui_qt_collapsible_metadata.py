@@ -3,13 +3,16 @@ from __future__ import annotations
 from pathlib import Path
 
 
-def test_qt_preview_actions_window_sits_above_final_bus_desktop_api_layers():
+def test_qt_ui_polish_window_sits_above_preview_bus_desktop_api_layers():
     runner = Path("dpo4000_utils/gui_qt/runner.py").read_text(encoding="utf-8")
+    polish = Path("dpo4000_utils/gui_qt/ui_polish_window.py").read_text(encoding="utf-8")
     preview = Path("dpo4000_utils/gui_qt/preview_actions_window.py").read_text(encoding="utf-8")
     bus = Path("dpo4000_utils/gui_qt/bus_window.py").read_text(encoding="utf-8")
     desktop = Path("dpo4000_utils/gui_qt/desktop_window.py").read_text(encoding="utf-8")
 
-    assert "from .preview_actions_window import QtScopeWindow" in runner
+    assert "from .ui_polish_window import QtScopeWindow" in runner
+    assert "from .preview_actions_window import QtScopeWindow as PreviewQtScopeWindow" in polish
+    assert "class QtScopeWindow(PreviewQtScopeWindow)" in polish
     assert "from .bus_window import QtScopeWindow as BusQtScopeWindow" in preview
     assert "class QtScopeWindow(BusQtScopeWindow)" in preview
     assert "class QtScopeWindow(DesktopQtScopeWindow)" in bus
