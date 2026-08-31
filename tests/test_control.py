@@ -1,6 +1,9 @@
 import pytest
 
 from dpo4000_utils.control import (
+    RECORD_LENGTH_LABEL_BY_POINTS,
+    RECORD_LENGTH_LABELS,
+    RECORD_LENGTH_POINTS_BY_LABEL,
     AcquisitionConfig,
     ChannelConfig,
     DisplayConfig,
@@ -160,6 +163,22 @@ def test_record_length_command_and_query():
 def test_record_length_label_for_common_and_custom_values():
     assert record_length_label("100000") == "100k"
     assert record_length_label(2500) == "2500"
+
+
+def test_record_length_maps_agree_with_the_offered_labels():
+    """The three mappings are derived from one source, so they cannot drift apart."""
+    assert len(RECORD_LENGTH_POINTS_BY_LABEL) == len(RECORD_LENGTH_LABELS)
+    assert len(RECORD_LENGTH_LABEL_BY_POINTS) == len(RECORD_LENGTH_LABELS)
+
+    for label in RECORD_LENGTH_LABELS:
+        points = RECORD_LENGTH_POINTS_BY_LABEL[label.upper()]
+        assert RECORD_LENGTH_LABEL_BY_POINTS[points] == label
+
+
+def test_every_offered_record_length_round_trips():
+    """Selecting a label in the GUI and reading it back must return the same label."""
+    for label in RECORD_LENGTH_LABELS:
+        assert record_length_label(normalize_record_length(label)) == label
 
 
 def test_average_count_validation():

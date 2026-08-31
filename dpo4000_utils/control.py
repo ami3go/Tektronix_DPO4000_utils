@@ -102,17 +102,19 @@ ACQUISITION_SETUP_QUERIES = {
     "average_count": "ACQUIRE:NUMAVG?",
     "record_length": "HORIZONTAL:RECORDLENGTH?",
 }
-RECORD_LENGTH_LABELS = ("1k", "10k", "100k", "1M", "10M")
-RECORD_LENGTH_POINTS_BY_LABEL = {
-    "1K": 1_000,
-    "10K": 10_000,
-    "100K": 100_000,
-    "1M": 1_000_000,
-    "10M": 10_000_000,
-}
-RECORD_LENGTH_LABEL_BY_POINTS = {
-    points: label for label, points in zip(RECORD_LENGTH_LABELS, RECORD_LENGTH_POINTS_BY_LABEL.values())
-}
+# One ordered source of truth. The three public mappings below are derived from it
+# so they cannot drift: pairing display labels against a separate dict's values only
+# worked while both happened to be declared in the same order.
+_RECORD_LENGTHS = (
+    ("1k", 1_000),
+    ("10k", 10_000),
+    ("100k", 100_000),
+    ("1M", 1_000_000),
+    ("10M", 10_000_000),
+)
+RECORD_LENGTH_LABELS = tuple(label for label, _points in _RECORD_LENGTHS)
+RECORD_LENGTH_POINTS_BY_LABEL = {label.upper(): points for label, points in _RECORD_LENGTHS}
+RECORD_LENGTH_LABEL_BY_POINTS = {points: label for label, points in _RECORD_LENGTHS}
 
 DISPLAY_PERSISTENCE_VALUES = ("AUTO", "MINIMUM", "INFINITE", "CLEAR", "0.5", "1", "2", "5", "10")
 DISPLAY_SETUP_QUERIES = {
