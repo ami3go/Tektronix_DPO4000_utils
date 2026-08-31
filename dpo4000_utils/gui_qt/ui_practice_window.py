@@ -430,6 +430,13 @@ class QtScopeWindow(CompactQtScopeWindow):
             self._update_status_strip()
             self._message(label, "Test IDN first to unlock scope controls.", error=True)
             return
+        if self._operation_active:
+            # Scope-action buttons are disabled for the duration of an operation, but
+            # shortcuts are not, and _run_action waits in a nested event loop that keeps
+            # delivering them. Without this a shortcut would re-enter _run_action and
+            # open a second instrument session on top of the one still in flight.
+            self.statusBar().showMessage(f"{label} ignored; a scope operation is already running")
+            return
         callback()
 
     def test_connection(self) -> None:
