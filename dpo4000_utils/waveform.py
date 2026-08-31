@@ -59,8 +59,10 @@ class WaveformPreamble:
     """Outgoing waveform metadata captured after transfer-range configuration.
 
     ``record_point_count`` is retained for v0.6.0 API compatibility. On the
-    DPO4000, ``WFMOutpre:NR_Pt?`` reports the number of points in the currently
-    selected outgoing transfer window.
+    DPO4000, ``WFMOutpre:NR_Pt?`` is the number of points that ``CURVE?`` will
+    actually transmit. It may be lower than the number of source-record points
+    selected by ``DATA:START``/``DATA:STOP`` when the oscilloscope reduces the
+    outgoing representation of a long record.
     """
 
     byte_width: int
@@ -171,10 +173,18 @@ def normalize_waveform_source(source: str | int) -> str:
 
 def normalize_waveform_encoding(encoding: str) -> str:
     token = str(encoding or "").strip().upper().replace("_", "")
-    aliases = {"RI": "RIBINARY", "RP": "RPBINARY", "SRI": "SRIBINARY", "SRP": "SRPBINARY", "ASC": "ASCII"}
+    aliases = {
+        "RI": "RIBINARY",
+        "RP": "RPBINARY",
+        "SRI": "SRIBINARY",
+        "SRP": "SRPBINARY",
+        "ASC": "ASCII",
+    }
     token = aliases.get(token, token)
     if token not in WAVEFORM_ENCODINGS:
-        raise ValueError(f"Unsupported waveform encoding {encoding!r}; expected one of {WAVEFORM_ENCODINGS}.")
+        raise ValueError(
+            f"Unsupported waveform encoding {encoding!r}; expected one of {WAVEFORM_ENCODINGS}."
+        )
     return token
 
 
@@ -242,7 +252,11 @@ def _read_preamble(scope: Any) -> WaveformPreamble:
         encoding=_query_value(scope, "WFMOUTPRE:ENCDG?").upper(),
         binary_format=_query_value(scope, "WFMOUTPRE:BN_FMT?").upper(),
         byte_order=_query_value(scope, "WFMOUTPRE:BYT_OR?").upper(),
-        record_point_count=_query_int(scope, "WFMOUTPRE:NR_PT?", field="outgoing waveform point count"),
+        record_point_count=_query_int(
+            scope,
+            "WFMOUTPRE:NR_PT?",
+            field="outgoing waveform point count",
+        ),
         point_format=_query_value(scope, "WFMOUTPRE:PT_FMT?").upper(),
         x_unit=_query_value(scope, "WFMOUTPRE:XUNIT?"),
         x_increment=_query_float(scope, "WFMOUTPRE:XINCR?", field="X increment"),
@@ -260,39 +274,53 @@ def _validate_preamble(
     *,
     request_encoding: str,
     sample_width: int,
-    expected_count: int,
+    selected_record_points: int,
 ) -> None:
     if preamble.byte_width != sample_width:
         raise DPOWaveformError(
-            f"Scope did not apply requested waveform width: requested {sample_width}, preamble reports {preamble.byte_width}."
+            "Scope did not apply requested waveform width: "
+            f"requested {sample_width}, preamble reports {preamble.byte_width}."
         )
-    if preamble.record_point_count != expected_count:
+    if preamble.record_point_count <= 0:
         raise DPOWaveformError(
-            "Outgoing waveform count does not match applied DATA range: "
-            f"DATA range has {expected_count} points, WFMOUTPRE:NR_PT reports {preamble.record_point_count}."
+            f"Scope reported invalid outgoing waveform count {preamble.record_point_count}."
+        )
+    if preamble.record_point_count > selected_record_points:
+        raise DPOWaveformError(
+            "Outgoing waveform count cannot exceed applied DATA range: "
+            f"DATA range has {selected_record_points} source points, "
+            f"WFMOUTPRE:NR_PT reports {preamble.record_point_count}."
         )
     if preamble.point_format != "Y":
         raise DPOWaveformError(
             "Envelope/min-max waveform point format is not silently flattened by the v0.6 API. "
-            f"Scope reported PT_FMT={preamble.point_format!r}; use SAMPLE/HIRES/AVERAGE or add an explicit envelope-processing policy."
+            f"Scope reported PT_FMT={preamble.point_format!r}; use SAMPLE/HIRES/AVERAGE or "
+            "add an explicit envelope-processing policy."
         )
     if preamble.x_increment <= 0:
         raise DPOWaveformError(f"Scope reported invalid X increment {preamble.x_increment!r}.")
     if request_encoding == "ASCII":
         if not preamble.encoding.startswith("ASC"):
-            raise DPOWaveformError(f"Scope preamble encoding {preamble.encoding!r} does not match ASCII request.")
+            raise DPOWaveformError(
+                f"Scope preamble encoding {preamble.encoding!r} does not match ASCII request."
+            )
         return
     if not preamble.encoding.startswith("BIN"):
-        raise DPOWaveformError(f"Scope preamble encoding {preamble.encoding!r} is not binary after requesting {request_encoding}.")
+        raise DPOWaveformError(
+            f"Scope preamble encoding {preamble.encoding!r} is not binary after requesting "
+            f"{request_encoding}."
+        )
     signed, expected_order = _ENCODING_LAYOUT[request_encoding]
     expected_format = "RI" if signed else "RP"
     if preamble.binary_format != expected_format:
         raise DPOWaveformError(
-            f"Scope binary format does not match request: expected {expected_format}, got {preamble.binary_format!r}."
+            f"Scope binary format does not match request: expected {expected_format}, "
+            f"got {preamble.binary_format!r}."
         )
     if sample_width > 1 and preamble.byte_order != expected_order:
         raise DPOWaveformError(
-            f"Scope byte order does not match request: expected {expected_order}, got {preamble.byte_order!r}."
+            f"Scope byte order does not match request: expected {expected_order}, "
+            f"got {preamble.byte_order!r}."
         )
 
 
@@ -331,7 +359,8 @@ def parse_ieee_block_payload(raw_data: bytes) -> bytes:
     payload_end = length_end + payload_length
     if len(raw) < payload_end:
         raise DPOWaveformError(
-            f"Truncated IEEE waveform block: declared {payload_length} payload bytes, received {max(0, len(raw) - length_end)}."
+            f"Truncated IEEE waveform block: declared {payload_length} payload bytes, "
+            f"received {max(0, len(raw) - length_end)}."
         )
     trailing = raw[payload_end:]
     if trailing.strip(b"\r\n \t"):
@@ -339,13 +368,21 @@ def parse_ieee_block_payload(raw_data: bytes) -> bytes:
     return raw[length_end:payload_end]
 
 
-def decode_binary_samples(payload: bytes, *, sample_width: int, signed: bool, byte_order: str) -> array:
+def decode_binary_samples(
+    payload: bytes,
+    *,
+    sample_width: int,
+    signed: bool,
+    byte_order: str,
+) -> array:
     width = normalize_sample_width(sample_width)
     order = str(byte_order or "").strip().upper()
     if order not in {"MSB", "LSB"}:
         raise DPOWaveformError(f"Unsupported waveform byte order {byte_order!r}.")
     if len(payload) % width:
-        raise DPOWaveformError(f"Binary waveform payload length {len(payload)} is not divisible by width {width}.")
+        raise DPOWaveformError(
+            f"Binary waveform payload length {len(payload)} is not divisible by width {width}."
+        )
     if width == 1:
         values = array("b" if signed else "B")
         values.frombytes(payload)
@@ -362,14 +399,26 @@ def decode_binary_samples(payload: bytes, *, sample_width: int, signed: bool, by
 def _pyvisa_array_container(typecode: str):
     def build(values: Iterable[Any]) -> array:
         result = array(typecode)
-        result.extend(value[0] if isinstance(value, tuple) and len(value) == 1 else value for value in values)
+        result.extend(
+            value[0] if isinstance(value, tuple) and len(value) == 1 else value
+            for value in values
+        )
         return result
+
     return build
 
 
-def _read_binary_curve(scope: Any, *, preamble: WaveformPreamble, expected_count: int) -> array:
+def _read_binary_curve(
+    scope: Any,
+    *,
+    preamble: WaveformPreamble,
+    expected_count: int,
+) -> array:
     signed = preamble.binary_format == "RI"
-    typecode = "b" if preamble.byte_width == 1 and signed else "B" if preamble.byte_width == 1 else "h" if signed else "H"
+    if preamble.byte_width == 1:
+        typecode = "b" if signed else "B"
+    else:
+        typecode = "h" if signed else "H"
     query_binary_values = getattr(scope, "query_binary_values", None)
     if callable(query_binary_values):
         try:
@@ -394,12 +443,17 @@ def _read_binary_curve(scope: Any, *, preamble: WaveformPreamble, expected_count
             try:
                 values = array(typecode, values)
             except Exception as exc:
-                raise DPOWaveformError(f"Binary CURVE decoder returned unsupported sample container {type(values)!r}.") from exc
+                raise DPOWaveformError(
+                    "Binary CURVE decoder returned unsupported sample container "
+                    f"{type(values)!r}."
+                ) from exc
         return values
 
     read_raw = getattr(scope, "read_raw", None)
     if not callable(read_raw):
-        raise DPOWaveformError("Binary waveform acquisition requires query_binary_values() or read_raw().")
+        raise DPOWaveformError(
+            "Binary waveform acquisition requires query_binary_values() or read_raw()."
+        )
     try:
         with temporary_session_attributes(scope, read_termination=None):
             _write_required(scope, "CURVE?")
@@ -420,7 +474,11 @@ def _read_binary_curve(scope: Any, *, preamble: WaveformPreamble, expected_count
 
 def _read_source_label(scope: Any, source: str) -> str:
     if source.startswith(("CH", "REF")):
-        label = optional_query(scope, f"{source}:LABEL?", normalizer=normalize_scope_response_text)
+        label = optional_query(
+            scope,
+            f"{source}:LABEL?",
+            normalizer=normalize_scope_response_text,
+        )
         return label.strip() or source
     return source
 
@@ -457,41 +515,54 @@ def read_waveform(scope: Any, request: WaveformRequest) -> WaveformData:
 
     _write_required(scope, f"DATA:SOURCE {source}")
     _write_required(scope, f"DATA:START {requested_start}")
-    _write_required(scope, f"DATA:STOP {requested_stop if requested_stop is not None else FULL_WAVEFORM_STOP}")
+    _write_required(
+        scope,
+        f"DATA:STOP {requested_stop if requested_stop is not None else FULL_WAVEFORM_STOP}",
+    )
     _write_required(scope, f"DATA:WIDTH {sample_width}")
     _write_required(scope, f"DATA:ENCDG {encoding}")
 
     start, stop = _read_applied_range(scope)
     if start != requested_start:
         raise DPOWaveformError(
-            f"Scope adjusted DATA:START from requested {requested_start} to {start}; request is outside the available waveform."
+            f"Scope adjusted DATA:START from requested {requested_start} to {start}; "
+            "request is outside the available waveform."
         )
     if requested_stop is not None and stop != requested_stop:
         raise DPOWaveformError(
-            f"Scope adjusted DATA:STOP from requested {requested_stop} to {stop}; request exceeds the available waveform."
+            f"Scope adjusted DATA:STOP from requested {requested_stop} to {stop}; "
+            "request exceeds the available waveform."
         )
 
-    expected_count = stop - start + 1
+    selected_record_points = stop - start + 1
     preamble = _read_preamble(scope)
     _validate_preamble(
         preamble,
         request_encoding=encoding,
         sample_width=sample_width,
-        expected_count=expected_count,
+        selected_record_points=selected_record_points,
     )
+    transfer_count = preamble.record_point_count
     label = _read_source_label(scope, source)
 
     if encoding == "ASCII":
-        if expected_count > ASCII_MAX_POINTS:
+        if transfer_count > ASCII_MAX_POINTS:
             raise DPOWaveformError(
-                "ASCII CURVE transfers above 1,000,000 points are not supported by the DPO4000 family; use the default binary encoding."
+                "ASCII CURVE transfers above 1,000,000 outgoing points are not supported "
+                "by the DPO4000 family; use the default binary encoding."
             )
         samples = array("d", parse_ascii_curve(required_query(scope, "CURVE?")))
     else:
-        samples = _read_binary_curve(scope, preamble=preamble, expected_count=expected_count)
-    if len(samples) != expected_count:
+        samples = _read_binary_curve(
+            scope,
+            preamble=preamble,
+            expected_count=transfer_count,
+        )
+    if len(samples) != transfer_count:
         raise DPOWaveformError(
-            f"Waveform point-count mismatch: applied range contains {expected_count} points ({start}..{stop}), received {len(samples)}."
+            "Waveform point-count mismatch: "
+            f"WFMOUTPRE:NR_PT reports {transfer_count}, received {len(samples)} "
+            f"for selected DATA range {start}..{stop}."
         )
 
     return WaveformData(
@@ -561,8 +632,14 @@ def scale_waveform_samples(
     outgoing point after DATA:START has been applied.
     """
     _positive_index(start_index, field="Waveform start index")
-    times = [x_origin + (index - point_offset) * x_increment for index in range(len(raw_samples))]
-    volts = [(sample - y_offset) * y_multiplier + y_zero for sample in raw_samples]
+    times = [
+        x_origin + (index - point_offset) * x_increment
+        for index in range(len(raw_samples))
+    ]
+    volts = [
+        (sample - y_offset) * y_multiplier + y_zero
+        for sample in raw_samples
+    ]
     return times, volts
 
 
@@ -591,20 +668,27 @@ def validate_waveform_alignment(waveforms: Sequence[WaveformData]) -> None:
     for waveform in waveforms[1:]:
         if waveform.sample_count != reference.sample_count:
             raise DPOWaveformError(
-                f"Waveform sample-count mismatch: {reference.source} has {reference.sample_count}, {waveform.source} has {waveform.sample_count}."
+                "Waveform sample-count mismatch: "
+                f"{reference.source} has {reference.sample_count}, "
+                f"{waveform.source} has {waveform.sample_count}."
             )
         if waveform.start_index != reference.start_index or waveform.stop_index != reference.stop_index:
-            raise DPOWaveformError(f"Waveform transfer-range mismatch between {reference.source} and {waveform.source}.")
+            raise DPOWaveformError(
+                f"Waveform transfer-range mismatch between {reference.source} "
+                f"and {waveform.source}."
+            )
         for field in ("x_increment", "x_zero", "point_offset"):
             left = getattr(reference.preamble, field)
             right = getattr(waveform.preamble, field)
             if not _float_equal(left, right):
                 raise DPOWaveformError(
-                    f"Waveform X-axis mismatch for {field}: {reference.source}={left!r}, {waveform.source}={right!r}."
+                    f"Waveform X-axis mismatch for {field}: "
+                    f"{reference.source}={left!r}, {waveform.source}={right!r}."
                 )
         if waveform.preamble.x_unit != reference.preamble.x_unit:
             raise DPOWaveformError(
-                f"Waveform X-unit mismatch: {reference.source}={reference.preamble.x_unit!r}, {waveform.source}={waveform.preamble.x_unit!r}."
+                f"Waveform X-unit mismatch: {reference.source}={reference.preamble.x_unit!r}, "
+                f"{waveform.source}={waveform.preamble.x_unit!r}."
             )
 
 
@@ -634,15 +718,27 @@ def read_enabled_waveforms(
     return result
 
 
-def read_enabled_channel_waveforms(scope: Any, channels: Iterable[int] = range(1, 5)) -> tuple[list[float], dict[str, list[float]]]:
+def read_enabled_channel_waveforms(
+    scope: Any,
+    channels: Iterable[int] = range(1, 5),
+) -> tuple[list[float], dict[str, list[float]]]:
     waveforms = read_enabled_waveforms(scope, channels)
     values = list(waveforms.values())
-    return list(values[0].iter_times()), {w.display_name: list(w.iter_voltages()) for w in values}
+    return (
+        list(values[0].iter_times()),
+        {w.display_name: list(w.iter_voltages()) for w in values},
+    )
 
 
-def write_single_channel_csv(path: str | Path, times: Sequence[float], voltages: Sequence[float]) -> Path:
+def write_single_channel_csv(
+    path: str | Path,
+    times: Sequence[float],
+    voltages: Sequence[float],
+) -> Path:
     if len(times) != len(voltages):
-        raise DPOWaveformError(f"Cannot write CSV: {len(times)} time values but {len(voltages)} voltage values.")
+        raise DPOWaveformError(
+            f"Cannot write CSV: {len(times)} time values but {len(voltages)} voltage values."
+        )
     output = Path(path)
     output.parent.mkdir(parents=True, exist_ok=True)
     with output.open("w", newline="", encoding="utf-8") as handle:
@@ -652,13 +748,19 @@ def write_single_channel_csv(path: str | Path, times: Sequence[float], voltages:
     return output
 
 
-def write_multi_channel_csv(path: str | Path, times: Sequence[float], channel_data: Mapping[str, Sequence[float]]) -> Path:
+def write_multi_channel_csv(
+    path: str | Path,
+    times: Sequence[float],
+    channel_data: Mapping[str, Sequence[float]],
+) -> Path:
     if not channel_data:
         raise DPOWaveformError("No enabled channels found.")
     expected = len(times)
     for name, values in channel_data.items():
         if len(values) != expected:
-            raise DPOWaveformError(f"Cannot write aligned CSV: {name} has {len(values)} points, expected {expected}.")
+            raise DPOWaveformError(
+                f"Cannot write aligned CSV: {name} has {len(values)} points, expected {expected}."
+            )
     output = Path(path)
     output.parent.mkdir(parents=True, exist_ok=True)
     names = list(channel_data)
@@ -675,13 +777,21 @@ def write_waveform_csv(path: str | Path, waveform: WaveformData) -> Path:
     output.parent.mkdir(parents=True, exist_ok=True)
     with output.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
-        writer.writerow([f"Time ({waveform.preamble.x_unit or 's'})", f"{waveform.display_name} ({waveform.preamble.y_unit or 'V'})"])
+        writer.writerow(
+            [
+                f"Time ({waveform.preamble.x_unit or 's'})",
+                f"{waveform.display_name} ({waveform.preamble.y_unit or 'V'})",
+            ]
+        )
         for i in range(waveform.sample_count):
             writer.writerow([waveform.time_at(i), waveform.voltage_at(i)])
     return output
 
 
-def write_waveforms_csv(path: str | Path, waveforms: Mapping[str, WaveformData] | Sequence[WaveformData]) -> Path:
+def write_waveforms_csv(
+    path: str | Path,
+    waveforms: Mapping[str, WaveformData] | Sequence[WaveformData],
+) -> Path:
     values = list(waveforms.values()) if isinstance(waveforms, Mapping) else list(waveforms)
     validate_waveform_alignment(values)
     sources = [w.source for w in values]
@@ -691,9 +801,16 @@ def write_waveforms_csv(path: str | Path, waveforms: Mapping[str, WaveformData] 
     output.parent.mkdir(parents=True, exist_ok=True)
     with output.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
-        writer.writerow([f"Time ({values[0].preamble.x_unit or 's'})", *[w.display_name for w in values]])
+        writer.writerow(
+            [
+                f"Time ({values[0].preamble.x_unit or 's'})",
+                *[w.display_name for w in values],
+            ]
+        )
         for i in range(values[0].sample_count):
-            writer.writerow([values[0].time_at(i), *[w.voltage_at(i) for w in values]])
+            writer.writerow(
+                [values[0].time_at(i), *[w.voltage_at(i) for w in values]]
+            )
     return output
 
 
@@ -705,11 +822,19 @@ def save_enabled_channels_to_single_csv(scope: Any, filename: str | Path) -> Pat
     return write_waveforms_csv(filename, read_enabled_waveforms(scope))
 
 
-def save_enabled_channels_to_separate_csv(scope: Any, base_filename: str | Path) -> list[Path]:
+def save_enabled_channels_to_separate_csv(
+    scope: Any,
+    base_filename: str | Path,
+) -> list[Path]:
     base = Path(base_filename)
     written: list[Path] = []
     for waveform in read_enabled_waveforms(scope).values():
-        written.append(write_waveform_csv(base.with_name(f"{base.name}_{waveform.source}.csv"), waveform))
+        written.append(
+            write_waveform_csv(
+                base.with_name(f"{base.name}_{waveform.source}.csv"),
+                waveform,
+            )
+        )
     return written
 
 
@@ -737,12 +862,37 @@ class WaveformMixin:
 
 
 __all__ = [
-    "ASCII_MAX_POINTS", "BINARY_ENCODINGS", "FULL_WAVEFORM_STOP", "WAVEFORM_ENCODINGS", "WAVEFORM_SOURCES",
-    "WaveformData", "WaveformMixin", "WaveformPreamble", "WaveformRequest", "decode_binary_samples",
-    "enabled_channels", "normalize_channel_label", "normalize_sample_width", "normalize_waveform_encoding",
-    "normalize_waveform_source", "parse_ascii_curve", "parse_channel_enabled", "parse_ieee_block_payload",
-    "read_channel_waveform", "read_channel_waveform_data", "read_enabled_channel_waveforms", "read_enabled_waveforms",
-    "read_waveform", "save_channel_waveform_csv", "save_enabled_channels_to_separate_csv",
-    "save_enabled_channels_to_single_csv", "scale_waveform_samples", "validate_channel", "validate_waveform_alignment",
-    "write_multi_channel_csv", "write_single_channel_csv", "write_waveform_csv", "write_waveforms_csv",
+    "ASCII_MAX_POINTS",
+    "BINARY_ENCODINGS",
+    "FULL_WAVEFORM_STOP",
+    "WAVEFORM_ENCODINGS",
+    "WAVEFORM_SOURCES",
+    "WaveformData",
+    "WaveformMixin",
+    "WaveformPreamble",
+    "WaveformRequest",
+    "decode_binary_samples",
+    "enabled_channels",
+    "normalize_channel_label",
+    "normalize_sample_width",
+    "normalize_waveform_encoding",
+    "normalize_waveform_source",
+    "parse_ascii_curve",
+    "parse_channel_enabled",
+    "parse_ieee_block_payload",
+    "read_channel_waveform",
+    "read_channel_waveform_data",
+    "read_enabled_channel_waveforms",
+    "read_enabled_waveforms",
+    "read_waveform",
+    "save_channel_waveform_csv",
+    "save_enabled_channels_to_separate_csv",
+    "save_enabled_channels_to_single_csv",
+    "scale_waveform_samples",
+    "validate_channel",
+    "validate_waveform_alignment",
+    "write_multi_channel_csv",
+    "write_single_channel_csv",
+    "write_waveform_csv",
+    "write_waveforms_csv",
 ]

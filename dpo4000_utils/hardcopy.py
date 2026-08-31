@@ -98,7 +98,7 @@ def require_png_bytes(payload: bytes) -> bytes:
 
 
 def _normalize_format_response(response: str) -> str:
-    """Extract a safe HARDCOPY:FORMAT token from verbose or terse readback."""
+    """Extract a safe image-format token from verbose or terse readback."""
     text = str(response or "").strip().strip(";")
     if not text:
         return ""
@@ -108,16 +108,17 @@ def _normalize_format_response(response: str) -> str:
     return token
 
 
-def _read_hardcopy_format(instrument: Any) -> str:
+def _read_image_file_format(instrument: Any) -> str:
+    """Read the DPO4000 image format used by HARDCOPY START."""
     query = getattr(instrument, "query", None)
     if not callable(query):
         return ""
     try:
-        return _normalize_format_response(query("HARDCOPY:FORMAT?"))
+        return _normalize_format_response(query("SAVE:IMAGE:FILEFORMAT?"))
     except Exception as exc:
         # Some lightweight/fake backends do not expose query(). Capture can still
         # proceed; real transport loss will normally fail on the following write.
-        logger.debug("Could not read HARDCOPY:FORMAT before capture: %s", exc)
+        logger.debug("Could not read SAVE:IMAGE:FILEFORMAT before capture: %s", exc)
         return ""
 
 
@@ -129,10 +130,10 @@ def capture_screen_png(
 ) -> bytes:
     """Capture the oscilloscope display and return validated PNG bytes.
 
-    Only the hardcopy format is changed at instrument level. Unlike the legacy
-    path this does not issue ``*CLS``, does not alter HEADER/VERBOSE, and does not
-    modify SAVE:IMAGE settings. The previous HARDCOPY:FORMAT is restored when it
-    can be read back. VISA timeout/termination settings are restored exactly.
+    DPO4000/MSO4000 scopes select the image format for ``HARDCOPY START`` with
+    ``SAVE:IMAGE:FILEFORMAT``. The previous format is restored when it can be
+    read back. The capture path does not issue ``*CLS``, does not alter
+    HEADER/VERBOSE, and restores VISA timeout/termination settings exactly.
     """
     if instrument is None:
         from .errors import DPONotConnectedError
@@ -148,7 +149,7 @@ def capture_screen_png(
     except (TypeError, ValueError):
         transfer_timeout = int(timeout_ms)
 
-    previous_format = _read_hardcopy_format(instrument)
+    previous_format = _read_image_file_format(instrument)
     primary_error: BaseException | None = None
 
     try:
@@ -159,7 +160,7 @@ def capture_screen_png(
             write_termination="\n",
         ):
             try:
-                instrument.write("HARDCOPY:FORMAT PNG")
+                instrument.write("SAVE:IMAGE:FILEFORMAT PNG")
                 if command_delay_s:
                     time.sleep(command_delay_s)
                 instrument.write("HARDCOPY START")
@@ -177,22 +178,22 @@ def capture_screen_png(
     finally:
         if previous_format and previous_format != "PNG":
             try:
-                instrument.write(f"HARDCOPY:FORMAT {previous_format}")
+                instrument.write(f"SAVE:IMAGE:FILEFORMAT {previous_format}")
             except BaseException as restore_exc:
                 if primary_error is not None:
                     add_exception_note(
                         primary_error,
-                        f"Could not restore HARDCOPY:FORMAT {previous_format}: {restore_exc}",
+                        f"Could not restore SAVE:IMAGE:FILEFORMAT {previous_format}: {restore_exc}",
                     )
                     logger.warning(
-                        "Could not restore HARDCOPY:FORMAT %s after capture failure: %s",
+                        "Could not restore SAVE:IMAGE:FILEFORMAT %s after capture failure: %s",
                         previous_format,
                         restore_exc,
                     )
                 else:
                     raise HardcopyCaptureError(
-                        f"Captured image but could not restore HARDCOPY:FORMAT {previous_format}: "
-                        f"{restore_exc}"
+                        "Captured image but could not restore "
+                        f"SAVE:IMAGE:FILEFORMAT {previous_format}: {restore_exc}"
                     ) from restore_exc
 
 
