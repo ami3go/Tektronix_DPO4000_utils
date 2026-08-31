@@ -12,7 +12,17 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from PySide6.QtCore import QEventLoop, QObject, QRunnable, QThread, QThreadPool, Qt, Signal, Slot
+from PySide6.QtCore import (
+    QEventLoop,
+    QObject,
+    QRunnable,
+    QThread,
+    QThreadPool,
+    Qt,
+    QTimer,
+    Signal,
+    Slot,
+)
 
 from ..errors import add_exception_note, is_transport_error
 from ..instrument import DPO4054
@@ -167,6 +177,7 @@ class PersistentScopeSession(QObject):
         self._thread = QThread()
         self._worker = PersistentScopeWorker(scope_factory=scope_factory)
         self._worker.moveToThread(self._thread)
+        self._busy = False
         self.request.connect(
             self._worker.run_request,
             Qt.ConnectionType.QueuedConnection,
@@ -174,8 +185,24 @@ class PersistentScopeSession(QObject):
         self._thread.start()
 
     def _wait_for(self, request: PersistentScopeRequest) -> WorkerResult:
+        """Send one request and wait for its result on a nested event loop.
+
+        The wait is re-entrant by construction -- the nested loop keeps dispatching
+        GUI events, so a caller can arrive here again before the first request has
+        finished. That is refused rather than served: each call connects its own
+        handler, the earlier one is still connected, and a single completion would
+        wake both, handing the inner caller the outer request's result. The worker
+        serialises requests anyway, so there is nothing to gain by allowing it.
+        """
         if not self._thread.isRunning():
             return WorkerResult(error=RuntimeError("Persistent scope worker is not running."))
+        if self._busy:
+            return WorkerResult(
+                error=RuntimeError(
+                    "Persistent scope session is already executing a request; "
+                    "it serialises operations and cannot be re-entered."
+                )
+            )
 
         loop = QEventLoop()
         box: dict[str, WorkerResult | None] = {"result": None}
@@ -184,11 +211,24 @@ class PersistentScopeSession(QObject):
             box["result"] = result if isinstance(result, WorkerResult) else WorkerResult(value=result)
             loop.quit()
 
+        self._busy = True
         self._worker.finished.connect(on_finished)
         try:
             self.request.emit(request)
-            loop.exec()
+            # on_finished runs on the worker thread, so the result can already be in
+            # before the loop is entered; quit() called that early would be lost and
+            # strand the wait. The timer bounds the same window around exec() itself.
+            if box["result"] is None:
+                settled = QTimer()
+                settled.setInterval(25)
+                settled.timeout.connect(lambda: loop.quit() if box["result"] is not None else None)
+                settled.start()
+                try:
+                    loop.exec()
+                finally:
+                    settled.stop()
         finally:
+            self._busy = False
             try:
                 self._worker.finished.disconnect(on_finished)
             except (RuntimeError, TypeError):
