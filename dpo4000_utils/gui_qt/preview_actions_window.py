@@ -1,19 +1,31 @@
-"""Final DPO4000 Desk Preview/Image action semantics.
+"""Final DPO4000 Desk Preview/Image and optional retained-session semantics.
 
-The user-facing quick actions intentionally distinguish a transient in-memory
-screen preview from a persistent PNG image save.  Instrument access remains
-through the public driver API inherited from the existing desktop stack.
+The user-facing quick actions distinguish transient screen preview from persistent
+image save. Connection options can additionally retain one VISA session between
+operations; when disabled the established open/operate/close lifecycle is used.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QPixmap
-from PySide6.QtWidgets import QApplication, QHBoxLayout, QWidget
+from PySide6.QtGui import QCloseEvent, QPixmap
+from PySide6.QtWidgets import (
+    QApplication,
+    QCheckBox,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QWidget,
+)
 
+from ..errors import is_transport_error
 from .bus_window import QtScopeWindow as BusQtScopeWindow
+from .scope_worker import PersistentScopeSession
 
 
 QUICK_ACTION_TOOLTIPS = {
@@ -30,8 +42,177 @@ QUICK_ACTION_TOOLTIPS = {
 
 
 class QtScopeWindow(BusQtScopeWindow):
-    """Final launched window with distinct transient Preview and saved Image actions."""
+    """Final launched window with Preview/Image and optional persistent VISA session."""
 
+    def __init__(self, *args, **kwargs) -> None:
+        self._persistent_scope_session: PersistentScopeSession | None = None
+        self._persistent_session_dirty = False
+        super().__init__(*args, **kwargs)
+        self.keep_session.toggled.connect(self._on_keep_session_toggled)
+        self._connect_persistent_session_invalidation_signals()
+
+    # ------------------------------------------------------------------
+    # Connection-session policy
+    # ------------------------------------------------------------------
+    def _build_connection_tab(self):
+        page = super()._build_connection_tab()
+        body = page.widget() if hasattr(page, "widget") else page
+        options_card = None
+        if body is not None:
+            for card in body.findChildren(QGroupBox):
+                if card.title() == "Connection options":
+                    options_card = card
+                    break
+
+        if options_card is None:
+            options_card = self._card("Connection options")
+            form = QFormLayout(options_card)
+            self._prepare_form(form)
+            layout = body.layout() if body is not None else None
+            if layout is not None:
+                insert_index = max(0, layout.count() - 1)
+                layout.insertWidget(insert_index, options_card)
+        else:
+            form = options_card.layout()
+
+        self.keep_session = QCheckBox("Keep session")
+        self.keep_session.setChecked(False)
+        self.keep_session.setToolTip(
+            "Keep one VISA connection open and reuse it across scope operations. "
+            "Disable to open and close a new session for every operation."
+        )
+        if isinstance(form, QFormLayout):
+            form.addRow(self.keep_session)
+            hint = QLabel(
+                "Enabled: reuse one worker-owned VISA session for faster repeated operations "
+                "such as Preview. Disabled: open and close the scope for every operation."
+            )
+            hint.setObjectName("MutedLabel")
+            hint.setWordWrap(True)
+            form.addRow(hint)
+        return page
+
+    def _apply_preferences(self, preferences) -> None:
+        super()._apply_preferences(preferences)
+        if hasattr(self, "keep_session"):
+            self.keep_session.setChecked(bool(getattr(preferences, "keep_session", False)))
+
+    def _collect_preferences(self):
+        preferences = super()._collect_preferences()
+        if hasattr(self, "keep_session"):
+            preferences.keep_session = self.keep_session.isChecked()
+        return preferences
+
+    def _connect_persistent_session_invalidation_signals(self) -> None:
+        """Close a retained session when its selected connection definition changes."""
+        self.resource.currentTextChanged.connect(self._on_connection_definition_changed)
+        self.eth_host.textChanged.connect(self._on_connection_definition_changed)
+        self.eth_port.textChanged.connect(self._on_connection_definition_changed)
+        self.eth_protocol.currentTextChanged.connect(self._on_connection_definition_changed)
+        self.usb_mode.toggled.connect(self._on_connection_definition_changed)
+        self.eth_mode.toggled.connect(self._on_connection_definition_changed)
+
+    def _on_keep_session_toggled(self, checked: bool) -> None:
+        if checked:
+            self.statusBar().showMessage(
+                "Keep session enabled; the next scope operation will open and retain VISA"
+            )
+            return
+        self._release_persistent_scope_session()
+        self.statusBar().showMessage("Keep session disabled; using one VISA session per operation")
+
+    def _on_connection_definition_changed(self, *_args) -> None:
+        manager = self._persistent_scope_session
+        if manager is None or not self.keep_session.isChecked():
+            return
+        if getattr(self, "_operation_active", False):
+            self._persistent_session_dirty = True
+            return
+        self._release_persistent_scope_session()
+        self.statusBar().showMessage(
+            "Connection changed; retained session will reopen on the next operation"
+        )
+
+    def _persistent_session_manager(self) -> PersistentScopeSession:
+        manager = self._persistent_scope_session
+        if manager is None:
+            manager = PersistentScopeSession(parent=self)
+            self._persistent_scope_session = manager
+        return manager
+
+    def _release_persistent_scope_session(self, *, log: bool = True) -> None:
+        manager = self._persistent_scope_session
+        self._persistent_scope_session = None
+        self._persistent_session_dirty = False
+        if manager is None:
+            return
+        result = manager.shutdown()
+        manager.deleteLater()
+        if result.error is not None:
+            if log:
+                self._append_log(f"Could not close retained scope session: {result.error}")
+            return
+        if log:
+            self._append_log("Retained scope session closed")
+
+    def _finish_non_transport_action_error(self, description: str, exc: BaseException) -> None:
+        """Report validation/protocol errors without visually dropping a kept connection."""
+        error_text = str(exc).strip() or exc.__class__.__name__
+        self._operation_active = False
+        self._last_action = f"Failed: {description}"
+        self.statusBar().showMessage(f"Failed: {description}")
+        self._append_log(f"ERROR: {error_text}")
+        self._update_scope_control_enabled()
+        self._update_status_strip()
+        self._message(description, error_text, error=True)
+        return None
+
+    def _run_action(self, description: str, callback: Callable[[Any], object]) -> object | None:
+        keep_session = getattr(self, "keep_session", None)
+        if keep_session is None or not keep_session.isChecked():
+            return super()._run_action(description, callback)
+
+        self._operation_active = True
+        self._last_action = description
+        self.statusBar().showMessage(description)
+        self._append_log(description)
+        self._update_scope_control_enabled()
+        self._update_status_strip()
+        self.keep_session.setEnabled(False)
+
+        try:
+            resource = self._selected_resource()
+            timeout_ms = self._timeout()
+        except Exception as exc:  # noqa: BLE001 - exact GUI validation diagnostic.
+            self.keep_session.setEnabled(True)
+            return self._finish_non_transport_action_error(description, exc)
+
+        manager = self._persistent_session_manager()
+        try:
+            result = manager.execute(resource, timeout_ms, callback)
+        finally:
+            self.keep_session.setEnabled(True)
+
+        if self._persistent_session_dirty:
+            self._release_persistent_scope_session()
+
+        if result.error is not None:
+            if is_transport_error(result.error):
+                return self._finish_scope_action_error(description, result.error)
+            return self._finish_non_transport_action_error(description, result.error)
+        return self._finish_scope_action_success(description, result.value)
+
+    def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802 - Qt API name.
+        if getattr(self, "_operation_active", False) and self._persistent_scope_session is not None:
+            self.statusBar().showMessage("A scope operation is still active; close after it finishes")
+            event.ignore()
+            return
+        self._release_persistent_scope_session(log=False)
+        super().closeEvent(event)
+
+    # ------------------------------------------------------------------
+    # Preview / image actions
+    # ------------------------------------------------------------------
     def _build_preview_card(self):
         card = super()._build_preview_card()
         self.preview_label.setText("Select Preview to refresh the scope screen here.")
@@ -96,8 +277,6 @@ class QtScopeWindow(BusQtScopeWindow):
 
         result = self._run_action("Refreshing scope preview", action)
         if isinstance(result, (bytes, bytearray, memoryview)):
-            # Preview is intentionally transient.  Clear the saved-image marker so
-            # callers cannot mistake the current preview for a persisted file.
             self._last_image_path = None
             if self._show_preview_png(bytes(result)):
                 self.statusBar().showMessage("Scope preview refreshed (not saved)")
@@ -128,8 +307,6 @@ class QtScopeWindow(BusQtScopeWindow):
             try:
                 png_data = saved_path.read_bytes()
             except OSError:
-                # Retain the established file-backed fallback if the image was
-                # successfully saved but cannot immediately be re-read.
                 self._load_preview(saved_path)
                 return
             self._show_preview_png(png_data)
