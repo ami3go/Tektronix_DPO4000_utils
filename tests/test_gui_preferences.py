@@ -12,6 +12,7 @@ def test_gui_preferences_round_trip(tmp_path):
         visa_resource="TCPIP0::192.168.1.50::INSTR",
         ethernet_host="192.168.1.50",
         read_all_parameters_after_connection=False,
+        keep_session=True,
         output_folder="D:/scope-output",
         png_base="transient",
         png_add_timestamp=False,
@@ -28,6 +29,7 @@ def test_load_preferences_missing_file_returns_defaults(tmp_path):
     loaded = load_preferences(tmp_path / "missing.json")
 
     assert loaded == GuiPreferences()
+    assert loaded.keep_session is False
 
 
 def test_load_preferences_invalid_json_returns_defaults(tmp_path):
@@ -48,6 +50,7 @@ def test_partial_preferences_keep_defaults(tmp_path):
     assert loaded.connection_mode == "ethernet"
     assert loaded.timeout_ms == GuiPreferences().timeout_ms
     assert loaded.read_all_parameters_after_connection is True
+    assert loaded.keep_session is False
     assert loaded.png_prefix == GuiPreferences().png_prefix
 
 
@@ -57,6 +60,7 @@ def test_preferences_ignore_unknown_keys_and_coerce_bool_strings(tmp_path):
         json.dumps(
             {
                 "read_all_parameters_after_connection": "false",
+                "keep_session": "yes",
                 "png_add_timestamp": "false",
                 "csv_add_timestamp": "yes",
                 "unknown_old_key": "ignored",
@@ -68,6 +72,7 @@ def test_preferences_ignore_unknown_keys_and_coerce_bool_strings(tmp_path):
     loaded = load_preferences(path)
 
     assert loaded.read_all_parameters_after_connection is False
+    assert loaded.keep_session is True
     assert loaded.png_add_timestamp is False
     assert loaded.csv_add_timestamp is True
     assert not hasattr(loaded, "unknown_old_key")

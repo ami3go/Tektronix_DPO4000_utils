@@ -1,9 +1,9 @@
 """Background worker helpers for PySide6 scope actions.
 
 The GUI keeps the historical synchronous action API because many handlers update
-widgets from the returned readback value.  The actual VISA/SCPI session work is
-run on a Qt worker thread and synchronized back through a nested QEventLoop so
-instrument I/O is not executed on the GUI thread.
+widgets from the returned readback value. Short-lived actions continue to use the
+global Qt worker pool. Optional persistent sessions use one dedicated QThread so
+one DPO4054/VISA session is created, used, and closed on the same worker thread.
 """
 
 from __future__ import annotations
@@ -12,7 +12,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal, Slot
+from PySide6.QtCore import QEventLoop, QObject, QRunnable, QThread, QThreadPool, Qt, Signal, Slot
+
+from ..errors import add_exception_note, is_transport_error
+from ..instrument import DPO4054
 
 
 @dataclass(slots=True)
@@ -47,15 +50,185 @@ class ScopeWorker(QRunnable):
 
 
 def start_scope_worker(callback: Callable[[], Any]) -> ScopeWorker:
-    """Start *callback* on the global Qt thread pool and return the worker.
-
-    The returned worker must be kept alive by the caller until it emits
-    ``finished``.
-    """
+    """Start *callback* on the global Qt thread pool and return the worker."""
 
     worker = ScopeWorker(callback)
     QThreadPool.globalInstance().start(worker)
     return worker
 
 
-__all__ = ["ScopeWorker", "ScopeWorkerSignals", "WorkerResult", "start_scope_worker"]
+@dataclass(slots=True)
+class PersistentScopeRequest:
+    """One serialized operation for the persistent instrument worker."""
+
+    resource: str = ""
+    timeout_ms: int = 20_000
+    callback: Callable[[Any], Any] | None = None
+    close_only: bool = False
+
+
+class PersistentScopeWorker(QObject):
+    """Own one DPO4054 session and execute requests on one dedicated QThread."""
+
+    finished = Signal(object)
+
+    def __init__(self, scope_factory: Callable[..., Any] | None = None) -> None:
+        super().__init__()
+        self._scope_factory = scope_factory or DPO4054
+        self._scope: Any = None
+        self._resource = ""
+
+    def _configure_session(self, scope: Any, timeout_ms: int) -> None:
+        instrument = scope.ensure_connected()
+        instrument.timeout = int(timeout_ms)
+        instrument.write_termination = "\n"
+        instrument.read_termination = "\n"
+
+    def _close_scope(self) -> None:
+        scope = self._scope
+        self._scope = None
+        self._resource = ""
+        if scope is not None:
+            scope.disconnect()
+
+    def _ensure_scope(self, resource: str, timeout_ms: int) -> Any:
+        resource = str(resource).strip()
+        if not resource:
+            raise ValueError("VISA resource cannot be empty.")
+
+        if self._scope is not None and self._resource != resource:
+            self._close_scope()
+
+        if self._scope is None:
+            scope = self._scope_factory(
+                resource,
+                auto_connect=False,
+                timeout_ms=int(timeout_ms),
+                read_termination="\n",
+                write_termination="\n",
+            )
+            scope.connect()
+            self._scope = scope
+            self._resource = resource
+
+        self._configure_session(self._scope, timeout_ms)
+        return self._scope
+
+    @Slot(object)
+    def run_request(self, request: object) -> None:  # pragma: no cover - Qt runtime tested.
+        if not isinstance(request, PersistentScopeRequest):
+            self.finished.emit(WorkerResult(error=TypeError("Invalid persistent scope request.")))
+            return
+
+        try:
+            if request.close_only:
+                self._close_scope()
+                result = WorkerResult()
+            else:
+                scope = self._ensure_scope(request.resource, request.timeout_ms)
+                if request.callback is None:
+                    raise ValueError("Persistent scope request requires a callback.")
+                result = WorkerResult(value=request.callback(scope))
+        except BaseException as exc:  # noqa: BLE001 - preserve exact instrument failure.
+            if not request.close_only and is_transport_error(exc):
+                try:
+                    self._close_scope()
+                except BaseException as cleanup_exc:  # noqa: BLE001 - keep primary failure.
+                    add_exception_note(exc, f"Persistent-session cleanup failure: {cleanup_exc}")
+            result = WorkerResult(error=exc)
+
+        self.finished.emit(result)
+
+
+class PersistentScopeSession(QObject):
+    """GUI-thread facade for a dedicated worker-thread persistent scope session."""
+
+    request = Signal(object)
+
+    def __init__(
+        self,
+        *,
+        scope_factory: Callable[..., Any] | None = None,
+        parent: QObject | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._thread = QThread()
+        self._worker = PersistentScopeWorker(scope_factory=scope_factory)
+        self._worker.moveToThread(self._thread)
+        self.request.connect(
+            self._worker.run_request,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        self._thread.start()
+
+    def _wait_for(self, request: PersistentScopeRequest) -> WorkerResult:
+        if not self._thread.isRunning():
+            return WorkerResult(error=RuntimeError("Persistent scope worker is not running."))
+
+        loop = QEventLoop()
+        box: dict[str, WorkerResult | None] = {"result": None}
+
+        def on_finished(result: object) -> None:
+            box["result"] = result if isinstance(result, WorkerResult) else WorkerResult(value=result)
+            loop.quit()
+
+        self._worker.finished.connect(on_finished)
+        try:
+            self.request.emit(request)
+            loop.exec()
+        finally:
+            try:
+                self._worker.finished.disconnect(on_finished)
+            except (RuntimeError, TypeError):
+                pass
+
+        result = box["result"]
+        if result is None:
+            return WorkerResult(error=RuntimeError("Persistent scope worker finished without result."))
+        return result
+
+    def execute(
+        self,
+        resource: str,
+        timeout_ms: int,
+        callback: Callable[[Any], Any],
+    ) -> WorkerResult:
+        """Execute one callback, opening the session lazily and reusing it afterwards."""
+
+        return self._wait_for(
+            PersistentScopeRequest(
+                resource=resource,
+                timeout_ms=int(timeout_ms),
+                callback=callback,
+            )
+        )
+
+    def close_scope(self) -> WorkerResult:
+        """Close the retained instrument session on its owning worker thread."""
+
+        if not self._thread.isRunning():
+            return WorkerResult()
+        return self._wait_for(PersistentScopeRequest(close_only=True))
+
+    def shutdown(self, timeout_ms: int = 5_000) -> WorkerResult:
+        """Close the retained scope and stop the dedicated worker thread."""
+
+        if not self._thread.isRunning():
+            return WorkerResult()
+
+        result = self.close_scope()
+        self._thread.quit()
+        if not self._thread.wait(max(1, int(timeout_ms))):
+            return WorkerResult(error=RuntimeError("Persistent scope worker did not stop cleanly."))
+        return result
+
+
+__all__ = [
+    "PersistentScopeRequest",
+    "PersistentScopeSession",
+    "PersistentScopeWorker",
+    "ScopeWorker",
+    "ScopeWorkerSignals",
+    "WorkerResult",
+    "start_scope_worker",
+]
