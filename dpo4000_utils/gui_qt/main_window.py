@@ -751,6 +751,9 @@ class QtScopeWindow(QMainWindow):
     def _safe_label_text(text: str) -> str:
         return text.replace('"', "'")[:30]
 
+    def _rearm_after_image_enabled(self) -> bool:
+        return self.rearm_after_image.isChecked()
+
     def _trigger_channel_or_none(self) -> int | None:
         value = self.trigger_channel_after_image.currentText().strip()
         if not value:
@@ -905,7 +908,7 @@ class QtScopeWindow(QMainWindow):
 
     def _capture_image_to(self, path: Path, description: str) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        rearm = self.rearm_after_image.isChecked()
+        rearm = self._rearm_after_image_enabled()
         trigger_channel = self._trigger_channel_or_none()
 
         def action(scope: DPO4054) -> str:

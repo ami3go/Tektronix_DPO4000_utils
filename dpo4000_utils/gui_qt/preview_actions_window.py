@@ -266,7 +266,7 @@ class QtScopeWindow(BusQtScopeWindow):
 
     def capture_preview(self) -> None:
         """Refresh the screen preview entirely in memory; do not create a user file."""
-        rearm = self.rearm_after_image.isChecked()
+        rearm = self._rearm_after_image_enabled()
         trigger_channel = self._trigger_channel_or_none()
 
         def action(scope) -> bytes:
@@ -291,7 +291,7 @@ class QtScopeWindow(BusQtScopeWindow):
     def _capture_image_to(self, path: Path, description: str) -> None:
         """Save a PNG image and make the saved full-resolution image the current preview."""
         path.parent.mkdir(parents=True, exist_ok=True)
-        rearm = self.rearm_after_image.isChecked()
+        rearm = self._rearm_after_image_enabled()
         trigger_channel = self._trigger_channel_or_none()
 
         def action(scope) -> str:

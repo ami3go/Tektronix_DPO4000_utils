@@ -54,7 +54,7 @@ class QtScopeWindow(UiQtScopeWindow):
 
     def _capture_image_to(self, path: Path, description: str) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        rearm = self.rearm_after_image.isChecked()
+        rearm = self._rearm_after_image_enabled()
         trigger_channel = self._trigger_channel_or_none()
 
         def action(scope) -> str:

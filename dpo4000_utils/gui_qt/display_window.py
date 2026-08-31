@@ -6,6 +6,8 @@ scope display controls into their own Display top-menu page.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QButtonGroup,
@@ -23,7 +25,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .stable_window import QtScopeWindow as StableQtScopeWindow
+from .stable_window import TRIGGER_PAGE_INDEX, QtScopeWindow as StableQtScopeWindow
 from .ui_practice_window import SHORTCUTS
 
 CONTROL_TAB_TITLES = (
@@ -173,6 +175,29 @@ class QtScopeWindow(StableQtScopeWindow):
         update_controls = getattr(self, "_update_scope_control_enabled", None)
         if callable(update_controls):
             update_controls()
+
+    # ------------------------------------------------------------------
+    # Lazy-page-safe widget accessors
+    # ------------------------------------------------------------------
+    # Quick actions can run before the page owning their widgets has been built,
+    # so the build guard lives on the accessor rather than on each action. Guarding
+    # the action instead is not safe here: later layers override the actions and a
+    # missed super() call silently drops the guard.
+    def _build_output_path(self, kind: str) -> Path:
+        self._ensure_control_page_built(FILE_PAGE_INDEX)
+        return super()._build_output_path(kind)
+
+    def _configured_output_folder(self, *, create: bool = True) -> Path:
+        self._ensure_control_page_built(FILE_PAGE_INDEX)
+        return super()._configured_output_folder(create=create)
+
+    def _rearm_after_image_enabled(self) -> bool:
+        self._ensure_control_page_built(TRIGGER_PAGE_INDEX)
+        return super()._rearm_after_image_enabled()
+
+    def _trigger_channel_or_none(self) -> int | None:
+        self._ensure_control_page_built(TRIGGER_PAGE_INDEX)
+        return super()._trigger_channel_or_none()
 
     def _install_global_shortcuts(self) -> None:
         """Install global action shortcuts plus Ctrl+1..8 page navigation."""
