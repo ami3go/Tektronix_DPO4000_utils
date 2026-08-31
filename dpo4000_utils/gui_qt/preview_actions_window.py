@@ -172,6 +172,12 @@ class QtScopeWindow(BusQtScopeWindow):
         if keep_session is None or not keep_session.isChecked():
             return super()._run_action(description, callback)
 
+        # The retained-session path does not delegate to super(), so it needs the
+        # same re-entry guard; here re-entry would also queue a second request
+        # behind the one the nested event loop is still waiting on.
+        if self._reject_reentrant_scope_action(description):
+            return None
+
         self._operation_active = True
         self._last_action = description
         self.statusBar().showMessage(description)

@@ -17,6 +17,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 QtWidgets = pytest.importorskip("PySide6.QtWidgets")
 
+from dpo4000_utils.gui_qt.display_window import FILE_PAGE_INDEX  # noqa: E402
 from dpo4000_utils.gui_qt.ui_polish_window import QtScopeWindow  # noqa: E402
 
 
@@ -103,6 +104,55 @@ def test_shortcut_cannot_reenter_run_action_during_an_operation(window, monkeypa
     assert descriptions == ["Refreshing scope preview"], (
         f"shortcut re-entered _run_action while an operation was active: {descriptions}"
     )
+
+
+def test_default_setup_button_is_registered_as_a_scope_control(window):
+    """The v0.6.7 Default button was in neither callback set, so it was never disabled."""
+    window._select_drawer_page(FILE_PAGE_INDEX)
+    default_button = next(
+        (b for b in window.findChildren(QtWidgets.QAbstractButton) if b.text() == "Default"),
+        None,
+    )
+    assert default_button is not None, "Default button not found on the File page"
+    assert default_button in window._scope_controls
+
+    window._operation_active = True
+    window._update_scope_control_enabled()
+    assert not default_button.isEnabled()
+
+
+@pytest.mark.parametrize("label", ("Default", "IDN"))
+def test_still_enabled_buttons_cannot_re_enter_run_action(window, monkeypatch, label):
+    """Catch-all: even a button that stays enabled must not start a second session."""
+    window._select_drawer_page(FILE_PAGE_INDEX)
+    descriptions: list[str] = []
+    monkeypatch.setattr(
+        QtScopeWindow,
+        "_run_snapshot_scope_session",
+        staticmethod(lambda *args, **kwargs: None),
+    )
+    monkeypatch.setattr(
+        QtScopeWindow,
+        "_selected_resource",
+        lambda self: "TCPIP0::127.0.0.1::INSTR",
+    )
+    original = QtScopeWindow._run_action
+
+    def spy(self, description, callback):
+        descriptions.append(description)
+        return original(self, description, callback)
+
+    monkeypatch.setattr(QtScopeWindow, "_run_action", spy)
+
+    window._operation_active = True
+    button = next(b for b in window.findChildren(QtWidgets.QAbstractButton) if b.text() == label)
+    button.setEnabled(True)  # force the pre-fix condition even once classified
+    button.click()
+
+    assert descriptions, f"{label} did not reach _run_action at all"
+    assert window.statusBar().currentMessage().endswith(
+        "a scope operation is already running"
+    ), f"{label} was not refused: {window.statusBar().currentMessage()!r}"
 
 
 def test_idle_shortcut_still_reaches_run_action(window, monkeypatch):

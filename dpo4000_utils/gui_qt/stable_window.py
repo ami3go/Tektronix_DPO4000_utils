@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from PySide6.QtCore import QEventLoop
+from PySide6.QtCore import QEventLoop, QTimer
 
 from ..instrument import DPO4054
 from .collapsible_window import (
@@ -32,6 +32,22 @@ from .scope_worker import WorkerResult, start_scope_worker
 class QtScopeWindow(MatureQtScopeWindow):
     """Stable launched Qt window with worker-threaded scope actions."""
 
+    def _reject_reentrant_scope_action(self, description: str) -> bool:
+        """Return True when *description* must be refused because one is in flight.
+
+        Disabling scope-action buttons does not cover every caller: shortcuts are
+        not buttons, and a handler whose callback is classified neither as a scope
+        action nor as safe UI is never registered for disabling at all. Since
+        ``_run_action`` waits in a nested event loop that keeps dispatching input,
+        the last line of defence belongs here, where re-entry would actually open a
+        second instrument session.
+        """
+        if not getattr(self, "_operation_active", False):
+            return False
+        self._append_log(f"Ignored while another operation is running: {description}")
+        self.statusBar().showMessage(f"{description} ignored; a scope operation is already running")
+        return True
+
     def _run_action(self, description: str, callback: Callable[[Any], object]) -> object | None:
         """Run a scope action through a Qt worker thread while preserving return values.
 
@@ -42,6 +58,8 @@ class QtScopeWindow(MatureQtScopeWindow):
         thread remains free to repaint/process Qt events, while the instrument
         I/O itself does not run on the GUI thread.
         """
+        if self._reject_reentrant_scope_action(description):
+            return None
         self._operation_active = True
         self._last_action = description
         self.statusBar().showMessage(description)
@@ -55,7 +73,6 @@ class QtScopeWindow(MatureQtScopeWindow):
         except Exception as exc:  # noqa: BLE001 - show exact GUI validation failure.
             return self._finish_scope_action_error(description, exc)
 
-        worker = start_scope_worker(lambda: self._run_snapshot_scope_session(resource, timeout_ms, callback))
         loop = QEventLoop(self)
         box: dict[str, WorkerResult | None] = {"result": None}
 
@@ -63,9 +80,26 @@ class QtScopeWindow(MatureQtScopeWindow):
             box["result"] = result if isinstance(result, WorkerResult) else WorkerResult(value=result)
             loop.quit()
 
-        worker.signals.finished.connect(on_finished)
+        # The handler must be connected before the worker starts, and the loop must
+        # not be entered once the result is already in. A callback that fails fast --
+        # pyvisa missing, so connect() raises immediately -- otherwise finishes before
+        # the GUI thread reaches loop.exec(), and the wakeup is lost for good.
+        worker = start_scope_worker(
+            lambda: self._run_snapshot_scope_session(resource, timeout_ms, callback),
+            on_finished=on_finished,
+        )
         self._active_scope_worker = worker
-        loop.exec()
+        if box["result"] is None:
+            # Bound the wait so a result landing between the check above and exec()
+            # below cannot strand the loop either.
+            settled = QTimer()
+            settled.setInterval(25)
+            settled.timeout.connect(lambda: loop.quit() if box["result"] is not None else None)
+            settled.start()
+            try:
+                loop.exec()
+            finally:
+                settled.stop()
         self._active_scope_worker = None
 
         result = box["result"]

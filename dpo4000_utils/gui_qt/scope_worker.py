@@ -49,10 +49,22 @@ class ScopeWorker(QRunnable):
         self.signals.finished.emit(result)
 
 
-def start_scope_worker(callback: Callable[[], Any]) -> ScopeWorker:
-    """Start *callback* on the global Qt thread pool and return the worker."""
+def start_scope_worker(
+    callback: Callable[[], Any],
+    *,
+    on_finished: Callable[[object], None] | None = None,
+) -> ScopeWorker:
+    """Start *callback* on the global Qt thread pool and return the worker.
+
+    Pass ``on_finished`` rather than connecting to ``worker.signals.finished``
+    after this returns: a fast callback can complete before the caller connects,
+    and the resulting emission would be delivered to nobody. A caller waiting on
+    a nested event loop would then never be woken.
+    """
 
     worker = ScopeWorker(callback)
+    if on_finished is not None:
+        worker.signals.finished.connect(on_finished)
     QThreadPool.globalInstance().start(worker)
     return worker
 

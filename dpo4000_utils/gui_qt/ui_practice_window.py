@@ -30,6 +30,7 @@ SCOPE_ACTION_CALLBACKS = {
     "save_csv",
     "save_settings",
     "restore_settings",
+    "restore_default_scope_setup",
     "read_labels",
     "apply_labels",
     "read_channel_configuration",
