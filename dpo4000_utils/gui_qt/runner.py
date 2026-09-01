@@ -21,7 +21,7 @@ def main() -> int:
         ) from exc
 
     # Previous launched layer retained in history: from .automation_burst_window import QtScopeWindow
-    from .automation_retention_window import QtScopeWindow
+    from .automation_retention_review_window import QtScopeWindow
     from .startup_debug import install_startup_debug_probe, parse_startup_debug_args
 
     startup_debug = parse_startup_debug_args(sys.argv)
