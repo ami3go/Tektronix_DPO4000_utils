@@ -33,7 +33,13 @@ class BurstConfig:
     def __post_init__(self) -> None:
         if isinstance(self.count, bool):
             raise ValueError("Burst count must be a positive integer.")
-        count = int(self.count)
+        try:
+            numeric_count = float(self.count)
+            count = int(self.count)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError("Burst count must be a positive integer.") from exc
+        if not math.isfinite(numeric_count) or numeric_count != float(count):
+            raise ValueError("Burst count must be a positive integer.")
         if count < 1:
             raise ValueError("Burst count must be a positive integer.")
         if count > 1_000_000:
@@ -46,6 +52,8 @@ class BurstConfig:
         if delay > MAX_PERIODIC_INTERVAL_S:
             raise ValueError("Burst delay must not exceed 7 days.")
         action = normalize_artifact_action(self.action)
+        if not isinstance(self.single_acquisition, bool):
+            raise ValueError("Burst Single acquisition setting must be boolean.")
         poll = TriggerImageConfig(
             poll_interval_s=float(self.poll_interval_s),
             rearm=False,
@@ -53,7 +61,6 @@ class BurstConfig:
         object.__setattr__(self, "count", count)
         object.__setattr__(self, "delay_s", delay)
         object.__setattr__(self, "action", action)
-        object.__setattr__(self, "single_acquisition", bool(self.single_acquisition))
         object.__setattr__(self, "poll_interval_s", poll)
 
 
