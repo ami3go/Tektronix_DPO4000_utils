@@ -12,6 +12,7 @@ from .bundle import (
     acquire_trigger_bundle,
     collision_safe_bundle_paths,
 )
+from .burst import BurstConfig, BurstEventResult, run_burst_event
 from .conditional import (
     CONDITION_OPERATORS,
     ConditionEvaluation,
@@ -49,6 +50,8 @@ __all__ = [
     "AutomationEventToken",
     "AutomationState",
     "AutomationStatistics",
+    "BurstConfig",
+    "BurstEventResult",
     "CONDITION_OPERATORS",
     "CancelSignal",
     "ConditionEvaluation",
@@ -72,6 +75,7 @@ __all__ = [
     "normalize_artifact_action",
     "normalize_measurement_slots",
     "parse_measurement_value",
+    "run_burst_event",
     "run_conditional_poll",
     "save_full_record_csv",
     "trigger_acquisition_complete",

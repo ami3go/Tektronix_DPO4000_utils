@@ -19,6 +19,7 @@ QT_MEASUREMENT_WINDOW = ROOT / "dpo4000_utils" / "gui_qt" / "automation_measurem
 QT_MEASUREMENT_REVIEW_WINDOW = ROOT / "dpo4000_utils" / "gui_qt" / "automation_measurement_review_window.py"
 QT_CONDITIONAL_WINDOW = ROOT / "dpo4000_utils" / "gui_qt" / "automation_conditional_window.py"
 QT_CONDITIONAL_REVIEW_WINDOW = ROOT / "dpo4000_utils" / "gui_qt" / "automation_conditional_review_window.py"
+QT_BURST_WINDOW = ROOT / "dpo4000_utils" / "gui_qt" / "automation_burst_window.py"
 QT_BOUNDARY_FILES = (
     QT_API_ADAPTER,
     QT_DESKTOP_WINDOW,
@@ -35,6 +36,7 @@ QT_BOUNDARY_FILES = (
     QT_MEASUREMENT_REVIEW_WINDOW,
     QT_CONDITIONAL_WINDOW,
     QT_CONDITIONAL_REVIEW_WINDOW,
+    QT_BURST_WINDOW,
 )
 
 
@@ -53,8 +55,8 @@ def test_desktop_entrypoint_uses_final_pyside_window():
     package_init = (ROOT / "dpo4000_utils" / "gui_qt" / "__init__.py").read_text(encoding="utf-8")
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
 
-    assert "from .automation_conditional_review_window import QtScopeWindow" in runner
-    assert "from .automation_conditional_review_window import QtScopeWindow" in package_init
+    assert "from .automation_burst_window import QtScopeWindow" in runner
+    assert "from .automation_burst_window import QtScopeWindow" in package_init
     assert 'dpo4000-desk = "dpo4000_utils.gui_qt.runner:main"' in pyproject
     assert "dpo4000-gui" not in pyproject
 
@@ -170,6 +172,15 @@ def test_conditional_window_delegates_scope_io_to_framework_neutral_helper():
     assert "CURVE?" not in source
     assert ".query(" not in review_source
     assert ".write(" not in review_source
+
+
+def test_burst_window_delegates_scope_io_and_has_no_gui_loop():
+    source = QT_BURST_WINDOW.read_text(encoding="utf-8")
+    assert "run_burst_event(" in source
+    assert "while True" not in source
+    assert ".query(" not in source
+    assert ".write(" not in source
+    assert "CURVE?" not in source
 
 
 def test_connection_test_feedback_is_non_modal_and_refreshes_scope_cards():

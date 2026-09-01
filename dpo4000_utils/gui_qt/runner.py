@@ -20,7 +20,7 @@ def main() -> int:
             "  python -m pip install -r requirements-pyside6.txt\n"
         ) from exc
 
-    from .automation_conditional_review_window import QtScopeWindow
+    from .automation_burst_window import QtScopeWindow
     from .startup_debug import install_startup_debug_probe, parse_startup_debug_args
 
     startup_debug = parse_startup_debug_args(sys.argv)
