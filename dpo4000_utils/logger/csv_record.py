@@ -3,16 +3,13 @@
 from __future__ import annotations
 
 import csv
-from array import array
 from pathlib import Path
 
 from .models import LoggerRecord, WaveformSnapshot
 
 
-def _raw_values(snapshot: WaveformSnapshot) -> array:
-    values = array(snapshot.typecode)
-    values.frombytes(snapshot.sample_bytes)
-    return values
+def _raw_values(snapshot: WaveformSnapshot):
+    return snapshot.samples()
 
 
 def write_waveform_record_csv(path: str | Path, record: LoggerRecord) -> Path:

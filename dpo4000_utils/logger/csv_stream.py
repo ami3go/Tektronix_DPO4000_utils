@@ -4,16 +4,13 @@ from __future__ import annotations
 
 import csv
 import os
-from array import array
 from pathlib import Path
 
 from .models import LoggerRecord, WaveformSnapshot
 
 
-def _samples(snapshot: WaveformSnapshot) -> array:
-    values = array(snapshot.typecode)
-    values.frombytes(snapshot.sample_bytes)
-    return values
+def _samples(snapshot: WaveformSnapshot):
+    return snapshot.samples()
 
 
 class WaveformCsvStreamWriter:

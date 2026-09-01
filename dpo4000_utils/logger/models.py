@@ -6,7 +6,7 @@ import math
 import sys
 from array import array
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import timezone
 from enum import Enum
 from typing import Any, Mapping
 
@@ -82,6 +82,13 @@ class WaveformSnapshot:
     def samples(self) -> array:
         values = array(self.typecode)
         values.frombytes(self.sample_bytes)
+        stored_order = str(self.byte_order).lower()
+        if values.itemsize > 1 and stored_order in {"little", "big"} and stored_order != sys.byteorder:
+            values.byteswap()
+        if len(values) != self.sample_count:
+            raise ValueError(
+                f"Waveform snapshot sample count mismatch: metadata={self.sample_count}, bytes={len(values)}."
+            )
         return values
 
     def time_at(self, index: int) -> float:
