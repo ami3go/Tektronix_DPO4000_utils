@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dpo4000-utils"
-version = "0.6.23"
+version = "0.6.24"
 description = "Python driver and PySide6 DPO4000 Desk GUI for Tektronix DPO4000/DPO4054 oscilloscopes"
 readme = "README.md"
 requires-python = ">=3.10"
