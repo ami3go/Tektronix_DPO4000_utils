@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import sys
-from pathlib import Path
 
 import pytest
 
@@ -10,6 +9,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 QtCore = pytest.importorskip("PySide6.QtCore")
 QtWidgets = pytest.importorskip("PySide6.QtWidgets")
+QtCore = pytest.importorskip("PySide6.QtCore")
 
 from dpo4000_utils.gui_qt.display_window import (  # noqa: E402
     CONTROL_PAGE_BUILDERS,
@@ -129,14 +129,35 @@ def test_display_page_builds_display_controls():
         app.processEvents()
 
 
-def test_stable_qt_worker_metadata_is_present():
-    content = Path("dpo4000_utils/gui_qt/stable_window.py").read_text(encoding="utf-8")
-    worker = Path("dpo4000_utils/gui_qt/scope_worker.py").read_text(encoding="utf-8")
+def test_scope_actions_run_off_the_gui_thread():
+    """The worker callback must not execute on the thread that owns the widgets."""
+    import threading
 
-    assert "QEventLoop" in content
-    assert "start_scope_worker" in content
-    assert "_run_snapshot_scope_session" in content
-    assert "DPO4054(resource, auto_connect=False)" in content
-    assert "instrument.timeout = timeout_ms" in content
-    assert "class ScopeWorker(QRunnable)" in worker
-    assert "QThreadPool.globalInstance().start(worker)" in worker
+    from dpo4000_utils.gui_qt.scope_worker import start_scope_worker
+
+    app = _app()
+    gui_thread = threading.current_thread().ident
+    seen = {}
+    loop = QtCore.QEventLoop()
+
+    def on_finished(result):
+        seen["result"] = result
+        loop.quit()
+
+    worker = start_scope_worker(
+        lambda: seen.setdefault("ran_on", threading.current_thread().ident),
+        on_finished=on_finished,
+    )
+    guard = QtCore.QTimer()
+    guard.setInterval(25)
+    guard.timeout.connect(lambda: loop.quit() if "result" in seen else None)
+    guard.start()
+    try:
+        loop.exec()
+    finally:
+        guard.stop()
+    app.processEvents()
+    del worker
+
+    assert "ran_on" in seen, "the worker callback never ran"
+    assert seen["ran_on"] != gui_thread, "scope I/O ran on the GUI thread"

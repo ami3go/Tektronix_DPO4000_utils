@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 import sys
 import threading
-from pathlib import Path
 
 import pytest
 
@@ -157,9 +156,36 @@ def test_keep_session_checkbox_defaults_off_and_persists_when_enabled(tmp_path):
     assert load_preferences(preferences_path).keep_session is True
 
 
-def test_unchecked_keep_session_preserves_existing_per_operation_fallback():
-    source = Path("dpo4000_utils/gui_qt/preview_actions_window.py").read_text(encoding="utf-8")
+def test_unchecked_keep_session_falls_back_to_one_session_per_operation():
+    """With the box unchecked, _run_action must delegate to the per-operation path."""
+    app = _app()
+    window = QtScopeWindow()
+    try:
+        window.keep_session.setChecked(False)
+        delegated = []
+        base = type(window).__mro__[1]
+        original = base._run_action
+        base._run_action = lambda self, d, cb: delegated.append(d)
+        try:
+            window._run_action("Testing scope connection", lambda scope: None)
+        finally:
+            base._run_action = original
 
-    assert 'QCheckBox("Keep session")' in source
-    assert "if keep_session is None or not keep_session.isChecked():" in source
-    assert "return super()._run_action(description, callback)" in source
+        assert delegated == ["Testing scope connection"]
+        assert window._persistent_scope_session is None, "no retained session should be opened"
+    finally:
+        window.close()
+        window.deleteLater()
+        app.processEvents()
+
+
+def test_keep_session_checkbox_is_offered_on_the_connection_page():
+    app = _app()
+    window = QtScopeWindow()
+    try:
+        assert window.keep_session.text() == "Keep session"
+        assert not window.keep_session.isChecked(), "retaining a session must be opt-in"
+    finally:
+        window.close()
+        window.deleteLater()
+        app.processEvents()

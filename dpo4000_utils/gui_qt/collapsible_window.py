@@ -166,7 +166,9 @@ class CollapsibleCard(QFrame):
 
     def mousePressEvent(self, event) -> None:  # noqa: N802 - Qt override name.
         """Toggle only when the compact card header area is clicked."""
-        if event.button() == Qt.MouseButton.LeftButton and self._header.geometry().contains(event.pos()):
+        # position() rather than the pos() deprecated in Qt 6.
+        point = event.position().toPoint()
+        if event.button() == Qt.MouseButton.LeftButton and self._header.geometry().contains(point):
             self.set_expanded(not self._expanded)
             event.accept()
             return
