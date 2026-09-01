@@ -32,6 +32,8 @@ def test_measurement_slot_validation_preserves_order_and_deduplicates() -> None:
         normalize_measurement_slots([])
     with pytest.raises(ValueError, match="MEAS1 and MEAS8"):
         normalize_measurement_slots([9])
+    with pytest.raises(ValueError, match="integers"):
+        normalize_measurement_slots([True])
 
 
 def test_a5_appends_fixed_columns_and_keeps_one_csv(tmp_path: Path) -> None:
@@ -81,6 +83,22 @@ def test_a5_non_transport_slot_failure_keeps_column_empty(tmp_path: Path) -> Non
     assert rows[-1][-2:] == ["", "2.0"]
 
 
+def test_a5_rejects_existing_csv_with_different_header(tmp_path: Path) -> None:
+    path = tmp_path / "measurements.csv"
+    path.write_text("utc_timestamp,local_timestamp,elapsed_s,MEAS1\n", encoding="utf-8")
+
+    result = append_measurement_row(
+        _FakeScope(),
+        path,
+        [1, 2],
+        run_started_utc=datetime.now(timezone.utc),
+    )
+
+    assert result.success is False
+    assert "header does not match" in result.error
+    assert path.read_text(encoding="utf-8").count("\n") == 1
+
+
 def test_a5_transport_failure_propagates(tmp_path: Path) -> None:
     scope = _FakeScope({1: DPOTransportError("lost")})
 
@@ -98,8 +116,13 @@ def test_a5_gui_stays_behind_public_driver_boundary() -> None:
     source = (root / "dpo4000_utils" / "gui_qt" / "automation_measurement_window.py").read_text(
         encoding="utf-8"
     )
+    review_source = (
+        root / "dpo4000_utils" / "gui_qt" / "automation_measurement_review_window.py"
+    ).read_text(encoding="utf-8")
 
     assert "append_measurement_row(" in source
     assert ".query(" not in source
     assert ".write(" not in source
     assert "MEASUREMENT:" not in source
+    assert "operation_active" in review_source
+    assert "checkbox.setEnabled(editable)" in review_source

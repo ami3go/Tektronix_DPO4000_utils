@@ -31,6 +31,8 @@ def normalize_measurement_slots(slots: Iterable[int]) -> tuple[int, ...]:
 
     normalized: list[int] = []
     for raw in slots:
+        if isinstance(raw, bool):
+            raise ValueError("Measurement logger slots must be integers from 1 to 8.")
         slot = int(raw)
         if slot not in MEASUREMENT_SLOTS:
             raise ValueError("Measurement logger slots must be between MEAS1 and MEAS8.")
@@ -58,9 +60,8 @@ def append_measurement_row(
     """Read selected measurement slots and append one fixed-column CSV row.
 
     A non-transport read failure for one slot is represented by an empty CSV field
-    and returned in ``slot_errors``. Transport failures propagate. Filesystem
-    failures are returned as structured output errors so they are not mistaken for
-    instrument disconnects.
+    and returned in ``slot_errors``. Transport failures propagate. Filesystem or
+    schema failures are returned as structured output errors.
     """
 
     selected = normalize_measurement_slots(slots)
@@ -90,6 +91,16 @@ def append_measurement_row(
 
     try:
         write_header = not target.exists() or target.stat().st_size == 0
+        if not write_header:
+            with target.open("r", encoding="utf-8", newline="") as handle:
+                existing_header = next(csv.reader(handle), [])
+            if existing_header != header:
+                return MeasurementLogResult(
+                    csv_path=None,
+                    values=values,
+                    slot_errors=slot_errors,
+                    error="Measurement CSV header does not match the active slot configuration.",
+                )
         with target.open("a", encoding="utf-8", newline="") as handle:
             writer = csv.writer(handle)
             if write_header:
