@@ -3,6 +3,7 @@
 from .csv_record import write_waveform_record_csv
 from .csv_stream import WaveformCsvStreamWriter
 from .dpo4log import Dpo4LogScanResult, Dpo4LogWriter, scan_dpo4log
+from .measurement_csv import MeasurementCsvStreamWriter
 from .models import (
     LoggerConfig,
     LoggerMode,
@@ -26,6 +27,7 @@ __all__ = [
     "LoggerRecord",
     "LoggerState",
     "LoggerStatistics",
+    "MeasurementCsvStreamWriter",
     "WaveformCsvStreamWriter",
     "WaveformSnapshot",
     "capture_logger_record",

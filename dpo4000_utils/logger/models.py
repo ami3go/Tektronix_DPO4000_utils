@@ -35,8 +35,6 @@ class LoggerOutputFormat(str, Enum):
 
 @dataclass(frozen=True)
 class WaveformSnapshot:
-    """Compact immutable waveform record safe to hand to a writer thread."""
-
     source: str
     label: str
     start_index: int
@@ -140,6 +138,7 @@ class LoggerConfig:
     point_count: int | None = None
 
     def __post_init__(self) -> None:
+        mode = LoggerMode(self.mode)
         interval = float(self.interval_s)
         if not math.isfinite(interval) or interval < 0.1 or interval > 7 * 24 * 3600:
             raise ValueError("Logger interval must be between 0.1 seconds and 7 days.")
@@ -148,8 +147,6 @@ class LoggerConfig:
             normalized = normalize_waveform_source(source)
             if normalized not in sources:
                 sources.append(normalized)
-        if self.mode in {LoggerMode.WAVEFORM, LoggerMode.MIXED} and not sources:
-            raise ValueError("Waveform Logger requires at least one waveform source.")
         slots: list[int] = []
         for raw in self.measurement_slots:
             if isinstance(raw, bool):
@@ -168,11 +165,20 @@ class LoggerConfig:
                 raise ValueError("BUS slots must be between 1 and 4.")
             if bus not in buses:
                 buses.append(bus)
+        if mode is LoggerMode.WAVEFORM and not sources:
+            raise ValueError("Waveform Logger requires at least one waveform source.")
+        if mode is LoggerMode.MEASUREMENTS and not slots:
+            raise ValueError("Measurement Logger requires at least one MEAS slot.")
+        if mode is LoggerMode.BUS and not buses:
+            raise ValueError("BUS Logger requires at least one BUS slot.")
+        if mode is LoggerMode.MIXED and not (sources or slots or buses):
+            raise ValueError("Mixed Logger requires at least one source.")
         point_count = self.point_count
         if point_count is not None:
             if isinstance(point_count, bool) or int(point_count) < 1:
                 raise ValueError("Logger point count must be a positive integer or None.")
             point_count = int(point_count)
+        object.__setattr__(self, "mode", mode)
         object.__setattr__(self, "interval_s", interval)
         object.__setattr__(self, "waveform_sources", tuple(sources))
         object.__setattr__(self, "measurement_slots", tuple(slots))

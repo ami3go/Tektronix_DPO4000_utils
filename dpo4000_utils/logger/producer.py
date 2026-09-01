@@ -2,15 +2,25 @@
 
 from __future__ import annotations
 
+import math
 from datetime import datetime, timezone
 from typing import Any
 
+from ..errors import is_transport_error
 from ..waveform import WaveformRequest
 from .models import LoggerConfig, LoggerMode, LoggerRecord, WaveformSnapshot
 
 
 class BusDecodedEventsUnavailable(RuntimeError):
     """Decoded BUS extraction is not implemented/qualified by the connected driver."""
+
+
+def _measurement_value(scope: Any, slot: int) -> float:
+    raw = scope.read_measurement_value(slot)
+    value = float(str(raw).strip().split()[-1])
+    if not math.isfinite(value) or abs(value) >= 9.0e36:
+        raise ValueError(f"MEAS{slot} returned an unavailable/overflow value: {raw!r}")
+    return value
 
 
 def capture_logger_record(scope: Any, config: LoggerConfig, sequence: int) -> LoggerRecord:
@@ -33,11 +43,8 @@ def capture_logger_record(scope: Any, config: LoggerConfig, sequence: int) -> Lo
     if config.mode in {LoggerMode.MEASUREMENTS, LoggerMode.MIXED}:
         for slot in config.measurement_slots:
             try:
-                raw = scope.read_measurement_value(slot)
-                measurements[slot] = float(str(raw).strip().split()[-1])
+                measurements[slot] = _measurement_value(scope, slot)
             except Exception as exc:  # measurement read can fail independently of waveform record.
-                from ..errors import is_transport_error
-
                 if is_transport_error(exc):
                     raise
                 measurements[slot] = None

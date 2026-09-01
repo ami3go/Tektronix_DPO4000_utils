@@ -7,6 +7,6 @@ __all__ = ["QtScopeWindow"]
 
 def __getattr__(name: str):
     if name == "QtScopeWindow":
-        from .logger_binary_window import QtScopeWindow
+        from .logger_measurement_window import QtScopeWindow
         return QtScopeWindow
     raise AttributeError(name)
