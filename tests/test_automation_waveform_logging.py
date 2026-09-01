@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from dpo4000_utils.automation.waveform_logging import save_full_record_csv
+from dpo4000_utils.errors import DPOTransportError
 
 
 class _FakeScope:
@@ -45,6 +48,13 @@ def test_a4_non_transport_output_failure_is_structured(tmp_path: Path) -> None:
     assert result.csv_path is None
     assert result.point_count == 1_000_000
     assert "disk full" in result.error
+
+
+def test_a4_transport_failure_still_propagates(tmp_path: Path) -> None:
+    scope = _FakeScope(error=DPOTransportError("connection lost"))
+
+    with pytest.raises(DPOTransportError, match="connection lost"):
+        save_full_record_csv(scope, tmp_path / "waveform.csv")
 
 
 def test_a4_gui_has_no_image_capture_or_raw_scope_protocol() -> None:

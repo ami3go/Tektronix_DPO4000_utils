@@ -30,6 +30,7 @@ def save_full_record_csv(scope: Any, path: str | Path) -> TimedWaveformResult:
     """
 
     target = Path(path)
+    point_count = 0
     try:
         point_count = int(scope.get_record_length())
         saved = Path(
@@ -41,7 +42,7 @@ def save_full_record_csv(scope: Any, path: str | Path) -> TimedWaveformResult:
     except Exception as exc:  # noqa: BLE001 - distinguish transport from output failure.
         if is_transport_error(exc):
             raise
-        return TimedWaveformResult(csv_path=None, point_count=locals().get("point_count", 0), error=str(exc))
+        return TimedWaveformResult(csv_path=None, point_count=point_count, error=str(exc))
     return TimedWaveformResult(csv_path=saved, point_count=point_count)
 
 

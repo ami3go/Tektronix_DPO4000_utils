@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from PySide6.QtWidgets import QLabel, QVBoxLayout
+
 from ..automation import (
     AutomationState,
     PeriodicImageConfig,
@@ -31,6 +33,20 @@ class QtScopeWindow(AutomationA3QtScopeWindow):
         if self.automation_mode_combo.findText(TIMED_WAVEFORM_MODE) < 0:
             self.automation_mode_combo.addItem(TIMED_WAVEFORM_MODE)
         return card
+
+    def _build_automation_output_card(self):
+        card = self._card("Output & Retention")
+        layout = QVBoxLayout(card)
+        label = QLabel(
+            "Periodic Image uses File-page PNG naming. Timed Waveform Logging uses CSV naming. "
+            "Image + CSV on Trigger uses both with one shared event sequence and collision suffix."
+        )
+        label.setWordWrap(True)
+        layout.addWidget(label)
+        hint = QLabel("Retention is added in A9.")
+        hint.setObjectName("MutedLabel")
+        layout.addWidget(hint)
+        return self._prepare_drawer_card(card)
 
     def _sync_automation_actions_card(self) -> None:
         mode = self._automation_mode()
@@ -94,6 +110,8 @@ class QtScopeWindow(AutomationA3QtScopeWindow):
             self._message("Automation", "Test the scope connection before running automation.", error=True)
             return
         self._ensure_control_page_built(FILE_PAGE_INDEX)
+        self._automation_last_csv_path = None
+        self._automation_last_path = None
         self._automation_capture_csv(force=True)
 
     def _automation_tick(self) -> None:
@@ -125,6 +143,7 @@ class QtScopeWindow(AutomationA3QtScopeWindow):
         timer.setInterval(max(1, int(round(config.interval_s * 1000.0))))
         timer.start()
         self._automation_last_csv_path = None
+        self._automation_last_path = None
         self._append_log(
             f"Automation A4 started: full-record CSV every {config.interval_s:g} s"
         )
