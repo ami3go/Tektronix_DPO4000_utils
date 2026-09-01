@@ -15,7 +15,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-
 LOG_PATH = Path("qt_startup_debug.log")
 
 

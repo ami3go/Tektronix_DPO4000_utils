@@ -648,7 +648,7 @@ def write_single_channel_csv(path: str | Path, times: Sequence[float], voltages:
     with output.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
         writer.writerow(["Time (s)", "Voltage (V)"])
-        writer.writerows(zip(times, voltages))
+        writer.writerows(zip(times, voltages, strict=True))
     return output
 
 

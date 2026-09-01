@@ -16,7 +16,6 @@ from .errors import (
     transport_exception,
 )
 
-
 logger = logging.getLogger(__name__)
 
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
@@ -140,7 +139,7 @@ def capture_screen_png(
         raise DPONotConnectedError("Oscilloscope is not connected.")
 
     try:
-        old_timeout = getattr(instrument, "timeout")
+        old_timeout = instrument.timeout
     except Exception:
         old_timeout = None
     try:

@@ -32,22 +32,22 @@ from dpo4000_utils.waveform import (
 
 
 def _base_preamble(**overrides):
-    values = dict(
-        byte_width=2,
-        encoding="BIN",
-        binary_format="RI",
-        byte_order="MSB",
-        record_point_count=3,
-        point_format="Y",
-        x_unit="s",
-        x_increment=0.5,
-        x_zero=1.0,
-        point_offset=0.0,
-        y_unit="V",
-        y_multiplier=0.1,
-        y_offset=10.0,
-        y_zero=-1.0,
-    )
+    values = {
+        "byte_width": 2,
+        "encoding": "BIN",
+        "binary_format": "RI",
+        "byte_order": "MSB",
+        "record_point_count": 3,
+        "point_format": "Y",
+        "x_unit": "s",
+        "x_increment": 0.5,
+        "x_zero": 1.0,
+        "point_offset": 0.0,
+        "y_unit": "V",
+        "y_multiplier": 0.1,
+        "y_offset": 10.0,
+        "y_zero": -1.0,
+    }
     values.update(overrides)
     return WaveformPreamble(**values)
 

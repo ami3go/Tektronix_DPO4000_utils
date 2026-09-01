@@ -46,7 +46,7 @@ class GuiPreferences:
     trigger_set_source: bool = True
 
     @classmethod
-    def from_mapping(cls, data: dict[str, Any] | None) -> "GuiPreferences":
+    def from_mapping(cls, data: dict[str, Any] | None) -> GuiPreferences:
         """Build preferences from a possibly partial or stale JSON mapping."""
         defaults = cls()
         if not isinstance(data, dict):

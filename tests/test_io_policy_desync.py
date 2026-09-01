@@ -15,7 +15,6 @@ import pytest
 from dpo4000_utils.errors import DPOTimeoutError, DPOTransportError
 from dpo4000_utils.io_policy import optional_query, required_query
 
-
 SLOW_COMMAND = "CH1:LABEL?"
 
 

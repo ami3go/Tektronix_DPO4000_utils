@@ -3,13 +3,13 @@ from __future__ import annotations
 import pytest
 
 from dpo4000_utils import (
+    DPO4000Scope,
     DPOCleanupError,
     DPOConnectionError,
     DPONotConnectedError,
-    DPO4000Scope,
+    connection,
 )
 from dpo4000_utils.connection import ConnectionMixin, temporary_session_attributes
-from dpo4000_utils import connection
 from dpo4000_utils.session import scope_session
 
 
@@ -122,8 +122,7 @@ def test_scope_session_preserves_body_exception_when_cleanup_also_fails(monkeypa
     rm = SessionResourceManager(instrument)
     monkeypatch.setattr(connection, "pyvisa", FakeVisa(rm))
 
-    with pytest.raises(ValueError, match="primary body failure"):
-        with scope_session("TEST::INSTR"):
-            raise ValueError("primary body failure")
+    with pytest.raises(ValueError, match="primary body failure"), scope_session("TEST::INSTR"):
+        raise ValueError("primary body failure")
 
     assert rm.closed is True

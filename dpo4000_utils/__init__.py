@@ -28,8 +28,8 @@ from .errors import (
     DPOWaveformError,
 )
 from .hardcopy import extract_png_bytes, strip_ieee_block_header
+from .instrument import DPO4054, DPO4000Scope
 from .reference import ReferenceConfig
-from .instrument import DPO4000Scope, DPO4054
 from .session import scope_session
 from .waveform import (
     WaveformData,

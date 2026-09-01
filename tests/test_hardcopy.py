@@ -9,7 +9,6 @@ from dpo4000_utils.hardcopy import (
     trim_png_after_iend,
 )
 
-
 PNG = b"\x89PNG\r\n\x1a\nDATAIEND\xaeB`\x82"
 
 

@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Any, Iterator
+from typing import Any
 
 from .errors import (
     DPOCleanupError,
@@ -241,7 +242,7 @@ class ConnectionMixin:
 
         instrument = self.ensure_connected()
         try:
-            previous_timeout = getattr(instrument, "timeout")
+            previous_timeout = instrument.timeout
         except (AttributeError, NotImplementedError):
             yield instrument
             return

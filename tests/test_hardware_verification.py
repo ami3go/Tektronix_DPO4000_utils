@@ -4,9 +4,9 @@ import json
 from pathlib import Path
 
 from dpo4000_utils.hardware_verification import (
-    HardwareVerifier,
     PUBLIC_FUNCTION_RISK,
     PUBLIC_METHOD_RISK,
+    HardwareVerifier,
     VerificationCase,
     VerificationConfig,
     VerificationResult,

@@ -25,7 +25,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .main_window import DRAWER_PAGE_TITLES, QtScopeWindow as BaseQtScopeWindow
+from .main_window import DRAWER_PAGE_TITLES
+from .main_window import QtScopeWindow as BaseQtScopeWindow
 
 CHANNEL_CONFIG_FIELDS = (
     "display",

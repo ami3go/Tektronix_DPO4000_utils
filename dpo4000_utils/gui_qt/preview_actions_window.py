@@ -27,7 +27,6 @@ from ..errors import is_transport_error
 from .bus_window import QtScopeWindow as BusQtScopeWindow
 from .scope_worker import PersistentScopeSession
 
-
 QUICK_ACTION_TOOLTIPS = {
     "IDN": "Test connection and unlock scope controls",
     "Preview": "F5 · Refresh the scope screen preview without saving a file",
@@ -165,7 +164,7 @@ class QtScopeWindow(BusQtScopeWindow):
         self._update_scope_control_enabled()
         self._update_status_strip()
         self._message(description, error_text, error=True)
-        return None
+        return
 
     def _run_action(self, description: str, callback: Callable[[Any], object]) -> object | None:
         keep_session = getattr(self, "keep_session", None)

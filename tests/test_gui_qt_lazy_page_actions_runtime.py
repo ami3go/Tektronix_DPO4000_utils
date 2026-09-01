@@ -19,7 +19,6 @@ QtWidgets = pytest.importorskip("PySide6.QtWidgets")
 
 from dpo4000_utils.gui_qt.ui_polish_window import QtScopeWindow  # noqa: E402
 
-
 QUICK_ACTIONS = ("IDN", "Preview", "Copy", "Image", "CSV", "Run", "Stop", "Single", "Force")
 SHORTCUT_HANDLERS = (
     "capture_preview",

@@ -8,8 +8,9 @@ DPO4000 driver/helper modules.
 
 from __future__ import annotations
 
+import contextlib
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QCloseEvent, QPixmap
@@ -56,12 +57,12 @@ from ..control import (
     TRIGGER_SOURCES,
     MeasurementConfig,
 )
+from ..gui.config import FileNaming, build_output_path, resolve_output_folder
+from ..gui.preferences import GuiPreferences, load_preferences, save_preferences
 from ..hardcopy import save_screen_png
 from ..instrument import DPO4054
 from ..settings import apply_scope_settings_file
 from ..waveform import save_enabled_channels_to_single_csv
-from ..gui.config import FileNaming, build_output_path, resolve_output_folder
-from ..gui.preferences import GuiPreferences, load_preferences, save_preferences
 
 APP_TITLE = "Tektronix DPO4000 Utilities — Qt preview"
 DRAWER_PAGE_TITLES = ("Connection", "Channels", "Measurement", "Trigger", "Settings", "Log")
@@ -792,10 +793,8 @@ class QtScopeWindow(QMainWindow):
                     pass
             return callback(scope)
         finally:
-            try:
+            with contextlib.suppress(Exception):
                 scope.disconnect()
-            except Exception:
-                pass
 
     def _refresh_generated_ethernet_resource(self) -> None:
         if not self.eth_host.text().strip():
@@ -1041,10 +1040,8 @@ class QtScopeWindow(QMainWindow):
             if set_source:
                 scope.set_edge_trigger_source(channel)
             readback = scope.set_trigger_level(level, channel=channel, verify=True)
-            try:
+            with contextlib.suppress(Exception):
                 scope.scope.write("ACQUIRE:STATE RUN")
-            except Exception:
-                pass
             return readback
 
         result = self._run_action(f"Setting trigger CH{channel} level to {level}", action)
@@ -1127,10 +1124,8 @@ class QtScopeWindow(QMainWindow):
         box.exec()
 
     def _append_log(self, text: str) -> None:
-        try:
+        with contextlib.suppress(Exception):
             self.log.append(text)
-        except Exception:
-            pass
 
 
 __all__ = ["APP_TITLE", "DEFAULT_DRAWER_WIDTH", "DRAWER_PAGE_TITLES", "QtScopeWindow"]

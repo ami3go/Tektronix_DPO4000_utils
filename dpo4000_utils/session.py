@@ -7,8 +7,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 
 from .errors import add_exception_note
-from .instrument import DPO4000Scope, DPO4054
-
+from .instrument import DPO4054, DPO4000Scope
 
 logger = logging.getLogger(__name__)
 

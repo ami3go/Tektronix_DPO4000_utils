@@ -20,7 +20,6 @@ from dpo4000_utils import DPO4054
 from dpo4000_utils.connection import visaResourceAddr
 from dpo4000_utils.waveform import parse_channel_enabled
 
-
 _TRUE_VALUES = {"1", "true", "yes", "on"}
 
 

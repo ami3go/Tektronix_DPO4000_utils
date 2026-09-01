@@ -31,9 +31,9 @@ def test_connection_page_has_read_all_parameters_option_enabled_by_default():
     try:
         assert hasattr(window, "read_all_parameters_after_connection")
         assert window.read_all_parameters_after_connection.isChecked() is True
-        assert "Read all parameters after connection" == (
+        assert (
             window.read_all_parameters_after_connection.text()
-        )
+        ) == "Read all parameters after connection"
     finally:
         window.close()
         window.deleteLater()

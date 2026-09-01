@@ -7,7 +7,7 @@ from .connection import (
     visaResourceAddr,
 )
 from .hardcopy import extract_png_bytes, strip_ieee_block_header
-from .instrument import DPO4000Scope, DPO4054
+from .instrument import DPO4054, DPO4000Scope
 from .waveform import parse_ascii_curve
 
 __all__ = [

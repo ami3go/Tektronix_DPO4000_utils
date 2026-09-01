@@ -20,7 +20,6 @@ from .errors import (
     transport_exception,
 )
 
-
 logger = logging.getLogger(__name__)
 
 SETTINGS_SCHEMA_VERSION = 1
@@ -41,7 +40,7 @@ def resolve_settings_path(
         file_path = folder / f"{default_prefix}_{timestamp}.json"
     else:
         file_path = Path(file_name)
-        if not file_path.is_absolute() and file_path.parent == Path("."):
+        if not file_path.is_absolute() and file_path.parent == Path():
             file_path = folder / file_path
         if file_path.suffix == "":
             file_path = file_path.with_suffix(".json")
@@ -141,19 +140,27 @@ def validate_scope_settings_payload(
     saved_manufacturer, saved_model = _parse_identity(saved_identity)
     current_manufacturer, current_model = _parse_identity(connected_identity or "")
 
-    if saved_model and saved_manufacturer and not _is_tektronix(saved_manufacturer):
-        if not allow_incompatible:
-            raise DPOSettingsError(
-                f"Settings were saved from non-Tektronix instrument {saved_identity!r}."
-            )
+    if (
+        saved_model
+        and saved_manufacturer
+        and not _is_tektronix(saved_manufacturer)
+        and not allow_incompatible
+    ):
+        raise DPOSettingsError(
+            f"Settings were saved from non-Tektronix instrument {saved_identity!r}."
+        )
 
     # An unparseable/legacy identity such as "Unknown" is not enough evidence to
     # reject. A normal *IDN? response includes both manufacturer and model.
-    if current_model and current_manufacturer and not _is_tektronix(current_manufacturer):
-        if not allow_incompatible:
-            raise DPOSettingsError(
-                f"Connected instrument is not Tektronix: {connected_identity!r}."
-            )
+    if (
+        current_model
+        and current_manufacturer
+        and not _is_tektronix(current_manufacturer)
+        and not allow_incompatible
+    ):
+        raise DPOSettingsError(
+            f"Connected instrument is not Tektronix: {connected_identity!r}."
+        )
 
     if saved_model and current_model:
         saved_family = _model_family(saved_model)
@@ -220,7 +227,7 @@ def load_scope_settings_file(
 ) -> dict[str, Any]:
     """Load and structurally validate a scope settings JSON file."""
     file_path = Path(file_name)
-    if settings_folder is not None and not file_path.is_absolute() and file_path.parent == Path("."):
+    if settings_folder is not None and not file_path.is_absolute() and file_path.parent == Path():
         file_path = Path(settings_folder) / file_path
 
     if not file_path.exists():

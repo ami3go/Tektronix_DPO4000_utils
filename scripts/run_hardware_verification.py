@@ -13,7 +13,6 @@ from dpo4000_utils.hardware_verification import (
     VerificationRisk,
 )
 
-
 PROFILE_MAP = {
     "read-only": VerificationRisk.READ_ONLY,
     "reversible": VerificationRisk.REVERSIBLE,

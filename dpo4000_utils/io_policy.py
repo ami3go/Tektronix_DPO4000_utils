@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from .errors import DPOError, is_transport_error, transport_exception
-
 
 logger = logging.getLogger(__name__)
 

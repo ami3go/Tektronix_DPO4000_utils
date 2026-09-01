@@ -13,7 +13,6 @@ from typing import Any
 from .control import ACQUISITION_MODES, normalize_scope_response_text
 from .errors import DPOProtocolError
 
-
 _ACQUISITION_MODE_READBACK_ALIASES = {
     "SAM": "SAMPLE",
     "PEAK": "PEAKDETECT",

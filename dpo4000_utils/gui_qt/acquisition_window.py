@@ -22,7 +22,8 @@ from PySide6.QtWidgets import (
 )
 
 from .main_window import APP_TITLE, DEFAULT_DRAWER_WIDTH
-from .ui_practice_window import SHORTCUTS, QtScopeWindow as TabbedQtScopeWindow
+from .ui_practice_window import SHORTCUTS
+from .ui_practice_window import QtScopeWindow as TabbedQtScopeWindow
 
 CONTROL_TAB_TITLES = (
     "Connection",

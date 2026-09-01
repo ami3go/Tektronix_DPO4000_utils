@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Callable
 from typing import Any
 
@@ -420,10 +421,8 @@ class QtScopeWindow(CompactQtScopeWindow):
     def _update_scope_control_enabled(self) -> None:
         enabled = self._connection_ok and not self._operation_active
         for button in getattr(self, "_scope_controls", []):
-            try:
+            with contextlib.suppress(RuntimeError):
                 button.setEnabled(enabled)
-            except RuntimeError:
-                pass
 
     def _guarded_scope_call(self, callback: Callable[[], None], label: str) -> None:
         if not self._connection_ok:

@@ -25,7 +25,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .stable_window import TRIGGER_PAGE_INDEX, QtScopeWindow as StableQtScopeWindow
+from .stable_window import TRIGGER_PAGE_INDEX
+from .stable_window import QtScopeWindow as StableQtScopeWindow
 from .ui_practice_window import SHORTCUTS
 
 CONTROL_TAB_TITLES = (

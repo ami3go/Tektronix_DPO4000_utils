@@ -6,7 +6,6 @@ import math
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-
 _SCPI_MESSAGE_SEPARATORS = (";", "\r", "\n", "\x00")
 
 

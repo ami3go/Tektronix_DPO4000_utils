@@ -8,6 +8,7 @@ Qt GUI thread.
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Callable
 from typing import Any
 
@@ -24,6 +25,8 @@ from .collapsible_window import (
     TRIGGER_PAGE_INDEX,
     WINDOW_TITLE,
     CollapsibleCard,
+)
+from .collapsible_window import (
     QtScopeWindow as MatureQtScopeWindow,
 )
 from .scope_worker import WorkerResult, start_scope_worker
@@ -129,10 +132,8 @@ class QtScopeWindow(MatureQtScopeWindow):
                     pass
             return callback(scope)
         finally:
-            try:
+            with contextlib.suppress(Exception):
                 scope.disconnect()
-            except Exception:
-                pass
 
     def _finish_scope_action_error(self, description: str, exc: BaseException) -> None:
         self._connection_ok = False
@@ -143,7 +144,7 @@ class QtScopeWindow(MatureQtScopeWindow):
         self._update_scope_control_enabled()
         self._update_status_strip()
         self._message(description, str(exc), error=True)
-        return None
+        return
 
     def _finish_scope_action_success(self, description: str, result: object) -> object | None:
         self._connection_ok = True

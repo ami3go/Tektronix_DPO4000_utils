@@ -3,7 +3,6 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-
 WINDOW_PATH = Path("dpo4000_utils/gui_qt/ui_practice_window.py")
 THEME_PATH = Path("dpo4000_utils/gui_qt/theme.qss")
 

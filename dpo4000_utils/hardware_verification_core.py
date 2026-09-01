@@ -13,12 +13,13 @@ import inspect
 import json
 import platform
 import time
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from enum import IntEnum
 from importlib import metadata
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import dpo4000_utils as public_api
 
@@ -32,7 +33,7 @@ from .control import (
     bool_from_scope_response,
 )
 from .hardcopy import PNG_SIGNATURE
-from .instrument import DPO4000Scope, DPO4054
+from .instrument import DPO4054, DPO4000Scope
 from .reference import ReferenceConfig
 from .settings import apply_setup_string, build_scope_settings_payload
 from .waveform import WaveformRequest

@@ -14,7 +14,6 @@ from .scpi_values import (
     normalize_scpi_token,
 )
 
-
 MEASUREMENT_SLOTS = tuple(range(1, 9))
 MEASUREMENT_SOURCES = ("CH1", "CH2", "CH3", "CH4", "MATH", "REF1", "REF2", "REF3", "REF4")
 MEASUREMENT_TYPES_BY_GROUP: dict[str, tuple[str, ...]] = {

@@ -2,7 +2,6 @@
 
 from dpo4000_utils import DPO4054
 
-
 scope = DPO4054(auto_connect=True)
 try:
     for channel in range(1, 5):

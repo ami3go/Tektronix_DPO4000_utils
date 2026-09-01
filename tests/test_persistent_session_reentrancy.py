@@ -22,7 +22,6 @@ from PySide6.QtCore import QTimer  # noqa: E402
 
 from dpo4000_utils.gui_qt.scope_worker import PersistentScopeSession  # noqa: E402
 
-
 RESOURCE = "TCPIP0::127.0.0.1::INSTR"
 
 

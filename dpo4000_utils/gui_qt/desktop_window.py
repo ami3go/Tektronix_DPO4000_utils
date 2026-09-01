@@ -24,7 +24,8 @@ from PySide6.QtWidgets import (
 
 from ..reference import REFERENCE_SOURCES, ReferenceConfig
 from ..scope_snapshot import read_scope_snapshot
-from .api_window import QtScopeWindow as ApiQtScopeWindow, _record_length_display
+from .api_window import QtScopeWindow as ApiQtScopeWindow
+from .api_window import _record_length_display
 
 CONNECTION_TEST_DESCRIPTION = "Testing scope connection"
 SCOPE_REFRESH_DESCRIPTION = "Reading scope parameters"

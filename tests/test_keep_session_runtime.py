@@ -25,7 +25,7 @@ class FakeInstrument:
 
 
 class FakeScope:
-    instances: list["FakeScope"] = []
+    instances: list[FakeScope] = []
 
     def __init__(
         self,

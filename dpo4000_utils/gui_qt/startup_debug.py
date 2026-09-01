@@ -10,10 +10,10 @@ from __future__ import annotations
 import os
 import sys
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Sequence
 
 from PySide6.QtCore import QEvent, QObject, QTimer
 from PySide6.QtWidgets import QApplication, QWidget
@@ -97,10 +97,13 @@ class StartupDebugProbe(QObject):
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802 - Qt API name.
         """Log top-level widget show/hide/create lifecycle events."""
         event_type = event.type()
-        if event_type in _MONITORED_EVENTS and isinstance(watched, QWidget):
-            if self._should_log_widget_event(watched, event_type):
-                name = _EVENT_NAMES.get(event_type, str(int(event_type)))
-                self.log(f"event {name}: {self._widget_summary(watched)}")
+        if (
+            event_type in _MONITORED_EVENTS
+            and isinstance(watched, QWidget)
+            and self._should_log_widget_event(watched, event_type)
+        ):
+            name = _EVENT_NAMES.get(event_type, str(int(event_type)))
+            self.log(f"event {name}: {self._widget_summary(watched)}")
         return super().eventFilter(watched, event)
 
     @staticmethod

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Callable
+from collections.abc import Callable
 
 import pytest
 
@@ -22,7 +22,6 @@ from PySide6.QtCore import QEventLoop, QTimer  # noqa: E402
 
 from dpo4000_utils.gui_qt.scope_worker import WorkerResult, start_scope_worker  # noqa: E402
 from dpo4000_utils.gui_qt.ui_polish_window import QtScopeWindow  # noqa: E402
-
 
 POLL_MS = 25
 DEADLINE_MS = 5_000

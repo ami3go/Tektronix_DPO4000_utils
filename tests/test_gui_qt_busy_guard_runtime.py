@@ -95,7 +95,7 @@ def test_shortcut_cannot_reenter_run_action_during_an_operation(window, monkeypa
         finally:
             self._operation_active = False
             self._update_scope_control_enabled()
-        return None
+        return
 
     monkeypatch.setattr(QtScopeWindow, "_run_action", fake_run_action)
 

@@ -8,6 +8,7 @@ one DPO4054/VISA session is created, used, and closed on the same worker thread.
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -16,9 +17,9 @@ from PySide6.QtCore import (
     QEventLoop,
     QObject,
     QRunnable,
+    Qt,
     QThread,
     QThreadPool,
-    Qt,
     QTimer,
     Signal,
     Slot,
@@ -229,10 +230,8 @@ class PersistentScopeSession(QObject):
                     settled.stop()
         finally:
             self._busy = False
-            try:
+            with contextlib.suppress(RuntimeError, TypeError):
                 self._worker.finished.disconnect(on_finished)
-            except (RuntimeError, TypeError):
-                pass
 
         result = box["result"]
         if result is None:
