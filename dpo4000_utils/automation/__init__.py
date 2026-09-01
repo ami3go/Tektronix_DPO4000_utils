@@ -21,6 +21,7 @@ from .triggered import (
     TriggerWaitResult,
     trigger_acquisition_complete,
 )
+from .waveform_logging import TimedWaveformResult, save_full_record_csv
 
 __all__ = [
     "AutomationEventToken",
@@ -29,6 +30,7 @@ __all__ = [
     "CancelSignal",
     "PeriodicImageConfig",
     "PeriodicImageController",
+    "TimedWaveformResult",
     "TriggerBundleResult",
     "TriggerImageConfig",
     "TriggerImageController",
@@ -37,5 +39,6 @@ __all__ = [
     "append_sequence",
     "collision_safe_bundle_paths",
     "collision_safe_path",
+    "save_full_record_csv",
     "trigger_acquisition_complete",
 ]
