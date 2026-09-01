@@ -60,7 +60,7 @@ class AutomationStatistics:
 class PeriodicImageController:
     """Qt-independent A1 state machine.
 
-    The GUI owns the actual timer.  This class owns run state, event sequencing,
+    The GUI owns the actual timer. This class owns run state, event sequencing,
     overlap rejection and stale-completion protection so those rules can be unit
     tested without PySide6.
     """
@@ -131,6 +131,16 @@ class PeriodicImageController:
         else:
             self.statistics.failed += 1
             self.statistics.last_error = str(error or "Capture failed")
+        return True
+
+    def finish_skipped(self, token: AutomationEventToken, *, reason: str = "") -> bool:
+        """Finish a reserved event without counting it as success or failure."""
+        if token.generation != self._generation:
+            return False
+        self._busy = False
+        self.statistics.skipped += 1
+        if reason:
+            self.statistics.last_error = str(reason)
         return True
 
 
