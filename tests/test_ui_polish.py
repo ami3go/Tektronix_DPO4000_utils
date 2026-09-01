@@ -9,15 +9,20 @@ from __future__ import annotations
 
 import pytest
 
-from tests.conftest import button_texts, card_titles
+from tests.conftest import button_texts, card_titles, file_page_index
 
 pytest.importorskip("PySide6.QtWidgets")
 
-from dpo4000_utils.gui_qt.display_window import FILE_PAGE_INDEX  # noqa: E402
 
 ACQUISITION_PAGE_INDEX = 4
 CHANNELS_PAGE_INDEX = 1
-DISPLAY_PAGE_INDEX = 6
+
+
+def _display_page_index() -> int:
+    """Read at call time: automation_window shifts the pages after File."""
+    from dpo4000_utils.gui_qt import display_window
+
+    return display_window.DISPLAY_PAGE_INDEX
 
 
 class RecordingScope:
@@ -44,9 +49,11 @@ class RecordingScope:
 
 @pytest.fixture
 def window(make_window):
-    from dpo4000_utils.gui_qt.ui_polish_window import QtScopeWindow
+    from tests.conftest import launched_window_class
 
-    win = make_window(QtScopeWindow, stub_actions=False)
+    window_class = launched_window_class()
+
+    win = make_window(window_class, stub_actions=False)
     win._connection_ok = True
     win._scope = RecordingScope()
     win._run_action = lambda description, callback: callback(win._scope)
@@ -54,7 +61,7 @@ def window(make_window):
 
 
 def test_file_page_offers_folder_and_open_actions(window):
-    window._select_drawer_page(FILE_PAGE_INDEX)
+    window._select_drawer_page(file_page_index())
     texts = button_texts(window)
 
     assert {"Folder", "Open"} <= texts
@@ -62,7 +69,7 @@ def test_file_page_offers_folder_and_open_actions(window):
 
 
 def test_scope_settings_are_a_separate_card_with_three_actions(window):
-    window._select_drawer_page(FILE_PAGE_INDEX)
+    window._select_drawer_page(file_page_index())
 
     titles = card_titles(window)
     assert "Scope settings" in titles
@@ -72,22 +79,27 @@ def test_scope_settings_are_a_separate_card_with_three_actions(window):
 
 
 @pytest.mark.parametrize(
-    ("page_index", "expected", "absent"),
+    ("page", "expected", "absent"),
     [
         (
-            ACQUISITION_PAGE_INDEX,
+            "acquisition",
             {"Read", "Apply"},
             {"Read acquisition setup", "Apply acquisition setup"},
         ),
-        (CHANNELS_PAGE_INDEX, {"Read", "Apply"}, {"Read labels", "Apply labels"}),
+        ("channels", {"Read", "Apply"}, {"Read labels", "Apply labels"}),
         (
-            DISPLAY_PAGE_INDEX,
+            "display",
             {"Read", "Apply", "Clear"},
             {"Read display", "Apply display", "Clear text"},
         ),
     ],
 )
-def test_card_buttons_use_the_concise_labels(window, page_index, expected, absent):
+def test_card_buttons_use_the_concise_labels(window, page, expected, absent):
+    page_index = {
+        "acquisition": ACQUISITION_PAGE_INDEX,
+        "channels": CHANNELS_PAGE_INDEX,
+        "display": _display_page_index(),
+    }[page]
     window._select_drawer_page(page_index)
     texts = button_texts(window)
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -37,8 +38,17 @@ def test_desktop_entrypoint_uses_final_pyside_window():
     package_init = (ROOT / "dpo4000_utils" / "gui_qt" / "__init__.py").read_text(encoding="utf-8")
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
 
-    assert "from .automation_review_window import QtScopeWindow" in runner
-    assert "from .automation_review_window import QtScopeWindow" in package_init
+    # Which module sits on top changes as layers are added, so match the pattern
+    # and require the two entry points to name the same one.
+    pattern = re.compile(r"from \.(\w+) import QtScopeWindow")
+    runner_target = pattern.search(runner)
+    init_target = pattern.search(package_init)
+    assert runner_target, "runner.py does not import a QtScopeWindow"
+    assert init_target, "gui_qt/__init__.py does not import a QtScopeWindow"
+    assert runner_target.group(1) == init_target.group(1), (
+        f"entry points disagree: runner uses {runner_target.group(1)}, "
+        f"package uses {init_target.group(1)}"
+    )
     assert 'dpo4000-desk = "dpo4000_utils.gui_qt.runner:main"' in pyproject
     assert "dpo4000-gui" not in pyproject
 

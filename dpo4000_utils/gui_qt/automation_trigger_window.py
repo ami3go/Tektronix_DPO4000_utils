@@ -132,7 +132,8 @@ class QtScopeWindow(AutomationA1ReviewedQtScopeWindow):
                 label.setText(f"Invalid configuration: {exc}")
                 return
             label.setText(
-                f"Every {config.interval_s:g} seconds, save one PNG image using the File-page naming settings."
+                f"Every {config.interval_s:g} seconds, save one "
+                f"PNG image using the File-page naming settings."
             )
             return
 
@@ -146,7 +147,7 @@ class QtScopeWindow(AutomationA1ReviewedQtScopeWindow):
             return
         rearm = "then re-arm Single" if config.rearm else "then stop"
         label.setText(
-            "Arm a Single acquisition, wait for ACQUIRE:STATE stopped and TRIGGER:STATE SAVE, "
+            "Arm a Single acquisition, wait for the acquisition to stop and the trigger to save, "
             f"save one PNG, {rearm}. Poll interval {config.poll_interval_s:g} s."
         )
 
@@ -199,7 +200,10 @@ class QtScopeWindow(AutomationA1ReviewedQtScopeWindow):
         if stop is not None:
             stop.setEnabled(trigger_active)
         if mode_combo is not None:
-            mode_combo.setEnabled(not trigger_active and not self._automation_controller.state is AutomationState.RUNNING)
+            mode_combo.setEnabled(
+                not trigger_active
+                and self._automation_controller.state is not AutomationState.RUNNING
+            )
 
     # ------------------------------------------------------------------
     # Mode dispatch
@@ -252,7 +256,9 @@ class QtScopeWindow(AutomationA1ReviewedQtScopeWindow):
     # ------------------------------------------------------------------
     def _start_trigger_automation(self, *, rearm: bool) -> None:
         if not bool(getattr(self, "_connection_ok", False)):
-            self._message("Automation", "Test the scope connection before starting automation.", error=True)
+            self._message(
+                "Automation", "Test the scope connection before starting automation.", error=True
+            )
             return
         if self._automation_controller.state is not AutomationState.IDLE:
             self._message("Automation", "Periodic automation is already active.", error=True)
@@ -311,7 +317,9 @@ class QtScopeWindow(AutomationA1ReviewedQtScopeWindow):
             self._automation_refresh_status()
             return
         if not isinstance(result, TriggerWaitResult):
-            trigger.finish_cycle(token, success=False, error="Could not read acquisition completion state")
+            trigger.finish_cycle(
+                token, success=False, error="Could not read acquisition completion state"
+            )
             trigger.stop()
             self._automation_refresh_status()
             return

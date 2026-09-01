@@ -17,7 +17,11 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 QtWidgets = pytest.importorskip("PySide6.QtWidgets")
 
-from dpo4000_utils.gui_qt.ui_polish_window import QtScopeWindow  # noqa: E402
+from tests.conftest import launched_window_class  # noqa: E402
+
+# The launched window, not a named layer. automation_window rebinds page
+# constants on import, so an intermediate class sees an inconsistent layout.
+QtScopeWindow = launched_window_class()
 
 QUICK_ACTIONS = ("IDN", "Preview", "Copy", "Image", "CSV", "Run", "Stop", "Single", "Force")
 SHORTCUT_HANDLERS = (

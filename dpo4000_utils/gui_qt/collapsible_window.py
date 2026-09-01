@@ -178,12 +178,6 @@ class CollapsibleCard(QFrame):
 class QtScopeWindow(AcquisitionQtScopeWindow):
     """Launched Qt window using lightweight card-header collapse."""
 
-    # The page map is the only thing that differs between control-panel layouts.
-    # Keeping it a class attribute lets a later layer change the pages without
-    # copying the build machinery, which is how the two versions of
-    # _ensure_control_page_built previously drifted apart.
-    _control_page_builders: tuple[str, ...] = CONTROL_PAGE_BUILDERS
-
     def __init__(self, *args, **kwargs) -> None:
         self._pending_preferences = None
         self._lazy_control_pages_built: list[bool] = []
@@ -216,6 +210,17 @@ class QtScopeWindow(AcquisitionQtScopeWindow):
             title.deleteLater()
         return bar
 
+    def _control_page_builder_names(self) -> tuple[str, ...]:
+        """The page map for this layout, resolved when asked.
+
+        A later layer overrides this to add pages instead of copying the build
+        machinery, which is how two versions of _ensure_control_page_built came to
+        exist and drift. It must stay a call-time lookup of the module global:
+        automation_window rebinds that global on import, and a value captured at
+        class-creation time would not see the change.
+        """
+        return CONTROL_PAGE_BUILDERS
+
     def _build_control_stack(self) -> QStackedWidget:
         """Create placeholder pages and build real control pages only when opened.
 
@@ -226,7 +231,7 @@ class QtScopeWindow(AcquisitionQtScopeWindow):
         """
         stack = QStackedWidget()
         stack.setObjectName("RightControlStack")
-        builders = self._control_page_builders
+        builders = self._control_page_builder_names()
         self._lazy_control_pages_built = [False for _ in builders]
         self._lazy_control_pages_preferences_applied = [False for _ in builders]
         for index, _builder_name in enumerate(builders):
@@ -243,12 +248,13 @@ class QtScopeWindow(AcquisitionQtScopeWindow):
     def _ensure_control_page_built(self, index: int) -> None:
         """Build a right-side control page only once, just before it is shown."""
         stack = getattr(self, "control_stack", None)
-        if stack is None or index < 0 or index >= len(self._control_page_builders):
+        builders = self._control_page_builder_names()
+        if stack is None or index < 0 or index >= len(builders):
             return
         if index < len(self._lazy_control_pages_built) and self._lazy_control_pages_built[index]:
             return
 
-        builder = getattr(self, self._control_page_builders[index])
+        builder = getattr(self, builders[index])
         page = builder()
         page = self._make_page_cards_collapsible(page)
 

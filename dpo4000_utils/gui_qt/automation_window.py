@@ -60,8 +60,7 @@ CONTROL_PAGE_BUILDERS = (
     "_build_log_tab",
 )
 PAGE_SHORTCUTS = tuple(
-    (f"Ctrl+{index + 1}", index, title)
-    for index, title in enumerate(CONTROL_TAB_TITLES)
+    (f"Ctrl+{index + 1}", index, title) for index, title in enumerate(CONTROL_TAB_TITLES)
 )
 
 # Centralize the inserted page for the existing display-window implementation.
@@ -80,8 +79,8 @@ _collapsible_window.PREFERENCE_PAGE_INDEXES = (
     FILE_PAGE_INDEX,
 )
 
-from .ui_polish_window import QtScopeWindow as UiPolishQtScopeWindow  # noqa: E402
 from . import titlebar_tabs_window as _titlebar_tabs_window  # noqa: E402
+from .ui_polish_window import QtScopeWindow as UiPolishQtScopeWindow  # noqa: E402
 
 _titlebar_tabs_window.CONTROL_TAB_TITLES = CONTROL_TAB_TITLES
 
@@ -166,7 +165,9 @@ class QtScopeWindow(UiPolishQtScopeWindow):
 
         self.automation_mode_combo = QComboBox()
         self.automation_mode_combo.addItem("Periodic Image")
-        self.automation_mode_combo.setToolTip("A1 periodically saves the oscilloscope screen as PNG.")
+        self.automation_mode_combo.setToolTip(
+            "A1 periodically saves the oscilloscope screen as PNG."
+        )
 
         self.automation_interval_value = QDoubleSpinBox()
         self.automation_interval_value.setRange(1.0, 604800.0)
@@ -197,7 +198,10 @@ class QtScopeWindow(UiPolishQtScopeWindow):
         self.automation_save_image.setChecked(True)
         self.automation_save_image.setEnabled(False)
         layout.addWidget(self.automation_save_image)
-        hint = QLabel("A1 implements PNG capture only. CSV and trigger actions are added by later backlog items.")
+        hint = QLabel(
+            "A1 implements PNG capture only. CSV and trigger "
+            "actions are added by later backlog items."
+        )
         hint.setObjectName("MutedLabel")
         hint.setWordWrap(True)
         layout.addWidget(hint)
@@ -206,7 +210,9 @@ class QtScopeWindow(UiPolishQtScopeWindow):
     def _build_automation_run_limits_card(self):
         card = self._card("Run Limits")
         layout = QVBoxLayout(card)
-        hint = QLabel("Unlimited until stopped manually. Count and duration limits are implemented in A8.")
+        hint = QLabel(
+            "Unlimited until stopped manually. Count and duration limits are implemented in A8."
+        )
         hint.setObjectName("MutedLabel")
         hint.setWordWrap(True)
         layout.addWidget(hint)
@@ -230,7 +236,8 @@ class QtScopeWindow(UiPolishQtScopeWindow):
         card = self._card("Reliability")
         layout = QVBoxLayout(card)
         policy = QLabel(
-            "No overlap / no backlog: when a timer tick arrives while the previous image is still being saved, "
+            "No overlap / no backlog: when a timer tick arrives "
+            "while the previous image is still being saved, "
             "that tick is counted as skipped instead of queueing another scope operation."
         )
         policy.setWordWrap(True)
@@ -274,7 +281,9 @@ class QtScopeWindow(UiPolishQtScopeWindow):
         except Exception as exc:  # noqa: BLE001 - inline validation text.
             label.setText(f"Invalid configuration: {exc}")
             return
-        label.setText(f"Every {interval_text}, save one PNG image using the File-page naming settings.")
+        label.setText(
+            f"Every {interval_text}, save one PNG image using the File-page naming settings."
+        )
 
     def _automation_refresh_status(self) -> None:
         controller = getattr(self, "_automation_controller", None)
@@ -294,7 +303,9 @@ class QtScopeWindow(UiPolishQtScopeWindow):
                 label.setText(str(value))
         last_label = getattr(self, "automation_last_file_label", None)
         if last_label is not None:
-            last_label.setText(str(self._automation_last_path) if self._automation_last_path else "--")
+            last_label.setText(
+                str(self._automation_last_path) if self._automation_last_path else "--"
+            )
 
         active = controller.state in {AutomationState.RUNNING, AutomationState.PAUSED}
         operation_active = bool(getattr(self, "_operation_active", False))
@@ -319,7 +330,9 @@ class QtScopeWindow(UiPolishQtScopeWindow):
 
     def start_automation(self) -> None:
         if not bool(getattr(self, "_connection_ok", False)):
-            self._message("Automation", "Test the scope connection before starting automation.", error=True)
+            self._message(
+                "Automation", "Test the scope connection before starting automation.", error=True
+            )
             return
         try:
             config = PeriodicImageConfig(self._automation_interval_seconds())
@@ -369,7 +382,9 @@ class QtScopeWindow(UiPolishQtScopeWindow):
 
     def run_automation_once(self) -> None:
         if not bool(getattr(self, "_connection_ok", False)):
-            self._message("Automation", "Test the scope connection before running automation.", error=True)
+            self._message(
+                "Automation", "Test the scope connection before running automation.", error=True
+            )
             return
         self._ensure_control_page_built(FILE_PAGE_INDEX)
         self._automation_capture_image(force=True)

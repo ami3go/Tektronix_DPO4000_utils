@@ -55,11 +55,13 @@ class FakeScope:
 @pytest.fixture
 def scope_window(make_window):
     """Window whose _run_action runs the callback against a FakeScope."""
-    from dpo4000_utils.gui_qt.ui_polish_window import QtScopeWindow
+    from tests.conftest import launched_window_class
+
+    window_class = launched_window_class()
 
     png = _png_bytes()
     scope = FakeScope(png)
-    window = make_window(QtScopeWindow, stub_actions=False)
+    window = make_window(window_class, stub_actions=False)
     window._connection_ok = True
     window._run_action = lambda description, callback: callback(scope)
     window._scope = scope
@@ -127,10 +129,12 @@ def test_copy_preview_puts_the_full_resolution_image_on_the_clipboard(scope_wind
 
 
 def test_copy_preview_reports_when_nothing_has_been_captured(make_window):
-    from dpo4000_utils.gui_qt.ui_polish_window import QtScopeWindow
+    from tests.conftest import launched_window_class
+
+    window_class = launched_window_class()
 
     messages: list[tuple] = []
-    window = make_window(QtScopeWindow)
+    window = make_window(window_class)
     window._message = lambda *args, **kwargs: messages.append(args)
     window._last_preview_png = b""
     window._last_image_path = None

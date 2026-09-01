@@ -15,16 +15,25 @@ pytest.importorskip("PySide6.QtWidgets")
 
 from PySide6.QtCore import Qt  # noqa: E402
 
-from dpo4000_utils.gui_qt.display_window import (  # noqa: E402
-    CONTROL_PAGE_BUILDERS,
-    CONTROL_TAB_TITLES,
-    DISPLAY_PAGE_INDEX,
-    FILE_PAGE_INDEX,
-)
+
+def _page_constants():
+    """Read at call time: automation_window rebinds these on import."""
+    from dpo4000_utils.gui_qt import display_window
+
+    return (
+        display_window.CONTROL_TAB_TITLES,
+        display_window.CONTROL_PAGE_BUILDERS,
+        display_window.FILE_PAGE_INDEX,
+        display_window.DISPLAY_PAGE_INDEX,
+    )
+
 
 # The launch chain, outermost first. Each layer must actually contribute to the
 # built window; a layer that stops being reachable is a real regression.
 EXPECTED_CHAIN = (
+    "automation_trigger_window",
+    "automation_review_window",
+    "automation_window",
     "ui_polish_window",
     "preview_actions_window",
     "bus_window",
@@ -35,9 +44,9 @@ EXPECTED_CHAIN = (
 
 
 def _launched_class():
-    from dpo4000_utils.gui_qt.ui_polish_window import QtScopeWindow
+    from tests.conftest import launched_window_class
 
-    return QtScopeWindow
+    return launched_window_class()
 
 
 def test_entry_points_launch_the_same_window_class():
@@ -70,32 +79,35 @@ def test_window_uses_a_frameless_custom_titlebar(make_window):
 def test_titlebar_exposes_a_tab_button_per_control_page(make_window):
     window = make_window()
     texts = button_texts(window)
+    titles, _builders, _file, _display = _page_constants()
 
-    for title in CONTROL_TAB_TITLES:
+    for title in titles:
         assert title in texts, f"no titlebar tab for {title!r}"
 
 
 def test_control_pages_are_split_into_file_and_display(make_window):
     window = make_window()
+    titles, builders, file_index, display_index = _page_constants()
 
-    assert CONTROL_TAB_TITLES[FILE_PAGE_INDEX] == "File"
-    assert CONTROL_TAB_TITLES[DISPLAY_PAGE_INDEX] == "Display"
-    assert CONTROL_PAGE_BUILDERS[FILE_PAGE_INDEX] == "_build_file_tab"
-    assert CONTROL_PAGE_BUILDERS[DISPLAY_PAGE_INDEX] == "_build_display_tab"
-    assert len(CONTROL_TAB_TITLES) == len(CONTROL_PAGE_BUILDERS)
+    assert titles[file_index] == "File"
+    assert titles[display_index] == "Display"
+    assert builders[file_index] == "_build_file_tab"
+    assert builders[display_index] == "_build_display_tab"
+    assert len(titles) == len(builders)
 
     # Both pages must actually build.
-    window._select_drawer_page(FILE_PAGE_INDEX)
+    window._select_drawer_page(file_index)
     assert hasattr(window, "output_folder")
-    window._select_drawer_page(DISPLAY_PAGE_INDEX)
-    assert window._lazy_control_pages_built[DISPLAY_PAGE_INDEX]
+    window._select_drawer_page(display_index)
+    assert window._lazy_control_pages_built[display_index]
 
 
 def test_every_control_page_builds_without_error(make_window):
     """A page that raises would otherwise only be found by clicking its tab."""
     window = make_window()
+    titles, _builders, _file, _display = _page_constants()
 
-    for index, title in enumerate(CONTROL_TAB_TITLES):
+    for index, title in enumerate(titles):
         window._select_drawer_page(index)
         assert window._lazy_control_pages_built[index], f"page {title!r} did not build"
 

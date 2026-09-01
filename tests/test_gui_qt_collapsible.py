@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import pytest
 
+from tests.conftest import file_page_index
+
 pytest.importorskip("PySide6.QtWidgets")
 
 from PySide6.QtCore import QEvent, QPoint, Qt  # noqa: E402
@@ -11,7 +13,6 @@ from PySide6.QtGui import QMouseEvent  # noqa: E402
 from PySide6.QtWidgets import QLabel, QWidget  # noqa: E402
 
 from dpo4000_utils.gui_qt.collapsible_window import CollapsibleCard  # noqa: E402
-from dpo4000_utils.gui_qt.display_window import CONTROL_PAGE_BUILDERS  # noqa: E402
 
 
 def _click(widget, position: QPoint) -> None:
@@ -100,7 +101,9 @@ def test_only_the_first_page_is_built_up_front(make_window):
 
     assert window._lazy_control_pages_built[0] is True
     assert not any(window._lazy_control_pages_built[1:])
-    assert len(window._lazy_control_pages_built) == len(CONTROL_PAGE_BUILDERS)
+    from dpo4000_utils.gui_qt import display_window
+
+    assert len(window._lazy_control_pages_built) == len(display_window.CONTROL_PAGE_BUILDERS)
 
 
 def test_selecting_a_page_builds_it_once(make_window):
@@ -138,8 +141,8 @@ def test_page_cards_become_collapsible_with_a_primary_card_open(make_window):
 def test_preferences_are_applied_once_and_then_leave_live_edits_alone(make_window):
     """Re-running preference application must not reset what the user typed."""
     window = make_window()
-    window._select_drawer_page(5)
-    assert window._lazy_control_pages_preferences_applied[5]
+    window._select_drawer_page(file_page_index())
+    assert window._lazy_control_pages_preferences_applied[file_page_index()]
 
     window.png_prefix.setText("typed_by_user_")
     # This is the path taken whenever another page is built later on.
@@ -150,9 +153,9 @@ def test_preferences_are_applied_once_and_then_leave_live_edits_alone(make_windo
 
 def test_a_page_built_later_still_receives_its_preferences(make_window):
     window = make_window()
-    assert not window._lazy_control_pages_preferences_applied[5]
+    assert not window._lazy_control_pages_preferences_applied[file_page_index()]
 
-    window._select_drawer_page(5)
+    window._select_drawer_page(file_page_index())
 
-    assert window._lazy_control_pages_preferences_applied[5]
+    assert window._lazy_control_pages_preferences_applied[file_page_index()]
     assert window.png_prefix.text(), "a freshly built page should get stored preferences"

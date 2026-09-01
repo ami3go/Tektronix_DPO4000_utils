@@ -17,8 +17,11 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 QtWidgets = pytest.importorskip("PySide6.QtWidgets")
 
-from dpo4000_utils.gui_qt.display_window import FILE_PAGE_INDEX  # noqa: E402
-from dpo4000_utils.gui_qt.ui_polish_window import QtScopeWindow  # noqa: E402
+from tests.conftest import file_page_index, launched_window_class  # noqa: E402
+
+# The launched window, not a named layer. automation_window rebinds page
+# constants on import, so an intermediate class sees an inconsistent layout.
+QtScopeWindow = launched_window_class()
 
 
 def _app():
@@ -108,7 +111,7 @@ def test_shortcut_cannot_reenter_run_action_during_an_operation(window, monkeypa
 
 def test_default_setup_button_is_registered_as_a_scope_control(window):
     """The v0.6.7 Default button was in neither callback set, so it was never disabled."""
-    window._select_drawer_page(FILE_PAGE_INDEX)
+    window._select_drawer_page(file_page_index())
     default_button = next(
         (b for b in window.findChildren(QtWidgets.QAbstractButton) if b.text() == "Default"),
         None,
@@ -124,7 +127,7 @@ def test_default_setup_button_is_registered_as_a_scope_control(window):
 @pytest.mark.parametrize("label", ("Default", "IDN"))
 def test_still_enabled_buttons_cannot_re_enter_run_action(window, monkeypatch, label):
     """Catch-all: even a button that stays enabled must not start a second session."""
-    window._select_drawer_page(FILE_PAGE_INDEX)
+    window._select_drawer_page(file_page_index())
     descriptions: list[str] = []
     monkeypatch.setattr(
         QtScopeWindow,

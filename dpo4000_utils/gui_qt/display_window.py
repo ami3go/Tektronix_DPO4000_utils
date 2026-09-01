@@ -90,8 +90,9 @@ DISPLAY_SCOPE_ACTIONS = {
 class QtScopeWindow(StableQtScopeWindow):
     """Stable launched Qt window with a dedicated Display controls page."""
 
-    # File and Display are separate pages here, so this layout has eight.
-    _control_page_builders = CONTROL_PAGE_BUILDERS
+    def _control_page_builder_names(self) -> tuple[str, ...]:
+        """File and Display are separate pages here, so this layout has eight."""
+        return CONTROL_PAGE_BUILDERS
 
     def _callback_requires_scope(self, callback) -> bool:
         """Make display-setting buttons follow the same IDN-first safety gate."""

@@ -41,6 +41,9 @@ CHAIN = (
     "bus_window",
     "preview_actions_window",
     "ui_polish_window",
+    "automation_window",
+    "automation_review_window",
+    "automation_trigger_window",
 )
 
 # Methods that carry a guard or invariant for every later layer. Overriding one of
@@ -64,7 +67,7 @@ INVARIANT_BEARING = frozenset(
 # api_window exists precisely to swap raw-SCPI handlers for public driver calls,
 # and several layers rebuild a card or page from scratch rather than extending it.
 # This is a snapshot, not an aspiration: it should shrink, never grow.
-EXPECTED_REPLACEMENTS = 62
+EXPECTED_REPLACEMENTS = 65
 
 
 def _class_methods(module: str) -> dict[str, bool]:
@@ -101,11 +104,13 @@ def _overrides_without_super() -> list[tuple[str, str, str]]:
 
 def test_the_chain_matches_the_launched_mro():
     """If a layer is added or reordered, the lists here must be updated too."""
-    from dpo4000_utils.gui_qt.ui_polish_window import QtScopeWindow
+    from tests.conftest import launched_window_class
+
+    window_class = launched_window_class()
 
     mro_modules = [
         cls.__module__.rsplit(".", 1)[-1]
-        for cls in reversed(QtScopeWindow.__mro__)
+        for cls in reversed(window_class.__mro__)
         if cls.__module__.startswith("dpo4000_utils.gui_qt")
     ]
     assert mro_modules == list(CHAIN), (
@@ -146,9 +151,11 @@ def test_wholesale_replacement_does_not_creep_upward():
 
 def test_every_layer_in_the_chain_is_reachable():
     """A layer nothing inherits from is dead weight that still has to be read."""
-    from dpo4000_utils.gui_qt.ui_polish_window import QtScopeWindow
+    from tests.conftest import launched_window_class
 
-    reachable = {cls.__module__.rsplit(".", 1)[-1] for cls in QtScopeWindow.__mro__}
+    window_class = launched_window_class()
+
+    reachable = {cls.__module__.rsplit(".", 1)[-1] for cls in window_class.__mro__}
     unreachable = [module for module in CHAIN if module not in reachable]
 
     assert not unreachable, f"layers no longer reached by the launched window: {unreachable}"

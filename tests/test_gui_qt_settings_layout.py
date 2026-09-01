@@ -9,11 +9,11 @@ from __future__ import annotations
 
 import pytest
 
+from tests.conftest import file_page_index
+
 pytest.importorskip("PySide6.QtWidgets")
 
 from PySide6.QtWidgets import QLineEdit, QSizePolicy  # noqa: E402
-
-from dpo4000_utils.gui_qt.display_window import FILE_PAGE_INDEX  # noqa: E402
 
 NAMING_WIDGETS = (
     "png_prefix",
@@ -29,7 +29,7 @@ TIMESTAMP_WIDGETS = ("png_timestamp", "csv_timestamp", "settings_timestamp")
 @pytest.fixture
 def file_page(make_window):
     window = make_window()
-    window._select_drawer_page(FILE_PAGE_INDEX)
+    window._select_drawer_page(file_page_index())
     return window
 
 

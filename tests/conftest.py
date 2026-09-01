@@ -49,9 +49,7 @@ def make_window(qt_app, tmp_path, monkeypatch):
 
     def factory(window_class=None, *, stub_actions=True, show=True):
         if window_class is None:
-            from dpo4000_utils.gui_qt import ui_polish_window
-
-            window_class = ui_polish_window.QtScopeWindow
+            window_class = launched_window_class()
         if stub_actions:
             monkeypatch.setattr(
                 window_class, "_run_action", lambda self, description, callback: None, raising=False
@@ -82,6 +80,30 @@ def unlocked_window(make_window):
     window._connection_ok = True
     window._update_scope_control_enabled()
     return window
+
+
+def launched_window_class():
+    """The class the console entry point starts.
+
+    Resolved through the package rather than naming a layer, so adding a new one
+    on top -- as the automation windows did -- does not silently leave the tests
+    exercising the old top of the chain.
+    """
+    import dpo4000_utils.gui_qt as package
+
+    return package.QtScopeWindow
+
+
+def file_page_index() -> int:
+    """The File page index, read when asked rather than at import.
+
+    automation_window rebinds display_window.FILE_PAGE_INDEX as an import side
+    effect, so a module-level `from ... import FILE_PAGE_INDEX` captures 5 or 6
+    depending on which test imported what first.
+    """
+    from dpo4000_utils.gui_qt import display_window
+
+    return display_window.FILE_PAGE_INDEX
 
 
 def button_named(window, text: str):

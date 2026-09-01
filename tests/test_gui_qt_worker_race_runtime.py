@@ -21,7 +21,11 @@ QtWidgets = pytest.importorskip("PySide6.QtWidgets")
 from PySide6.QtCore import QEventLoop, QTimer  # noqa: E402
 
 from dpo4000_utils.gui_qt.scope_worker import WorkerResult, start_scope_worker  # noqa: E402
-from dpo4000_utils.gui_qt.ui_polish_window import QtScopeWindow  # noqa: E402
+from tests.conftest import launched_window_class  # noqa: E402
+
+# The launched window, not a named layer. automation_window rebinds page
+# constants on import, so an intermediate class sees an inconsistent layout.
+QtScopeWindow = launched_window_class()
 
 POLL_MS = 25
 DEADLINE_MS = 5_000
