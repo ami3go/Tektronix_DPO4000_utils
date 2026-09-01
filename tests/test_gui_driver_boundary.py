@@ -15,6 +15,7 @@ QT_TRIGGER_WINDOW = ROOT / "dpo4000_utils" / "gui_qt" / "automation_trigger_wind
 QT_TRIGGER_REVIEW_WINDOW = ROOT / "dpo4000_utils" / "gui_qt" / "automation_trigger_review_window.py"
 QT_TRIGGER_BUNDLE_WINDOW = ROOT / "dpo4000_utils" / "gui_qt" / "automation_trigger_bundle_window.py"
 QT_WAVEFORM_WINDOW = ROOT / "dpo4000_utils" / "gui_qt" / "automation_waveform_window.py"
+QT_MEASUREMENT_WINDOW = ROOT / "dpo4000_utils" / "gui_qt" / "automation_measurement_window.py"
 QT_BOUNDARY_FILES = (
     QT_API_ADAPTER,
     QT_DESKTOP_WINDOW,
@@ -27,6 +28,7 @@ QT_BOUNDARY_FILES = (
     QT_TRIGGER_REVIEW_WINDOW,
     QT_TRIGGER_BUNDLE_WINDOW,
     QT_WAVEFORM_WINDOW,
+    QT_MEASUREMENT_WINDOW,
 )
 
 
@@ -45,8 +47,8 @@ def test_desktop_entrypoint_uses_final_pyside_window():
     package_init = (ROOT / "dpo4000_utils" / "gui_qt" / "__init__.py").read_text(encoding="utf-8")
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
 
-    assert "from .automation_waveform_window import QtScopeWindow" in runner
-    assert "from .automation_waveform_window import QtScopeWindow" in package_init
+    assert "from .automation_measurement_window import QtScopeWindow" in runner
+    assert "from .automation_measurement_window import QtScopeWindow" in package_init
     assert 'dpo4000-desk = "dpo4000_utils.gui_qt.runner:main"' in pyproject
     assert "dpo4000-gui" not in pyproject
 
@@ -75,7 +77,6 @@ def test_pyside_boundary_does_not_import_raw_transfer_helpers():
 
 def test_bus_window_uses_public_driver_api_not_bus_scpi():
     source = QT_BUS_WINDOW.read_text(encoding="utf-8")
-
     assert "scope.get_bus_configuration(bus)" in source
     assert "scope.configure_bus(config)" in source
     assert "BUS:B" not in source
@@ -85,7 +86,6 @@ def test_bus_window_uses_public_driver_api_not_bus_scpi():
 
 def test_preview_window_uses_public_driver_image_api_not_raw_scpi():
     source = QT_PREVIEW_WINDOW.read_text(encoding="utf-8")
-
     assert "scope.read_screen_png()" in source
     assert "scope.save_image_path(path)" in source
     assert ".query(" not in source
@@ -95,7 +95,6 @@ def test_preview_window_uses_public_driver_image_api_not_raw_scpi():
 
 def test_polish_window_uses_public_driver_workflow_apis_not_raw_scpi():
     source = QT_POLISH_WINDOW.read_text(encoding="utf-8")
-
     assert "scope.get_record_length()" in source
     assert "scope.save_all_channels_to_single_csv(" in source
     assert "scope.restore_default_setup()" in source
@@ -106,7 +105,6 @@ def test_polish_window_uses_public_driver_workflow_apis_not_raw_scpi():
 
 def test_automation_window_uses_public_driver_image_api_not_raw_scpi():
     source = QT_AUTOMATION_WINDOW.read_text(encoding="utf-8")
-
     assert "scope.save_image_path(path)" in source
     assert ".query(" not in source
     assert ".write(" not in source
@@ -116,7 +114,6 @@ def test_automation_window_uses_public_driver_image_api_not_raw_scpi():
 
 def test_trigger_automation_uses_public_driver_methods_only():
     source = QT_TRIGGER_WINDOW.read_text(encoding="utf-8")
-
     for call in (
         "scope.single_acquisition()",
         "scope.get_acquisition_state()",
@@ -131,7 +128,6 @@ def test_trigger_automation_uses_public_driver_methods_only():
 
 def test_trigger_bundle_window_delegates_scope_io_to_framework_neutral_helper():
     source = QT_TRIGGER_BUNDLE_WINDOW.read_text(encoding="utf-8")
-
     assert "acquire_trigger_bundle(" in source
     assert ".query(" not in source
     assert ".write(" not in source
@@ -140,7 +136,6 @@ def test_trigger_bundle_window_delegates_scope_io_to_framework_neutral_helper():
 
 def test_waveform_window_delegates_scope_io_to_framework_neutral_helper():
     source = QT_WAVEFORM_WINDOW.read_text(encoding="utf-8")
-
     assert "save_full_record_csv(" in source
     assert "save_image_path" not in source
     assert ".query(" not in source
@@ -148,9 +143,16 @@ def test_waveform_window_delegates_scope_io_to_framework_neutral_helper():
     assert "CURVE?" not in source
 
 
+def test_measurement_window_delegates_scope_io_to_framework_neutral_helper():
+    source = QT_MEASUREMENT_WINDOW.read_text(encoding="utf-8")
+    assert "append_measurement_row(" in source
+    assert ".query(" not in source
+    assert ".write(" not in source
+    assert "MEASUREMENT:" not in source
+
+
 def test_connection_test_feedback_is_non_modal_and_refreshes_scope_cards():
     source = QT_DESKTOP_WINDOW.read_text(encoding="utf-8")
-
     assert "self._message(" not in source
     assert 'self.statusBar().showMessage(f"Connected: {idn}")' in source
     assert "self.refresh_scope_parameters()" in source

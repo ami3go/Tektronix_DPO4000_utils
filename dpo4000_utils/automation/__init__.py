@@ -6,6 +6,11 @@ from .bundle import (
     acquire_trigger_bundle,
     collision_safe_bundle_paths,
 )
+from .measurement_logging import (
+    MeasurementLogResult,
+    append_measurement_row,
+    normalize_measurement_slots,
+)
 from .periodic import (
     AutomationEventToken,
     AutomationState,
@@ -28,6 +33,7 @@ __all__ = [
     "AutomationState",
     "AutomationStatistics",
     "CancelSignal",
+    "MeasurementLogResult",
     "PeriodicImageConfig",
     "PeriodicImageController",
     "TimedWaveformResult",
@@ -36,9 +42,11 @@ __all__ = [
     "TriggerImageController",
     "TriggerWaitResult",
     "acquire_trigger_bundle",
+    "append_measurement_row",
     "append_sequence",
     "collision_safe_bundle_paths",
     "collision_safe_path",
+    "normalize_measurement_slots",
     "save_full_record_csv",
     "trigger_acquisition_complete",
 ]
