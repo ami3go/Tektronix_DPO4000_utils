@@ -37,6 +37,14 @@ from .periodic import (
     append_sequence,
     collision_safe_path,
 )
+from .profiles import (
+    AUTOMATION_PROFILE_SCHEMA_VERSION,
+    AutomationProfile,
+    AutomationProfileError,
+    load_automation_profile,
+    save_automation_profile,
+    validate_automation_profile_config,
+)
 from .retention import (
     RetentionApplyResult,
     RetentionDeletion,
@@ -59,9 +67,12 @@ from .triggered import (
 from .waveform_logging import TimedWaveformResult, save_full_record_csv
 
 __all__ = [
+    "AUTOMATION_PROFILE_SCHEMA_VERSION",
     "ArtifactAction",
     "ArtifactCaptureResult",
     "AutomationEventToken",
+    "AutomationProfile",
+    "AutomationProfileError",
     "AutomationState",
     "AutomationStatistics",
     "BurstConfig",
@@ -97,6 +108,7 @@ __all__ = [
     "capture_artifacts",
     "collision_safe_bundle_paths",
     "collision_safe_path",
+    "load_automation_profile",
     "load_retention_index",
     "normalize_artifact_action",
     "normalize_measurement_slots",
@@ -105,6 +117,8 @@ __all__ = [
     "register_retention_event",
     "run_burst_event",
     "run_conditional_poll",
+    "save_automation_profile",
     "save_full_record_csv",
     "trigger_acquisition_complete",
+    "validate_automation_profile_config",
 ]
