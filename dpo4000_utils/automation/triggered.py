@@ -57,6 +57,11 @@ class TriggerImageController:
     def busy(self) -> bool:
         return self._busy
 
+    @property
+    def generation(self) -> int:
+        """Current run generation used to reject stale worker completions."""
+        return self._generation
+
     def start(self, config: TriggerImageConfig) -> None:
         if self.state is not AutomationState.IDLE:
             raise RuntimeError("Trigger automation is already active.")
@@ -116,11 +121,7 @@ class TriggerImageController:
 
 
 def trigger_acquisition_complete(*, acquisition_active: bool, trigger_state: str) -> bool:
-    """Return True only for the documented stopped/saved single-acquisition state.
-
-    `TRIGGER:STATE?` documents SAVE as not acquiring. Requiring both signals avoids
-    interpreting a transient trigger-state token alone as a completed record.
-    """
+    """Return True only for the documented stopped/saved single-acquisition state."""
     return not bool(acquisition_active) and str(trigger_state).strip().upper() == "SAVE"
 
 
