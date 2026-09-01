@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -61,7 +62,11 @@ class AutomationProfile:
 
 
 def _validate_json_value(value: Any, *, path: str = "config") -> Any:
-    if value is None or isinstance(value, (str, bool, int, float)):
+    if value is None or isinstance(value, (str, bool, int)):
+        return value
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise AutomationProfileError(f"Non-finite number is not allowed at {path}.")
         return value
     if isinstance(value, list):
         return [_validate_json_value(item, path=f"{path}[]") for item in value]
@@ -103,12 +108,12 @@ def save_automation_profile(path: str | Path, profile: AutomationProfile) -> Pat
     temporary = target.with_name(f".{target.name}.tmp")
     try:
         with temporary.open("w", encoding="utf-8") as handle:
-            json.dump(profile.to_dict(), handle, indent=2, sort_keys=True)
+            json.dump(profile.to_dict(), handle, indent=2, sort_keys=True, allow_nan=False)
             handle.write("\n")
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temporary, target)
-    except OSError as exc:
+    except (OSError, ValueError) as exc:
         try:
             temporary.unlink(missing_ok=True)
         except OSError:
@@ -121,8 +126,8 @@ def load_automation_profile(path: str | Path) -> AutomationProfile:
     """Load and validate one profile JSON file."""
     target = Path(path).expanduser()
     try:
-        payload = json.loads(target.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        payload = json.loads(target.read_text(encoding="utf-8"), parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value)))
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
         raise AutomationProfileError(f"Could not load Automation profile: {exc}") from exc
     if not isinstance(payload, dict):
         raise AutomationProfileError("Automation profile document must be a JSON object.")
