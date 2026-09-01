@@ -22,6 +22,7 @@ from .conditional import (
     parse_measurement_value,
     run_conditional_poll,
 )
+from .limits import RunLimits, RunLimitStatus, RunLimitTracker
 from .measurement_logging import (
     MeasurementLogResult,
     append_measurement_row,
@@ -61,6 +62,9 @@ __all__ = [
     "MeasurementLogResult",
     "PeriodicImageConfig",
     "PeriodicImageController",
+    "RunLimits",
+    "RunLimitStatus",
+    "RunLimitTracker",
     "TimedWaveformResult",
     "TriggerBundleResult",
     "TriggerImageConfig",
