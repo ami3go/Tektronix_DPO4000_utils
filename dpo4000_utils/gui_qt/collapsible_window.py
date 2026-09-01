@@ -178,6 +178,12 @@ class CollapsibleCard(QFrame):
 class QtScopeWindow(AcquisitionQtScopeWindow):
     """Launched Qt window using lightweight card-header collapse."""
 
+    # The page map is the only thing that differs between control-panel layouts.
+    # Keeping it a class attribute lets a later layer change the pages without
+    # copying the build machinery, which is how the two versions of
+    # _ensure_control_page_built previously drifted apart.
+    _control_page_builders: tuple[str, ...] = CONTROL_PAGE_BUILDERS
+
     def __init__(self, *args, **kwargs) -> None:
         self._pending_preferences = None
         self._lazy_control_pages_built: list[bool] = []
@@ -220,9 +226,10 @@ class QtScopeWindow(AcquisitionQtScopeWindow):
         """
         stack = QStackedWidget()
         stack.setObjectName("RightControlStack")
-        self._lazy_control_pages_built = [False for _ in CONTROL_PAGE_BUILDERS]
-        self._lazy_control_pages_preferences_applied = [False for _ in CONTROL_PAGE_BUILDERS]
-        for index, _builder_name in enumerate(CONTROL_PAGE_BUILDERS):
+        builders = self._control_page_builders
+        self._lazy_control_pages_built = [False for _ in builders]
+        self._lazy_control_pages_preferences_applied = [False for _ in builders]
+        for index, _builder_name in enumerate(builders):
             placeholder = QWidget()
             placeholder.setObjectName(f"LazyControlPagePlaceholder{index}")
             stack.addWidget(placeholder)
@@ -236,12 +243,12 @@ class QtScopeWindow(AcquisitionQtScopeWindow):
     def _ensure_control_page_built(self, index: int) -> None:
         """Build a right-side control page only once, just before it is shown."""
         stack = getattr(self, "control_stack", None)
-        if stack is None or index < 0 or index >= len(CONTROL_PAGE_BUILDERS):
+        if stack is None or index < 0 or index >= len(self._control_page_builders):
             return
         if index < len(self._lazy_control_pages_built) and self._lazy_control_pages_built[index]:
             return
 
-        builder = getattr(self, CONTROL_PAGE_BUILDERS[index])
+        builder = getattr(self, self._control_page_builders[index])
         page = builder()
         page = self._make_page_cards_collapsible(page)
 

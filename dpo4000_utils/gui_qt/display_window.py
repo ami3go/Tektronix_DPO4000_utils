@@ -19,7 +19,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QSizePolicy,
-    QStackedWidget,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -91,6 +90,9 @@ DISPLAY_SCOPE_ACTIONS = {
 class QtScopeWindow(StableQtScopeWindow):
     """Stable launched Qt window with a dedicated Display controls page."""
 
+    # File and Display are separate pages here, so this layout has eight.
+    _control_page_builders = CONTROL_PAGE_BUILDERS
+
     def _callback_requires_scope(self, callback) -> bool:
         """Make display-setting buttons follow the same IDN-first safety gate."""
         if getattr(callback, "__name__", "") in DISPLAY_SCOPE_ACTIONS:
@@ -124,18 +126,6 @@ class QtScopeWindow(StableQtScopeWindow):
         layout.addStretch(1)
         return bar
 
-    def _build_control_stack(self) -> QStackedWidget:
-        """Create placeholder pages and build real File/Display pages lazily."""
-        stack = QStackedWidget()
-        stack.setObjectName("RightControlStack")
-        self._lazy_control_pages_built = [False for _ in CONTROL_PAGE_BUILDERS]
-        self._lazy_control_pages_preferences_applied = [False for _ in CONTROL_PAGE_BUILDERS]
-        for index, _builder_name in enumerate(CONTROL_PAGE_BUILDERS):
-            placeholder = QWidget()
-            placeholder.setObjectName(f"LazyControlPagePlaceholder{index}")
-            stack.addWidget(placeholder)
-        return stack
-
     def _select_drawer_page(self, index: int) -> None:
         """Select the requested top-menu page using the Display-aware page list."""
         self._ensure_control_page_built(index)
@@ -153,29 +143,6 @@ class QtScopeWindow(StableQtScopeWindow):
             if button is not None:
                 button.setChecked(True)
         self.statusBar().showMessage(f"Opened {title} controls")
-
-    def _ensure_control_page_built(self, index: int) -> None:
-        """Build a top-menu page only once, using the File/Display page map."""
-        stack = getattr(self, "control_stack", None)
-        if stack is None or index < 0 or index >= len(CONTROL_PAGE_BUILDERS):
-            return
-        if index < len(self._lazy_control_pages_built) and self._lazy_control_pages_built[index]:
-            return
-
-        builder = getattr(self, CONTROL_PAGE_BUILDERS[index])
-        page = builder()
-        page = self._make_page_cards_collapsible(page)
-
-        placeholder = stack.widget(index)
-        stack.removeWidget(placeholder)
-        placeholder.deleteLater()
-        stack.insertWidget(index, page)
-        self._lazy_control_pages_built[index] = True
-
-        self._apply_preferences_to_control_page(index)
-        update_controls = getattr(self, "_update_scope_control_enabled", None)
-        if callable(update_controls):
-            update_controls()
 
     # ------------------------------------------------------------------
     # Lazy-page-safe widget accessors
