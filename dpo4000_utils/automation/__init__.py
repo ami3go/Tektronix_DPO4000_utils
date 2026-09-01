@@ -9,6 +9,12 @@ from .periodic import (
     append_sequence,
     collision_safe_path,
 )
+from .triggered import (
+    TriggerImageConfig,
+    TriggerImageController,
+    TriggerWaitResult,
+    trigger_acquisition_complete,
+)
 
 __all__ = [
     "AutomationEventToken",
@@ -16,6 +22,10 @@ __all__ = [
     "AutomationStatistics",
     "PeriodicImageConfig",
     "PeriodicImageController",
+    "TriggerImageConfig",
+    "TriggerImageController",
+    "TriggerWaitResult",
     "append_sequence",
     "collision_safe_path",
+    "trigger_acquisition_complete",
 ]

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from .acquisition_modes import AcquisitionModeReadbackMixin
+from .acquisition_state import AcquisitionStateMixin
 from .bus import BusMixin
 from .channels import ChannelMixin
 from .connection import ConnectionMixin
@@ -26,6 +27,7 @@ class DPO4000Scope(
     ChannelMixin,
     TriggerMixin,
     AcquisitionModeReadbackMixin,
+    AcquisitionStateMixin,
     ControlMixin,
     ReferenceMixin,
     BusMixin,
