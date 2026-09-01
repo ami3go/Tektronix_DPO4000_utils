@@ -23,8 +23,18 @@ def _measurement_value(scope: Any, slot: int) -> float:
     return value
 
 
+def _event_dict(event: Any) -> dict[str, Any]:
+    if isinstance(event, dict):
+        return dict(event)
+    converter = getattr(event, "to_dict", None)
+    if callable(converter):
+        value = converter()
+        if isinstance(value, dict):
+            return dict(value)
+    raise TypeError(f"Decoded BUS event must be a mapping or expose to_dict(), got {type(event).__name__}.")
+
+
 def capture_logger_record(scope: Any, config: LoggerConfig, sequence: int) -> LoggerRecord:
-    """Capture one finite Logger record through public driver APIs only."""
     waveforms: list[WaveformSnapshot] = []
     if config.mode in {LoggerMode.WAVEFORM, LoggerMode.MIXED}:
         for source in config.waveform_sources:
@@ -44,14 +54,19 @@ def capture_logger_record(scope: Any, config: LoggerConfig, sequence: int) -> Lo
         for slot in config.measurement_slots:
             try:
                 measurements[slot] = _measurement_value(scope, slot)
-            except Exception as exc:  # measurement read can fail independently of waveform record.
+            except Exception as exc:
                 if is_transport_error(exc):
                     raise
                 measurements[slot] = None
                 measurement_errors[slot] = str(exc)
 
-    bus_events: dict[int, tuple[dict, ...]] = {}
+    bus_events: dict[int, tuple[dict[str, Any], ...]] = {}
     if config.mode in {LoggerMode.BUS, LoggerMode.MIXED} and config.bus_slots:
+        supports = getattr(scope, "supports_decoded_bus_events", None)
+        if callable(supports) and not bool(supports()):
+            raise BusDecodedEventsUnavailable(
+                "Connected DPO4000 driver reports decoded BUS event extraction as unavailable/unqualified."
+            )
         reader = getattr(scope, "read_decoded_bus_events", None)
         if not callable(reader):
             raise BusDecodedEventsUnavailable(
@@ -59,7 +74,7 @@ def capture_logger_record(scope: Any, config: LoggerConfig, sequence: int) -> Lo
             )
         for bus in config.bus_slots:
             events = reader(bus)
-            bus_events[bus] = tuple(dict(event) for event in events)
+            bus_events[bus] = tuple(_event_dict(event) for event in events)
 
     return LoggerRecord(
         sequence=int(sequence),

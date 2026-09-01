@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
+from .bus_csv import BusCsvStreamWriter
 from .csv_stream import WaveformCsvStreamWriter
 from .dpo4log import Dpo4LogWriter
 from .measurement_csv import MeasurementCsvStreamWriter
@@ -13,8 +14,6 @@ from .models import LoggerMode, LoggerOutputFormat, LoggerRecord
 
 
 class LoggerOutputSession:
-    """Own the output writers for one Logger run."""
-
     def __init__(
         self,
         root: str | Path,
@@ -33,13 +32,13 @@ class LoggerOutputSession:
         self.csv_writer: Any = None
         self.binary_writer: Dpo4LogWriter | None = None
         if self.output_format in {LoggerOutputFormat.CSV, LoggerOutputFormat.BOTH}:
+            csv_path = self.root / f"{self.stem}.csv"
             if self.mode is LoggerMode.MEASUREMENTS:
-                self.csv_writer = MeasurementCsvStreamWriter(
-                    self.root / f"{self.stem}.csv",
-                    measurement_slots,
-                )
+                self.csv_writer = MeasurementCsvStreamWriter(csv_path, measurement_slots)
+            elif self.mode is LoggerMode.BUS:
+                self.csv_writer = BusCsvStreamWriter(csv_path)
             else:
-                self.csv_writer = WaveformCsvStreamWriter(self.root / f"{self.stem}.csv")
+                self.csv_writer = WaveformCsvStreamWriter(csv_path)
         if self.output_format in {LoggerOutputFormat.BINARY, LoggerOutputFormat.BOTH}:
             self.binary_writer = Dpo4LogWriter(
                 self.root / f"{self.stem}.dpo4log",
