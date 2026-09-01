@@ -1,17 +1,7 @@
 """Reusable automation models for DPO4000 Desk."""
 
-from .artifacts import (
-    ArtifactAction,
-    ArtifactCaptureResult,
-    capture_artifacts,
-    normalize_artifact_action,
-)
-from .bundle import (
-    CancelSignal,
-    TriggerBundleResult,
-    acquire_trigger_bundle,
-    collision_safe_bundle_paths,
-)
+from .artifacts import ArtifactAction, ArtifactCaptureResult, capture_artifacts, normalize_artifact_action
+from .bundle import CancelSignal, TriggerBundleResult, acquire_trigger_bundle, collision_safe_bundle_paths
 from .burst import BurstConfig, BurstEventResult, run_burst_event
 from .conditional import (
     CONDITION_OPERATORS,
@@ -23,11 +13,7 @@ from .conditional import (
     run_conditional_poll,
 )
 from .limits import RunLimits, RunLimitStatus, RunLimitTracker
-from .measurement_logging import (
-    MeasurementLogResult,
-    append_measurement_row,
-    normalize_measurement_slots,
-)
+from .measurement_logging import MeasurementLogResult, append_measurement_row, normalize_measurement_slots
 from .periodic import (
     AutomationEventToken,
     AutomationState,
@@ -45,6 +31,7 @@ from .profiles import (
     save_automation_profile,
     validate_automation_profile_config,
 )
+from .recovery import RecoveryPolicy, RecoveryStatistics
 from .retention import (
     RetentionApplyResult,
     RetentionDeletion,
@@ -58,12 +45,7 @@ from .retention import (
     plan_retention,
     register_retention_event,
 )
-from .triggered import (
-    TriggerImageConfig,
-    TriggerImageController,
-    TriggerWaitResult,
-    trigger_acquisition_complete,
-)
+from .triggered import TriggerImageConfig, TriggerImageController, TriggerWaitResult, trigger_acquisition_complete
 from .waveform_logging import TimedWaveformResult, save_full_record_csv
 
 __all__ = [
@@ -86,6 +68,8 @@ __all__ = [
     "MeasurementLogResult",
     "PeriodicImageConfig",
     "PeriodicImageController",
+    "RecoveryPolicy",
+    "RecoveryStatistics",
     "RetentionApplyResult",
     "RetentionDeletion",
     "RetentionError",

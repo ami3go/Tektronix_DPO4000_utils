@@ -4,27 +4,16 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dpo4000-utils"
-version = "0.6.32"
+version = "0.6.33"
 description = "Python driver and PySide6 DPO4000 Desk GUI for Tektronix DPO4000/DPO4054 oscilloscopes"
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = [
-    "pyvisa",
-    "pillow",
-]
+dependencies = ["pyvisa", "pillow"]
 
 [project.optional-dependencies]
-dev = [
-    "pytest",
-    "ruff",
-    "tomli>=2; python_version < '3.11'",
-]
-build = [
-    "pyinstaller",
-]
-pyside6 = [
-    "PySide6>=6.7",
-]
+dev = ["pytest", "ruff", "tomli>=2; python_version < '3.11'"]
+build = ["pyinstaller"]
+pyside6 = ["PySide6>=6.7"]
 
 [project.scripts]
 dpo4000-desk = "dpo4000_utils.gui_qt.runner:main"
@@ -41,9 +30,7 @@ include = ["dpo4000_utils*"]
 "dpo4000_utils.gui_qt" = ["*.qss"]
 
 [tool.pytest.ini_options]
-markers = [
-    "hardware: tests that require a connected Tektronix DPO4000-family oscilloscope",
-]
+markers = ["hardware: tests that require a connected Tektronix DPO4000-family oscilloscope"]
 
 [tool.ruff]
 line-length = 100
