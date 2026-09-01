@@ -60,6 +60,23 @@ def normalize_artifact_action(action: ArtifactAction | str) -> ArtifactAction:
         raise ValueError(f"Unsupported automation artifact action: {action!r}.") from exc
 
 
+def _error_with_partial_artifacts(
+    exc: Exception,
+    *,
+    image_path: Path | None,
+    csv_path: Path | None,
+) -> str:
+    detail = str(exc).strip() or exc.__class__.__name__
+    partials: list[str] = []
+    if image_path is not None:
+        partials.append(str(image_path))
+    if csv_path is not None:
+        partials.append(str(csv_path))
+    if partials:
+        detail = f"{detail}; partial artifacts: {', '.join(partials)}"
+    return detail
+
+
 def capture_artifacts(
     scope: Any,
     action: ArtifactAction | str,
@@ -107,7 +124,11 @@ def capture_artifacts(
             image_path=saved_image,
             csv_path=saved_csv,
             point_count=point_count,
-            error=str(exc),
+            error=_error_with_partial_artifacts(
+                exc,
+                image_path=saved_image,
+                csv_path=saved_csv,
+            ),
         )
 
     return ArtifactCaptureResult(

@@ -139,8 +139,7 @@ class PeriodicImageController:
             return False
         self._busy = False
         self.statistics.skipped += 1
-        if reason:
-            self.statistics.last_error = str(reason)
+        self.statistics.last_error = str(reason) if reason else ""
         return True
 
 
