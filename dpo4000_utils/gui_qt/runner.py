@@ -13,7 +13,7 @@ def main() -> int:
         from PySide6.QtWidgets import QApplication
     except ModuleNotFoundError as exc:
         raise SystemExit("PySide6 is not installed. Install with `python -m pip install -e .[pyside6]`.") from exc
-    from .logger_math_window import QtScopeWindow
+    from .logger_csv_window import QtScopeWindow
     from .startup_debug import install_startup_debug_probe, parse_startup_debug_args
     startup_debug = parse_startup_debug_args(sys.argv)
     startup_check = STARTUP_CHECK_FLAG in startup_debug.argv
