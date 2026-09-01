@@ -32,6 +32,12 @@ from .profiles import (
     validate_automation_profile_config,
 )
 from .recovery import RecoveryPolicy, RecoveryStatistics
+from .reporting import (
+    AUTOMATION_REPORT_SCHEMA_VERSION,
+    AutomationEventRecord,
+    AutomationRunReporter,
+    make_event_record,
+)
 from .retention import (
     RetentionApplyResult,
     RetentionDeletion,
@@ -50,11 +56,14 @@ from .waveform_logging import TimedWaveformResult, save_full_record_csv
 
 __all__ = [
     "AUTOMATION_PROFILE_SCHEMA_VERSION",
+    "AUTOMATION_REPORT_SCHEMA_VERSION",
     "ArtifactAction",
     "ArtifactCaptureResult",
+    "AutomationEventRecord",
     "AutomationEventToken",
     "AutomationProfile",
     "AutomationProfileError",
+    "AutomationRunReporter",
     "AutomationState",
     "AutomationStatistics",
     "BurstConfig",
@@ -94,6 +103,7 @@ __all__ = [
     "collision_safe_path",
     "load_automation_profile",
     "load_retention_index",
+    "make_event_record",
     "normalize_artifact_action",
     "normalize_measurement_slots",
     "parse_measurement_value",

@@ -15,7 +15,7 @@ def main() -> int:
         raise SystemExit(
             "PySide6 is not installed. Install with `python -m pip install -e .[pyside6]`."
         ) from exc
-    from .automation_recovery_review_window import QtScopeWindow
+    from .automation_report_window import QtScopeWindow
     from .startup_debug import install_startup_debug_probe, parse_startup_debug_args
 
     startup_debug = parse_startup_debug_args(sys.argv)
