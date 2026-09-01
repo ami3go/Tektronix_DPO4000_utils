@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
-from dpo4000_utils.automation.bundle import acquire_trigger_bundle
+from dpo4000_utils.automation.bundle import (
+    acquire_trigger_bundle,
+    collision_safe_bundle_paths,
+)
 
 
 class _NeverCancel:
@@ -24,7 +25,7 @@ class _CancelImmediately:
 
 
 class _FakeScope:
-    def __init__(self, *, csv_error: BaseException | None = None) -> None:
+    def __init__(self, *, csv_error: Exception | None = None) -> None:
         self.calls: list[object] = []
         self.csv_error = csv_error
 
@@ -72,6 +73,7 @@ def test_a3_saves_image_then_full_record_csv_before_any_rearm(tmp_path: Path) ->
 
     assert result.completed is True
     assert result.cancelled is False
+    assert result.artifacts_complete is True
     assert result.image_path == image
     assert result.csv_path == csv
     assert result.point_count == 100_000
@@ -98,23 +100,41 @@ def test_a3_cancellation_stops_acquisition_without_writing_artifacts(tmp_path: P
 
     assert result.cancelled is True
     assert result.completed is False
+    assert result.artifacts_complete is False
     assert scope.calls == ["single", "stop"]
 
 
-def test_a3_csv_failure_propagates_after_image_without_arming_next_acquisition(tmp_path: Path) -> None:
+def test_a3_non_transport_csv_failure_is_structured_partial_result(tmp_path: Path) -> None:
     scope = _FakeScope(csv_error=OSError("disk full"))
+    image = tmp_path / "capture.png"
+    csv = tmp_path / "capture.csv"
 
-    with pytest.raises(OSError, match="disk full"):
-        acquire_trigger_bundle(
-            scope,
-            _NeverCancel(),
-            poll_interval_s=0.5,
-            image_path=tmp_path / "capture.png",
-            csv_path=tmp_path / "capture.csv",
-        )
+    result = acquire_trigger_bundle(
+        scope,
+        _NeverCancel(),
+        poll_interval_s=0.5,
+        image_path=image,
+        csv_path=csv,
+    )
 
+    assert result.completed is True
+    assert result.artifacts_complete is False
+    assert result.image_path == image
+    assert result.csv_path is None
+    assert "disk full" in result.error
     assert scope.calls.count("single") == 1
     assert scope.calls[-1][0] == "csv"
+
+
+def test_a3_collision_suffix_is_shared_by_png_and_csv(tmp_path: Path) -> None:
+    image = tmp_path / "capture_0001.png"
+    csv = tmp_path / "waveform_0001.csv"
+    image.write_bytes(b"old")
+
+    safe_image, safe_csv = collision_safe_bundle_paths(image, csv)
+
+    assert safe_image.name == "capture_0001_001.png"
+    assert safe_csv.name == "waveform_0001_001.csv"
 
 
 def test_a3_gui_stays_behind_public_driver_boundary() -> None:

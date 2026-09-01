@@ -21,7 +21,7 @@ from ..automation import (
     TriggerImageConfig,
     acquire_trigger_bundle,
     append_sequence,
-    collision_safe_path,
+    collision_safe_bundle_paths,
 )
 from ..gui.config import FileNaming, build_output_path
 from .automation_trigger_review_window import QtScopeWindow as AutomationA2ReviewedQtScopeWindow
@@ -70,8 +70,8 @@ class QtScopeWindow(AutomationA2ReviewedQtScopeWindow):
         layout = QVBoxLayout(card)
         label = QLabel(
             "Uses File → Destination folder plus the configured PNG and CSV naming settings. "
-            "Automation appends one shared four-digit event sequence and allocates collision-safe "
-            "paths instead of silently overwriting files."
+            "Automation appends one shared four-digit event sequence and one shared collision "
+            "suffix to keep each evidence pair matched without silent overwrites."
         )
         label.setWordWrap(True)
         layout.addWidget(label)
@@ -120,7 +120,8 @@ class QtScopeWindow(AutomationA2ReviewedQtScopeWindow):
             return
         if mode == TRIGGER_IMAGE_CSV_MODE:
             hint.setText(
-                "A3 saves PNG and full enabled-channel CSV before the next Single acquisition is armed."
+                "A3 saves PNG and full enabled-channel CSV before the next Single acquisition "
+                "is armed."
             )
         elif mode == TRIGGER_IMAGE_MODE:
             hint.setText("A2 saves one PNG after each completed Single acquisition.")
@@ -144,8 +145,8 @@ class QtScopeWindow(AutomationA2ReviewedQtScopeWindow):
             return
         rearm = "then re-arm Single" if config.rearm else "then stop"
         label.setText(
-            "Arm a Single acquisition, wait for completion, save PNG and full enabled-channel CSV "
-            f"from that same acquisition, {rearm}. Poll interval {config.poll_interval_s:g} s."
+            "Arm a Single acquisition, wait for completion, save PNG and full enabled-channel "
+            f"CSV from that same acquisition, {rearm}. Poll interval {config.poll_interval_s:g} s."
         )
 
     def _automation_refresh_status(self) -> None:
@@ -187,7 +188,9 @@ class QtScopeWindow(AutomationA2ReviewedQtScopeWindow):
             cancel = self._trigger_cancel_event
             if cancel is not None:
                 cancel.set()
-            self._append_log("Image + CSV trigger automation paused; current Single acquisition cancelled")
+            self._append_log(
+                "Image + CSV trigger automation paused; current Single acquisition cancelled"
+            )
             self._automation_refresh_status()
             return
         if trigger.state is AutomationState.PAUSED:
@@ -203,7 +206,11 @@ class QtScopeWindow(AutomationA2ReviewedQtScopeWindow):
     # ------------------------------------------------------------------
     def _start_trigger_bundle_automation(self, *, rearm: bool) -> None:
         if not bool(getattr(self, "_connection_ok", False)):
-            self._message("Automation", "Test the scope connection before starting automation.", error=True)
+            self._message(
+                "Automation",
+                "Test the scope connection before starting automation.",
+                error=True,
+            )
             return
         if self._automation_controller.state is not AutomationState.IDLE:
             self._message("Automation", "Periodic automation is already active.", error=True)
@@ -244,12 +251,15 @@ class QtScopeWindow(AutomationA2ReviewedQtScopeWindow):
             fallback="waveform",
             add_timestamp=self.csv_timestamp.isChecked(),
         )
-        image_path = build_output_path(self.output_folder.text(), image_naming, timestamp=timestamp)
-        csv_path = build_output_path(self.output_folder.text(), csv_naming, timestamp=timestamp)
-        return (
-            collision_safe_path(append_sequence(image_path, sequence)),
-            collision_safe_path(append_sequence(csv_path, sequence)),
+        image_path = append_sequence(
+            build_output_path(self.output_folder.text(), image_naming, timestamp=timestamp),
+            sequence,
         )
+        csv_path = append_sequence(
+            build_output_path(self.output_folder.text(), csv_naming, timestamp=timestamp),
+            sequence,
+        )
+        return collision_safe_bundle_paths(image_path, csv_path)
 
     def _trigger_bundle_cycle(self) -> None:
         trigger = self._trigger_controller
@@ -317,9 +327,17 @@ class QtScopeWindow(AutomationA2ReviewedQtScopeWindow):
             trigger.cancel_cycle(token)
             self._automation_refresh_status()
             return
-        if not result.completed or result.image_path is None or result.csv_path is None:
-            trigger.finish_cycle(token, success=False, error="Single acquisition bundle did not complete")
+        if not result.completed or not result.artifacts_complete:
+            partial = []
+            if result.image_path is not None:
+                partial.append(Path(result.image_path).name)
+            if result.csv_path is not None:
+                partial.append(Path(result.csv_path).name)
+            detail = f"; partial artifacts: {', '.join(partial)}" if partial else ""
+            error = result.error or "Single acquisition bundle did not complete"
+            trigger.finish_cycle(token, success=False, error=f"{error}{detail}")
             trigger.stop()
+            self._append_log(f"Automation A3 failed: {error}{detail}")
             self._automation_refresh_status()
             return
 

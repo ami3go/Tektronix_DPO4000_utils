@@ -1,6 +1,11 @@
 """Reusable automation models for DPO4000 Desk."""
 
-from .bundle import CancelSignal, TriggerBundleResult, acquire_trigger_bundle
+from .bundle import (
+    CancelSignal,
+    TriggerBundleResult,
+    acquire_trigger_bundle,
+    collision_safe_bundle_paths,
+)
 from .periodic import (
     AutomationEventToken,
     AutomationState,
@@ -30,6 +35,7 @@ __all__ = [
     "TriggerWaitResult",
     "acquire_trigger_bundle",
     "append_sequence",
+    "collision_safe_bundle_paths",
     "collision_safe_path",
     "trigger_acquisition_complete",
 ]
