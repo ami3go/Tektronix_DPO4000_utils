@@ -9,12 +9,16 @@ QT_DESKTOP_WINDOW = ROOT / "dpo4000_utils" / "gui_qt" / "desktop_window.py"
 QT_BUS_WINDOW = ROOT / "dpo4000_utils" / "gui_qt" / "bus_window.py"
 QT_PREVIEW_WINDOW = ROOT / "dpo4000_utils" / "gui_qt" / "preview_actions_window.py"
 QT_POLISH_WINDOW = ROOT / "dpo4000_utils" / "gui_qt" / "ui_polish_window.py"
+QT_AUTOMATION_WINDOW = ROOT / "dpo4000_utils" / "gui_qt" / "automation_window.py"
+QT_AUTOMATION_REVIEW_WINDOW = ROOT / "dpo4000_utils" / "gui_qt" / "automation_review_window.py"
 QT_BOUNDARY_FILES = (
     QT_API_ADAPTER,
     QT_DESKTOP_WINDOW,
     QT_BUS_WINDOW,
     QT_PREVIEW_WINDOW,
     QT_POLISH_WINDOW,
+    QT_AUTOMATION_WINDOW,
+    QT_AUTOMATION_REVIEW_WINDOW,
 )
 
 
@@ -33,8 +37,8 @@ def test_desktop_entrypoint_uses_final_pyside_window():
     package_init = (ROOT / "dpo4000_utils" / "gui_qt" / "__init__.py").read_text(encoding="utf-8")
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
 
-    assert "from .ui_polish_window import QtScopeWindow" in runner
-    assert "from .ui_polish_window import QtScopeWindow" in package_init
+    assert "from .automation_review_window import QtScopeWindow" in runner
+    assert "from .automation_review_window import QtScopeWindow" in package_init
     assert 'dpo4000-desk = "dpo4000_utils.gui_qt.runner:main"' in pyproject
     assert "dpo4000-gui" not in pyproject
 
@@ -90,6 +94,16 @@ def test_polish_window_uses_public_driver_workflow_apis_not_raw_scpi():
     assert ".query(" not in source
     assert ".write(" not in source
     assert 'getattr(scope, "scope"' not in source
+
+
+def test_automation_window_uses_public_driver_image_api_not_raw_scpi():
+    source = QT_AUTOMATION_WINDOW.read_text(encoding="utf-8")
+
+    assert "scope.save_image_path(path)" in source
+    assert ".query(" not in source
+    assert ".write(" not in source
+    assert "HARDCOPY" not in source
+    assert "CURVE?" not in source
 
 
 def test_connection_test_feedback_is_non_modal_and_refreshes_scope_cards():
