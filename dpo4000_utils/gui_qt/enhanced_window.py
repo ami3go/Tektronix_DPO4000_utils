@@ -243,7 +243,11 @@ class QtScopeWindow(BaseQtScopeWindow):
             "Keep control drawer pinned open" if self.drawer_pinned else "Drawer can now be hidden"
         )
         self.hide_drawer_button.setEnabled(not self.drawer_pinned)
-        message = "Control drawer pinned open" if self.drawer_pinned else "Control drawer can now be hidden"
+        message = (
+            "Control drawer pinned open"
+            if self.drawer_pinned
+            else "Control drawer can now be hidden"
+        )
         self.statusBar().showMessage(message)
 
     def toggle_compact_mode(self) -> None:
@@ -259,7 +263,9 @@ class QtScopeWindow(BaseQtScopeWindow):
         if button is not None:
             button.setText("Compact" if self.compact_mode else "Advanced")
             button.setToolTip(
-                "Hide advanced drawer sections" if self.compact_mode else "Show advanced drawer sections"
+                "Hide advanced drawer sections"
+                if self.compact_mode
+                else "Show advanced drawer sections"
             )
 
     def _register_advanced_widget(self, widget: QWidget) -> QWidget:
@@ -279,7 +285,9 @@ class QtScopeWindow(BaseQtScopeWindow):
         for card in container.findChildren(QGroupBox):
             QtScopeWindow._prepare_drawer_card(card)
 
-    def _collapsible_section(self, title: str, content: QWidget, *, expanded: bool = False) -> QWidget:
+    def _collapsible_section(
+        self, title: str, content: QWidget, *, expanded: bool = False
+    ) -> QWidget:
         section = QWidget()
         section.setObjectName("CollapsibleSection")
         layout = QVBoxLayout(section)
@@ -338,9 +346,15 @@ class QtScopeWindow(BaseQtScopeWindow):
         layout.setSpacing(12)
 
         layout.addWidget(self._build_trigger_quick_card())
-        layout.addWidget(self._collapsible_section("Horizontal position", self._build_horizontal_position_card()))
-        layout.addWidget(self._collapsible_section("Edge trigger setup", self._build_edge_trigger_card()))
-        layout.addWidget(self._collapsible_section("Image capture re-arm", self._build_image_rearm_card()))
+        layout.addWidget(
+            self._collapsible_section("Horizontal position", self._build_horizontal_position_card())
+        )
+        layout.addWidget(
+            self._collapsible_section("Edge trigger setup", self._build_edge_trigger_card())
+        )
+        layout.addWidget(
+            self._collapsible_section("Image capture re-arm", self._build_image_rearm_card())
+        )
         layout.addStretch(1)
         return self._wrap_scrollable_drawer_page(
             body,
@@ -408,8 +422,16 @@ class QtScopeWindow(BaseQtScopeWindow):
         layout.setSpacing(12)
 
         layout.addWidget(self._build_channel_labels_card())
-        layout.addWidget(self._collapsible_section("Full channel configuration", self._build_channel_configuration_card()))
-        layout.addWidget(self._collapsible_section("Math channel configuration", self._build_math_configuration_card()))
+        layout.addWidget(
+            self._collapsible_section(
+                "Full channel configuration", self._build_channel_configuration_card()
+            )
+        )
+        layout.addWidget(
+            self._collapsible_section(
+                "Math channel configuration", self._build_math_configuration_card()
+            )
+        )
         layout.addStretch(1)
         return self._wrap_scrollable_drawer_page(
             body,
@@ -476,7 +498,8 @@ class QtScopeWindow(BaseQtScopeWindow):
         form.addRow("Probe gain", self.channel_config_probe_gain)
 
         hint = QLabel(
-            "Blank optional fields are skipped. Bandwidth/probe options depend on scope firmware and probe type."
+            "Blank optional fields are skipped. Bandwidth/probe "
+            "options depend on scope firmware and probe type."
         )
         hint.setObjectName("MutedLabel")
         hint.setWordWrap(True)
@@ -484,7 +507,9 @@ class QtScopeWindow(BaseQtScopeWindow):
 
         buttons = QHBoxLayout()
         buttons.addWidget(self._button("Read channel config", self.read_channel_configuration))
-        buttons.addWidget(self._accent_button("Apply channel config", self.apply_channel_configuration))
+        buttons.addWidget(
+            self._accent_button("Apply channel config", self.apply_channel_configuration)
+        )
         form.addRow(buttons)
         return self._prepare_channels_card(card)
 
@@ -504,7 +529,8 @@ class QtScopeWindow(BaseQtScopeWindow):
         form.addRow("Vertical position", self.math_config_position)
 
         hint = QLabel(
-            "Uses MATH:DEFINE plus MATH:VERTICAL scale/position. Example expressions: CH1+CH2, CH1-CH2, CH1*CH2."
+            "Uses MATH:DEFINE plus MATH:VERTICAL scale/position. "
+            "Example expressions: CH1+CH2, CH1-CH2, CH1*CH2."
         )
         hint.setObjectName("MutedLabel")
         hint.setWordWrap(True)
@@ -535,8 +561,8 @@ class QtScopeWindow(BaseQtScopeWindow):
             response = instrument.query(command).strip()
         except Exception:
             return ""
-        if "\"" in response:
-            return response.split("\"", 1)[1].rsplit("\"", 1)[0]
+        if '"' in response:
+            return response.split('"', 1)[1].rsplit('"', 1)[0]
         return response.split()[-1] if response.split() else response
 
     @staticmethod
@@ -568,13 +594,17 @@ class QtScopeWindow(BaseQtScopeWindow):
 
         result = self._run_action(f"Reading CH{channel} configuration", action)
         if isinstance(result, dict):
-            self.channel_config_display.setChecked(self._bool_from_scope_response(result.get("display", "0")))
+            self.channel_config_display.setChecked(
+                self._bool_from_scope_response(result.get("display", "0"))
+            )
             self.channel_config_scale.setText(result.get("scale", ""))
             self.channel_config_position.setText(result.get("position", ""))
             self.channel_config_offset.setText(result.get("offset", ""))
             self._set_combo_text(self.channel_config_coupling, result.get("coupling", ""))
             self._set_combo_text(self.channel_config_bandwidth, result.get("bandwidth", ""))
-            self.channel_config_invert.setChecked(self._bool_from_scope_response(result.get("invert", "0")))
+            self.channel_config_invert.setChecked(
+                self._bool_from_scope_response(result.get("invert", "0"))
+            )
             self.channel_config_probe_gain.setText(result.get("probe_gain", ""))
 
     def apply_channel_configuration(self) -> None:
@@ -609,11 +639,16 @@ class QtScopeWindow(BaseQtScopeWindow):
             instrument = getattr(scope, "scope", None)
             if instrument is None:
                 raise ConnectionError("Oscilloscope is not connected.")
-            return {name: self._query_optional(instrument, query) for name, query in MATH_CONFIG_QUERIES.items()}
+            return {
+                name: self._query_optional(instrument, query)
+                for name, query in MATH_CONFIG_QUERIES.items()
+            }
 
         result = self._run_action("Reading MATH configuration", action)
         if isinstance(result, dict):
-            self.math_config_display.setChecked(self._bool_from_scope_response(result.get("display", "0")))
+            self.math_config_display.setChecked(
+                self._bool_from_scope_response(result.get("display", "0"))
+            )
             self.math_config_define.setText(result.get("define", ""))
             self.math_config_scale.setText(result.get("scale", ""))
             self.math_config_position.setText(result.get("position", ""))

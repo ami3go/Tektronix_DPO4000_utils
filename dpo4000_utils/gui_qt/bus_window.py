@@ -114,9 +114,7 @@ class QtScopeWindow(DesktopQtScopeWindow):
             self._append_log("Full scope parameter read skipped by Connection setting")
             self._update_scope_control_enabled()
             self._update_status_strip()
-            self.statusBar().showMessage(
-                f"Connected: {self._last_idn} | parameter read skipped"
-            )
+            self.statusBar().showMessage(f"Connected: {self._last_idn} | parameter read skipped")
             return
 
         self._ensure_scope_parameter_pages_built()

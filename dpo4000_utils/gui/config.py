@@ -33,7 +33,9 @@ def safe_filename_part(text: str, fallback: str = "file") -> str:
     return cleaned or fallback
 
 
-def resolve_output_folder(raw_folder: str | Path | None, *, default_name: str = "scope_gui_output") -> Path:
+def resolve_output_folder(
+    raw_folder: str | Path | None, *, default_name: str = "scope_gui_output"
+) -> Path:
     """Resolve the GUI output folder to an absolute path without creating it."""
     if raw_folder is None or str(raw_folder).strip() == "":
         folder = Path.cwd() / default_name

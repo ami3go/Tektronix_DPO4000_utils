@@ -285,7 +285,9 @@ class QtScopeWindow(AcquisitionQtScopeWindow):
             index += 1
         return page
 
-    def _wrap_plain_card(self, card: QGroupBox, *, expanded: bool, parent: QWidget) -> CollapsibleCard:
+    def _wrap_plain_card(
+        self, card: QGroupBox, *, expanded: bool, parent: QWidget
+    ) -> CollapsibleCard:
         """Wrap a normal card so all cards share the same lightweight behavior."""
         title = card.title().strip() or "Section"
         card.setWindowFlags(Qt.WindowType.Widget)
@@ -296,7 +298,9 @@ class QtScopeWindow(AcquisitionQtScopeWindow):
         card.show()
         return CollapsibleCard(title, card, expanded=expanded, parent=parent)
 
-    def _collapsible_section(self, title: str, content: QWidget, *, expanded: bool = False) -> QWidget:
+    def _collapsible_section(
+        self, title: str, content: QWidget, *, expanded: bool = False
+    ) -> QWidget:
         """Use the card title/header as the collapse control to save vertical space."""
         if isinstance(content, QGroupBox):
             content.setWindowFlags(Qt.WindowType.Widget)
@@ -345,7 +349,9 @@ class QtScopeWindow(AcquisitionQtScopeWindow):
         elif index == TRIGGER_PAGE_INDEX:
             if hasattr(self, "rearm_after_image"):
                 self.rearm_after_image.setChecked(preferences.rearm_after_image)
-                self._set_combo_text(self.trigger_channel_after_image, preferences.trigger_channel_after_image)
+                self._set_combo_text(
+                    self.trigger_channel_after_image, preferences.trigger_channel_after_image
+                )
             if hasattr(self, "trigger_channel"):
                 self._set_combo_text(self.trigger_channel, preferences.trigger_setup_channel)
                 self.trigger_level.setText(preferences.trigger_level)
@@ -439,11 +445,13 @@ class QtScopeWindow(AcquisitionQtScopeWindow):
             "waveform",
             True,
         )
-        settings_block, self.settings_prefix, self.settings_base, self.settings_timestamp = self._settings_naming_block(
-            "Settings JSON",
-            "dpo4054_",
-            "setup",
-            True,
+        settings_block, self.settings_prefix, self.settings_base, self.settings_timestamp = (
+            self._settings_naming_block(
+                "Settings JSON",
+                "dpo4054_",
+                "setup",
+                True,
+            )
         )
         card_layout.addWidget(png_block)
         card_layout.addWidget(csv_block)

@@ -209,7 +209,9 @@ class PersistentScopeSession(QObject):
         box: dict[str, WorkerResult | None] = {"result": None}
 
         def on_finished(result: object) -> None:
-            box["result"] = result if isinstance(result, WorkerResult) else WorkerResult(value=result)
+            box["result"] = (
+                result if isinstance(result, WorkerResult) else WorkerResult(value=result)
+            )
             loop.quit()
 
         self._busy = True
@@ -235,7 +237,9 @@ class PersistentScopeSession(QObject):
 
         result = box["result"]
         if result is None:
-            return WorkerResult(error=RuntimeError("Persistent scope worker finished without result."))
+            return WorkerResult(
+                error=RuntimeError("Persistent scope worker finished without result.")
+            )
         return result
 
     def execute(

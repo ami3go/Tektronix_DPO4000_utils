@@ -90,10 +90,14 @@ class QtScopeWindow(DisplayQtScopeWindow):
         hint.setWordWrap(True)
         layout.addWidget(hint)
 
-        self.existing_measurements = QTableWidget(len(MEASUREMENT_SLOTS), len(MEASUREMENT_TABLE_HEADERS))
+        self.existing_measurements = QTableWidget(
+            len(MEASUREMENT_SLOTS), len(MEASUREMENT_TABLE_HEADERS)
+        )
         self.existing_measurements.setObjectName("ExistingMeasurementsTable")
         self.existing_measurements.setHorizontalHeaderLabels(MEASUREMENT_TABLE_HEADERS)
-        self.existing_measurements.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.existing_measurements.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows
+        )
         self.existing_measurements.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.existing_measurements.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.existing_measurements.verticalHeader().setVisible(False)
@@ -289,8 +293,8 @@ class QtScopeWindow(DisplayQtScopeWindow):
     @staticmethod
     def _normalise_scope_text(text: str) -> str:
         value = str(text or "").strip()
-        if "\"" in value:
-            return value.split("\"", 1)[1].rsplit("\"", 1)[0]
+        if '"' in value:
+            return value.split('"', 1)[1].rsplit('"', 1)[0]
         return value.split()[-1] if value.split() else ""
 
     def _set_measurement_editor(
@@ -331,7 +335,9 @@ class QtScopeWindow(DisplayQtScopeWindow):
                     name: self._query_optional(instrument, query.format(slot=slot))
                     for name, query in MEASUREMENT_SETUP_QUERIES.items()
                 }
-                result[slot] = {name: self._normalise_scope_text(value) for name, value in slot_result.items()}
+                result[slot] = {
+                    name: self._normalise_scope_text(value) for name, value in slot_result.items()
+                }
             return result
 
         result = self._run_action("Reading existing measurement setup", action)
@@ -378,7 +384,9 @@ class QtScopeWindow(DisplayQtScopeWindow):
             if instrument is None:
                 raise ConnectionError("Oscilloscope is not connected.")
             return {
-                name: self._normalise_scope_text(self._query_optional(instrument, query.format(slot=slot)))
+                name: self._normalise_scope_text(
+                    self._query_optional(instrument, query.format(slot=slot))
+                )
                 for name, query in MEASUREMENT_SETUP_QUERIES.items()
             }
 
@@ -389,7 +397,9 @@ class QtScopeWindow(DisplayQtScopeWindow):
                 row,
                 {
                     "slot": str(slot),
-                    "state": "ON" if self._bool_from_scope_response(result.get("state", "1")) else "OFF",
+                    "state": "ON"
+                    if self._bool_from_scope_response(result.get("state", "1"))
+                    else "OFF",
                     "type": result.get("type", config.measurement_type),
                     "source1": result.get("source1", config.source1),
                     "source2": result.get("source2", config.source2 or ""),
@@ -401,19 +411,30 @@ class QtScopeWindow(DisplayQtScopeWindow):
         if not self._guard_measurement_edit_mode():
             return
         slot = self._selected_existing_measurement_slot()
-        result = self._run_action(f"Deleting MEAS{slot}", lambda scope: scope.disable_measurement(slot))
+        result = self._run_action(
+            f"Deleting MEAS{slot}", lambda scope: scope.disable_measurement(slot)
+        )
         if result is not None or self._connection_ok:
             row = self._measurement_row_for_slot(slot)
             self._set_measurement_table_row(
                 row,
-                {"slot": str(slot), "state": "OFF", "type": "", "source1": "", "source2": "", "value": ""},
+                {
+                    "slot": str(slot),
+                    "state": "OFF",
+                    "type": "",
+                    "source1": "",
+                    "source2": "",
+                    "value": "",
+                },
             )
             if int(self.measurement_slot.currentText()) == slot:
                 self.measurement_value.clear()
 
     def read_selected_measurement_value(self) -> None:
         slot = self._selected_existing_measurement_slot()
-        result = self._run_action(f"Reading MEAS{slot} value", lambda scope: scope.read_measurement_value(slot))
+        result = self._run_action(
+            f"Reading MEAS{slot} value", lambda scope: scope.read_measurement_value(slot)
+        )
         if result is not None:
             text = str(result)
             self.measurement_value.setText(text)

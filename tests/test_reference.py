@@ -112,9 +112,7 @@ def test_reference_mixin_exposes_high_level_read_apply_and_store_api():
     assert config["date"] == "28-AUG-2026"
     assert config["time"] == "10:12:13"
 
-    driver.configure_reference(
-        ReferenceConfig(reference=1, display=False, vertical_position="0")
-    )
+    driver.configure_reference(ReferenceConfig(reference=1, display=False, vertical_position="0"))
     driver.save_waveform_to_reference("CH2", 1)
 
     assert driver.visa.writes == [

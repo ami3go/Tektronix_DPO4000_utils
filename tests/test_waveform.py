@@ -343,9 +343,7 @@ def test_alignment_rejects_length_or_axis_mismatch():
     with pytest.raises(DPOWaveformError, match="sample-count mismatch"):
         validate_waveform_alignment([reference, _waveform("CH2", "B", (10,))])
     with pytest.raises(DPOWaveformError, match="X-axis mismatch"):
-        validate_waveform_alignment(
-            [reference, _waveform("CH2", "B", (10, 11), x_increment=0.6)]
-        )
+        validate_waveform_alignment([reference, _waveform("CH2", "B", (10, 11), x_increment=0.6)])
 
 
 def test_legacy_multi_channel_csv_rejects_mismatched_lengths(tmp_path):

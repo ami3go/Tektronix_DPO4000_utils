@@ -122,9 +122,7 @@ def test_building_a_page_replaces_its_placeholder(make_window):
 
     window._ensure_control_page_built(4)
     assert window.control_stack.widget(4) is not placeholder
-    assert not window.control_stack.widget(4).objectName().startswith(
-        "LazyControlPagePlaceholder"
-    )
+    assert not window.control_stack.widget(4).objectName().startswith("LazyControlPagePlaceholder")
 
 
 def test_page_cards_become_collapsible_with_a_primary_card_open(make_window):

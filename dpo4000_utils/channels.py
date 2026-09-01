@@ -27,8 +27,8 @@ class ChannelMixin:
         validate_channel(channel)
         response = self.ensure_connected().query(f"CH{channel}:LABEL?").strip()
 
-        if "\"" in response:
-            label = response.split("\"", 1)[1].rsplit("\"", 1)[0]
+        if '"' in response:
+            label = response.split('"', 1)[1].rsplit('"', 1)[0]
         else:
             label = response.replace(f":CH{channel}:LABEL", "").strip()
 

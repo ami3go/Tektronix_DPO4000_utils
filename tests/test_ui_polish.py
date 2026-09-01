@@ -74,9 +74,17 @@ def test_scope_settings_are_a_separate_card_with_three_actions(window):
 @pytest.mark.parametrize(
     ("page_index", "expected", "absent"),
     [
-        (ACQUISITION_PAGE_INDEX, {"Read", "Apply"}, {"Read acquisition setup", "Apply acquisition setup"}),
+        (
+            ACQUISITION_PAGE_INDEX,
+            {"Read", "Apply"},
+            {"Read acquisition setup", "Apply acquisition setup"},
+        ),
         (CHANNELS_PAGE_INDEX, {"Read", "Apply"}, {"Read labels", "Apply labels"}),
-        (DISPLAY_PAGE_INDEX, {"Read", "Apply", "Clear"}, {"Read display", "Apply display", "Clear text"}),
+        (
+            DISPLAY_PAGE_INDEX,
+            {"Read", "Apply", "Clear"},
+            {"Read display", "Apply display", "Clear text"},
+        ),
     ],
 )
 def test_card_buttons_use_the_concise_labels(window, page_index, expected, absent):

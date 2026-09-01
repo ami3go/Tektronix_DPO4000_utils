@@ -124,7 +124,10 @@ def test_python_package_has_no_tkinter_imports():
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
-                if any(alias.name == "tkinter" or alias.name.startswith("tkinter.") for alias in node.names):
+                if any(
+                    alias.name == "tkinter" or alias.name.startswith("tkinter.")
+                    for alias in node.names
+                ):
                     violations.append(str(path.relative_to(ROOT)))
             elif isinstance(node, ast.ImportFrom):
                 module = node.module or ""

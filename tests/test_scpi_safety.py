@@ -74,13 +74,9 @@ def test_bus_type_position_display_and_protocol_values_are_single_message_only()
 
 def test_reference_numeric_values_reject_injection_and_nonfinite_values():
     with pytest.raises(ValueError):
-        build_reference_config_commands(
-            ReferenceConfig(reference=1, vertical_scale="1;*RST")
-        )
+        build_reference_config_commands(ReferenceConfig(reference=1, vertical_scale="1;*RST"))
     with pytest.raises(ValueError, match="finite"):
-        build_reference_config_commands(
-            ReferenceConfig(reference=1, vertical_scale=math.inf)
-        )
+        build_reference_config_commands(ReferenceConfig(reference=1, vertical_scale=math.inf))
 
 
 class LabelVisa:

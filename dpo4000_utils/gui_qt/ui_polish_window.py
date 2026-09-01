@@ -131,11 +131,13 @@ class QtScopeWindow(PreviewQtScopeWindow):
         scope_settings_layout = QVBoxLayout(scope_settings_card)
         scope_settings_layout.setSpacing(12)
 
-        settings_block, self.settings_prefix, self.settings_base, self.settings_timestamp = self._settings_naming_block(
-            "Settings JSON",
-            "dpo4054_",
-            "setup",
-            True,
+        settings_block, self.settings_prefix, self.settings_base, self.settings_timestamp = (
+            self._settings_naming_block(
+                "Settings JSON",
+                "dpo4054_",
+                "setup",
+                True,
+            )
         )
         scope_settings_layout.addWidget(settings_block)
 

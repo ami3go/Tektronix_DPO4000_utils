@@ -44,9 +44,7 @@ def test_naming_fields_expand_rather_than_being_capped(file_page):
         assert field.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Expanding, (
             f"{name} does not expand to fill the row"
         )
-        assert field.maximumWidth() > 105, (
-            f"{name} is still width-capped at {field.maximumWidth()}"
-        )
+        assert field.maximumWidth() > 105, f"{name} is still width-capped at {field.maximumWidth()}"
 
 
 def test_naming_fields_have_room_to_read_their_contents(file_page):

@@ -197,12 +197,16 @@ class QtScopeWindow(PreviewQtScopeWindow):
 
         layout.addStretch(1)
         layout.addWidget(self._window_control_button("—", self.showMinimized, "Minimize"))
-        self.titlebar_maximize_button = self._window_control_button("□", self._toggle_maximized, "Maximize / restore")
+        self.titlebar_maximize_button = self._window_control_button(
+            "□", self._toggle_maximized, "Maximize / restore"
+        )
         layout.addWidget(self.titlebar_maximize_button)
         layout.addWidget(self._window_control_button("×", self.close, "Close", close=True))
         return bar
 
-    def _window_control_button(self, text: str, callback, tooltip: str, *, close: bool = False) -> QToolButton:
+    def _window_control_button(
+        self, text: str, callback, tooltip: str, *, close: bool = False
+    ) -> QToolButton:
         button = QToolButton()
         button.setObjectName("TitlebarCloseButton" if close else "TitlebarWindowButton")
         button.setText(text)
@@ -211,7 +215,9 @@ class QtScopeWindow(PreviewQtScopeWindow):
         button.clicked.connect(callback)
         return button
 
-    def _install_titlebar_drag_handlers(self, widget: QWidget, *, allow_double_click: bool = True) -> None:
+    def _install_titlebar_drag_handlers(
+        self, widget: QWidget, *, allow_double_click: bool = True
+    ) -> None:
         """Mark titlebar widgets as drag surfaces without stealing normal clicks.
 
         The tab buttons occupy most of the custom title bar.  A direct mousePress
@@ -234,9 +240,14 @@ class QtScopeWindow(PreviewQtScopeWindow):
             return super().eventFilter(watched, event)
 
         event_type = event.type()
-        if event_type == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
+        if (
+            event_type == QEvent.Type.MouseButtonPress
+            and event.button() == Qt.MouseButton.LeftButton
+        ):
             self._titlebar_drag_start_position = self._event_global_position(event)
-            self._titlebar_drag_position = self._titlebar_drag_start_position - self.frameGeometry().topLeft()
+            self._titlebar_drag_position = (
+                self._titlebar_drag_start_position - self.frameGeometry().topLeft()
+            )
             self._titlebar_drag_active = False
             return False
 

@@ -87,7 +87,9 @@ def read_scope_setup_string(scope: Any) -> str:
             return str(scope.query("SET?")).strip()
         except Exception as second_exc:
             if is_transport_error(second_exc):
-                raise transport_exception(second_exc, "Reading scope setup with SET?") from second_exc
+                raise transport_exception(
+                    second_exc, "Reading scope setup with SET?"
+                ) from second_exc
             raise DPOSettingsError(
                 f"Scope setup could not be read with *LRN? or SET?: {second_exc}"
             ) from second_exc
@@ -112,7 +114,9 @@ def validate_scope_settings_payload(
         try:
             schema_value = int(schema_version)
         except (TypeError, ValueError) as exc:
-            raise DPOSettingsError("Invalid setup file: 'schema_version' must be an integer.") from exc
+            raise DPOSettingsError(
+                "Invalid setup file: 'schema_version' must be an integer."
+            ) from exc
         if schema_value != SETTINGS_SCHEMA_VERSION:
             raise DPOSettingsError(
                 f"Unsupported settings schema_version={schema_value}; "
@@ -158,9 +162,7 @@ def validate_scope_settings_payload(
         and not _is_tektronix(current_manufacturer)
         and not allow_incompatible
     ):
-        raise DPOSettingsError(
-            f"Connected instrument is not Tektronix: {connected_identity!r}."
-        )
+        raise DPOSettingsError(f"Connected instrument is not Tektronix: {connected_identity!r}.")
 
     if saved_model and current_model:
         saved_family = _model_family(saved_model)

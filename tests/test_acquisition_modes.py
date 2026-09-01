@@ -54,9 +54,7 @@ def test_record_length_change_can_reuse_canonical_hires_readback():
     control = _CanonicalAcquisitionControl()
     mode = control.get_acquisition_setup()["mode"]
 
-    assert build_acquisition_setup_commands(
-        AcquisitionConfig(mode=mode, record_length="10k")
-    ) == [
+    assert build_acquisition_setup_commands(AcquisitionConfig(mode=mode, record_length="10k")) == [
         "ACQUIRE:MODE HIRES",
         "HORIZONTAL:RECORDLENGTH 10000",
     ]

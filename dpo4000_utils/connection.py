@@ -136,7 +136,9 @@ def temporary_session_attributes(instrument: Any, **attributes: Any) -> Iterator
         if restore_failures:
             details = "; ".join(f"{name}: {error}" for name, error in restore_failures)
             if primary_error is not None:
-                add_exception_note(primary_error, f"VISA attribute restoration failure(s): {details}")
+                add_exception_note(
+                    primary_error, f"VISA attribute restoration failure(s): {details}"
+                )
                 logger.warning("VISA attribute restoration failure(s): %s", details)
             else:
                 first = restore_failures[0][1]
@@ -269,7 +271,9 @@ class ConnectionMixin:
             if exc is None:
                 raise
             add_exception_note(exc, f"Disconnect cleanup failure: {cleanup_exc}")
-            logger.warning("Disconnect cleanup failure while propagating primary error: %s", cleanup_exc)
+            logger.warning(
+                "Disconnect cleanup failure while propagating primary error: %s", cleanup_exc
+            )
         return False
 
 

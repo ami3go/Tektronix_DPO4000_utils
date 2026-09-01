@@ -85,7 +85,9 @@ def test_build_scope_settings_payload_falls_back_to_set_query():
 def test_apply_setup_string_restores_timeout_after_opc():
     scope = FakeScope({"*OPC?": "1", "*ESR?": "0"})
 
-    apply_setup_string(scope, ":SETUP DATA", wait_complete=True, restore_delay_s=0.0, opc_timeout_ms=9876)
+    apply_setup_string(
+        scope, ":SETUP DATA", wait_complete=True, restore_delay_s=0.0, opc_timeout_ms=9876
+    )
 
     assert scope.timeout == 1234
     assert scope.commands[:2] == [("write", "*CLS"), ("write", ":SETUP DATA")]
@@ -146,7 +148,10 @@ def test_payload_allows_compatible_dpo4000_model_with_warning():
         "setup": ":SETUP DATA",
     }
     with pytest.warns(RuntimeWarning, match="compatible"):
-        assert validate_scope_settings_payload(
-            payload,
-            connected_identity="TEKTRONIX,DPO4054,SN,1.0",
-        ) is payload
+        assert (
+            validate_scope_settings_payload(
+                payload,
+                connected_identity="TEKTRONIX,DPO4054,SN,1.0",
+            )
+            is payload
+        )

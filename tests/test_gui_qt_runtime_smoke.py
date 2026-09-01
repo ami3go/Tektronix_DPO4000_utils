@@ -46,7 +46,9 @@ def test_titlebar_tabs_qt_window_constructs_with_lazy_pages():
         assert titlebar is not None
         assert titlebar.minimumHeight() >= 46
         assert window.application_menu_buttons.buttons()
-        assert [button.text() for button in window.application_menu_buttons.buttons()] == list(CONTROL_TAB_TITLES)
+        assert [button.text() for button in window.application_menu_buttons.buttons()] == list(
+            CONTROL_TAB_TITLES
+        )
         preview_card = window.preview_label.parentWidget()
         assert preview_card.title() == ""
         assert preview_card.objectName() == "UntitledPreviewCard"
@@ -54,7 +56,9 @@ def test_titlebar_tabs_qt_window_constructs_with_lazy_pages():
         # requests zero. The invariant is that no title band is reserved.
         assert preview_card.contentsMargins().top() <= 1
         assert preview_card.layout().contentsMargins().top() <= 8
-        top_level_titles = {widget.windowTitle() for widget in app.topLevelWidgets() if widget.isVisible()}
+        top_level_titles = {
+            widget.windowTitle() for widget in app.topLevelWidgets() if widget.isVisible()
+        }
         assert top_level_titles <= {"", TITLEBAR_WINDOW_TITLE}
     finally:
         window.close()

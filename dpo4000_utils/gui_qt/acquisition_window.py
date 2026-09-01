@@ -76,7 +76,8 @@ RECORD_LENGTH_VALUE_BY_LABEL = {
     "10M": "10000000",
 }
 RECORD_LENGTH_LABEL_BY_VALUE = {
-    value: label for label, value in (
+    value: label
+    for label, value in (
         ("1k", "1000"),
         ("10k", "10000"),
         ("100k", "100000"),
@@ -110,7 +111,9 @@ class QtScopeWindow(TabbedQtScopeWindow):
         widget.setVisible(True)
         return widget
 
-    def _collapsible_section(self, title: str, content: QWidget, *, expanded: bool = True) -> QWidget:
+    def _collapsible_section(
+        self, title: str, content: QWidget, *, expanded: bool = True
+    ) -> QWidget:
         """Open advanced sections by default; no Compact/Advanced toggle is shown."""
         return super()._collapsible_section(title, content, expanded=True)
 
@@ -287,8 +290,12 @@ class QtScopeWindow(TabbedQtScopeWindow):
 
         layout.addWidget(self._build_trigger_acquisition_toolbar())
         layout.addWidget(self._build_trigger_level_only_card())
-        layout.addWidget(self._collapsible_section("Horizontal position", self._build_horizontal_position_card()))
-        layout.addWidget(self._collapsible_section("Edge trigger setup", self._build_edge_trigger_card()))
+        layout.addWidget(
+            self._collapsible_section("Horizontal position", self._build_horizontal_position_card())
+        )
+        layout.addWidget(
+            self._collapsible_section("Edge trigger setup", self._build_edge_trigger_card())
+        )
         layout.addWidget(
             self._collapsible_section(
                 "Image capture re-arm",
@@ -401,7 +408,9 @@ class QtScopeWindow(TabbedQtScopeWindow):
 
         buttons = QHBoxLayout()
         buttons.addWidget(self._button("Read acquisition setup", self.read_acquisition_setup))
-        buttons.addWidget(self._accent_button("Apply acquisition setup", self.apply_acquisition_setup))
+        buttons.addWidget(
+            self._accent_button("Apply acquisition setup", self.apply_acquisition_setup)
+        )
         form.addRow(buttons)
 
         self.acquisition_mode.currentTextChanged.connect(self._update_average_count_enabled)
@@ -485,20 +494,25 @@ class QtScopeWindow(TabbedQtScopeWindow):
                 name: self._query_optional(instrument, query)
                 for name, query in ACQUISITION_SETUP_QUERIES.items()
             }
-            avg_text = readback.get("average_count", average_count) if use_average_count else "skipped"
+            avg_text = (
+                readback.get("average_count", average_count) if use_average_count else "skipped"
+            )
             readback_length = readback.get("record_length", record_length)
             readback_label = self._record_length_label(readback_length)
             return (
                 "Acquisition setup applied: "
                 f"mode={readback.get('mode', mode)}, "
                 f"average_count={avg_text}, "
-                f"record_length={readback_label} ({self._normalise_record_length_points(readback_length)})"
+                f"record_length={readback_label} "
+                f"({self._normalise_record_length_points(readback_length)})"
             )
 
         result = self._run_action("Applying acquisition setup", action)
         if result is not None:
             self._set_combo_text(self.acquisition_record_length, record_length_label)
-            self._acquisition_state = f"{mode or 'Unknown'}, {record_length_label or 'Unknown length'} pts"
+            self._acquisition_state = (
+                f"{mode or 'Unknown'}, {record_length_label or 'Unknown length'} pts"
+            )
             self._update_average_count_enabled()
             self._update_status_strip()
 
@@ -509,14 +523,13 @@ class QtScopeWindow(TabbedQtScopeWindow):
         for key, label, method_name, requires_scope in SHORTCUTS:
             method = getattr(self, method_name)
             self._make_shortcut(
-                key,
-                lambda checked=False, callback=method, shortcut_label=label, guarded=requires_scope: (
-                    self._guarded_scope_call(callback, shortcut_label) if guarded else callback()
-                ),
+                key, self._shortcut_activation(method, label, guarded=requires_scope)
             )
         self._make_shortcut("Ctrl+L", self._focus_resource_field)
         for key, page, _title in PAGE_SHORTCUTS:
-            self._make_shortcut(key, lambda checked=False, index=page: self._select_drawer_page(index))
+            self._make_shortcut(
+                key, lambda checked=False, index=page: self._select_drawer_page(index)
+            )
 
 
 __all__ = [

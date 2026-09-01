@@ -79,10 +79,16 @@ def test_measurement_page_keeps_the_existing_measurement_manager(make_window):
 
     assert "Existing scope measurements" in card_titles(window)
 
-    tables = [t for t in window.findChildren(QTableWidget) if t.objectName() == "ExistingMeasurementsTable"]
+    tables = [
+        t
+        for t in window.findChildren(QTableWidget)
+        if t.objectName() == "ExistingMeasurementsTable"
+    ]
     assert tables, "the existing-measurements table is missing"
 
-    assert {"Read configured", "Load selected", "Apply edit", "Delete selected"} <= button_texts(window)
+    assert {"Read configured", "Load selected", "Apply edit", "Delete selected"} <= button_texts(
+        window
+    )
 
 
 def test_measurement_editor_can_be_populated_from_a_row(make_window):

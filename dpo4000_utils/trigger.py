@@ -33,9 +33,13 @@ class TriggerMixin:
         scope = self.ensure_connected()
         text = ensure_single_scpi_value(level, field="Trigger level")
         preset = text.upper()
-        level_value = preset if preset in {"TTL", "ECL"} else format_scpi_number(
-            text,
-            field="Trigger level",
+        level_value = (
+            preset
+            if preset in {"TTL", "ECL"}
+            else format_scpi_number(
+                text,
+                field="Trigger level",
+            )
         )
 
         if channel is None:
@@ -120,9 +124,7 @@ class TriggerMixin:
                 else:
                     validate_channel(trigger_channel)
                     level = format_scpi_number(
-                        scope.query(
-                            f"TRIGGER:A:LEVEL:CH{trigger_channel}?"
-                        ).strip().split()[-1],
+                        scope.query(f"TRIGGER:A:LEVEL:CH{trigger_channel}?").strip().split()[-1],
                         field="Trigger level readback",
                     )
                     scope.write(f"TRIGGER:A:LEVEL:CH{trigger_channel} {level}")

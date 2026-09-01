@@ -205,14 +205,13 @@ class QtScopeWindow(StableQtScopeWindow):
         for key, label, method_name, requires_scope in SHORTCUTS:
             method = getattr(self, method_name)
             self._make_shortcut(
-                key,
-                lambda checked=False, callback=method, shortcut_label=label, guarded=requires_scope: (
-                    self._guarded_scope_call(callback, shortcut_label) if guarded else callback()
-                ),
+                key, self._shortcut_activation(method, label, guarded=requires_scope)
             )
         self._make_shortcut("Ctrl+L", self._focus_resource_field)
         for key, page, _title in DISPLAY_PAGE_SHORTCUTS:
-            self._make_shortcut(key, lambda checked=False, index=page: self._select_drawer_page(index))
+            self._make_shortcut(
+                key, lambda checked=False, index=page: self._select_drawer_page(index)
+            )
 
     # ------------------------------------------------------------------
     # Page builders
@@ -256,7 +255,9 @@ class QtScopeWindow(StableQtScopeWindow):
 
         self.display_message_text = QLineEdit("")
         self.display_message_text.setMaxLength(120)
-        self.display_message_text.setToolTip("MESSAGE:SHOW text added as a message box on the scope screen.")
+        self.display_message_text.setToolTip(
+            "MESSAGE:SHOW text added as a message box on the scope screen."
+        )
         self.display_message_state = QCheckBox("Show text box on scope screen")
 
         form.addRow("Contrast / backlight %", self.display_backlight)

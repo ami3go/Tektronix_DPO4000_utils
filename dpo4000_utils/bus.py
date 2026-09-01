@@ -51,10 +51,7 @@ BUS_COMMON_COMMANDS = {
 
 
 def _parallel_commands() -> dict[str, str]:
-    commands = {
-        f"bit{bit}_source": f"BUS:B{{bus}}:PARALLEL:BIT{bit}:SOURCE"
-        for bit in range(16)
-    }
+    commands = {f"bit{bit}_source": f"BUS:B{{bus}}:PARALLEL:BIT{bit}:SOURCE" for bit in range(16)}
     commands.update(
         {
             "clock_edge": "BUS:B{bus}:PARALLEL:CLOCK:EDGE",
@@ -235,8 +232,7 @@ def build_bus_config_queries(bus: int | str) -> dict[str, str]:
     """Build common BUS channel readback queries."""
     valid_bus = normalize_bus(bus)
     return {
-        name: f"{command.format(bus=valid_bus)}?"
-        for name, command in BUS_COMMON_COMMANDS.items()
+        name: f"{command.format(bus=valid_bus)}?" for name, command in BUS_COMMON_COMMANDS.items()
     }
 
 
@@ -244,10 +240,7 @@ def build_bus_protocol_queries(bus: int | str, bus_type: str | None) -> dict[str
     """Build protocol-specific readback queries for one BUS channel."""
     valid_bus = normalize_bus(bus)
     commands = BUS_PROTOCOL_COMMANDS.get(canonical_bus_type(bus_type), {})
-    return {
-        name: f"{command.format(bus=valid_bus)}?"
-        for name, command in commands.items()
-    }
+    return {name: f"{command.format(bus=valid_bus)}?" for name, command in commands.items()}
 
 
 def _command_value(value: Any, *, field: str) -> str:
@@ -365,7 +358,9 @@ class BusMixin:
                 count = bus
             return count
 
-    def get_available_bus_slots(self, *, timeout_ms: int = BUS_CAPABILITY_TIMEOUT_MS) -> tuple[int, ...]:
+    def get_available_bus_slots(
+        self, *, timeout_ms: int = BUS_CAPABILITY_TIMEOUT_MS
+    ) -> tuple[int, ...]:
         """Return actual BUS slot numbers exposed by the connected scope."""
         return BUS_SLOTS[: self.get_bus_waveform_count(timeout_ms=timeout_ms)]
 

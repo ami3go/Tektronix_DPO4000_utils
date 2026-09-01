@@ -104,9 +104,7 @@ def test_report_files_include_case_and_api_coverage(tmp_path):
     payload = json.loads(json_path.read_text(encoding="utf-8"))
     assert payload["idn"].startswith("TEKTRONIX")
     assert any(item["symbol"] == "query_identity" for item in payload["methods"])
-    assert "DPO4000 Real-Hardware Verification Report" in markdown_path.read_text(
-        encoding="utf-8"
-    )
+    assert "DPO4000 Real-Hardware Verification Report" in markdown_path.read_text(encoding="utf-8")
     assert "Public driver methods" in html_path.read_text(encoding="utf-8")
 
 

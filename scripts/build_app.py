@@ -67,7 +67,8 @@ def parse_args() -> argparse.Namespace:
         "--clean",
         action=argparse.BooleanOptionalAction,
         default=_env_flag("BUILD_CLEAN", default=True),
-        help="Remove build/dist output before building. Enabled by default; pass --no-clean to keep existing output.",
+        help="Remove build/dist output before building. Enabled "
+        "by default; pass --no-clean to keep existing output.",
     )
     parser.add_argument(
         "--console",

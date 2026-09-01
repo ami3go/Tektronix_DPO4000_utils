@@ -271,7 +271,11 @@ class QtScopeWindow(QMainWindow):
         self.drawer_pinned = self.pin_drawer_button.isChecked()
         self.pin_drawer_button.setText("Pinned" if self.drawer_pinned else "Hideable")
         self.hide_drawer_button.setEnabled(not self.drawer_pinned)
-        message = "Control drawer pinned open" if self.drawer_pinned else "Control drawer can now be hidden"
+        message = (
+            "Control drawer pinned open"
+            if self.drawer_pinned
+            else "Control drawer can now be hidden"
+        )
         self.statusBar().showMessage(message)
 
     def hide_control_drawer(self) -> None:
@@ -309,8 +313,12 @@ class QtScopeWindow(QMainWindow):
         self.usb_mode = QRadioButton("USB / VISA")
         self.eth_mode = QRadioButton("Ethernet")
         self.usb_mode.setChecked(True)
-        self.usb_mode.toggled.connect(lambda checked: checked and self._on_connection_mode_changed())
-        self.eth_mode.toggled.connect(lambda checked: checked and self._on_connection_mode_changed())
+        self.usb_mode.toggled.connect(
+            lambda checked: checked and self._on_connection_mode_changed()
+        )
+        self.eth_mode.toggled.connect(
+            lambda checked: checked and self._on_connection_mode_changed()
+        )
         mode_layout.addWidget(self.usb_mode)
         mode_layout.addWidget(self.eth_mode)
         mode_layout.addStretch(1)
@@ -337,7 +345,9 @@ class QtScopeWindow(QMainWindow):
 
         self.eth_host.textChanged.connect(lambda _text: self._refresh_generated_ethernet_resource())
         self.eth_port.textChanged.connect(lambda _text: self._refresh_generated_ethernet_resource())
-        self.eth_protocol.currentTextChanged.connect(lambda _text: self._refresh_generated_ethernet_resource())
+        self.eth_protocol.currentTextChanged.connect(
+            lambda _text: self._refresh_generated_ethernet_resource()
+        )
 
         form.addRow("Ethernet IP/host", self.eth_host)
         form.addRow("Protocol", self.eth_protocol)
@@ -346,7 +356,9 @@ class QtScopeWindow(QMainWindow):
         form.addRow("Timeout ms", self.timeout_ms)
 
         ethernet_button_row = QHBoxLayout()
-        ethernet_button_row.addWidget(self._button("Use Ethernet resource", self.apply_ethernet_resource))
+        ethernet_button_row.addWidget(
+            self._button("Use Ethernet resource", self.apply_ethernet_resource)
+        )
         ethernet_button_row.addWidget(self._accent_button("Test IDN", self.test_connection))
         form.addRow(ethernet_button_row)
 
@@ -471,11 +483,15 @@ class QtScopeWindow(QMainWindow):
 
         horizontal_buttons = QHBoxLayout()
         horizontal_buttons.addWidget(self._button("Read position", self.read_horizontal_position))
-        horizontal_buttons.addWidget(self._button("-10", lambda: self.nudge_horizontal_position(-10)))
+        horizontal_buttons.addWidget(
+            self._button("-10", lambda: self.nudge_horizontal_position(-10))
+        )
         horizontal_buttons.addWidget(self._button("-1", lambda: self.nudge_horizontal_position(-1)))
         horizontal_buttons.addWidget(self._button("Center 0", self.set_horizontal_position_to_zero))
         horizontal_buttons.addWidget(self._button("+1", lambda: self.nudge_horizontal_position(1)))
-        horizontal_buttons.addWidget(self._button("+10", lambda: self.nudge_horizontal_position(10)))
+        horizontal_buttons.addWidget(
+            self._button("+10", lambda: self.nudge_horizontal_position(10))
+        )
         form.addRow(horizontal_buttons)
         form.addRow(self._button("Set position", self.set_horizontal_position))
         return card
@@ -603,7 +619,9 @@ class QtScopeWindow(QMainWindow):
         self.settings_timestamp.setChecked(preferences.settings_add_timestamp)
         self.restore_wait_opc.setChecked(preferences.restore_wait_opc)
         self.rearm_after_image.setChecked(preferences.rearm_after_image)
-        self._set_combo_text(self.trigger_channel_after_image, preferences.trigger_channel_after_image)
+        self._set_combo_text(
+            self.trigger_channel_after_image, preferences.trigger_channel_after_image
+        )
         self._set_combo_text(self.trigger_channel, preferences.trigger_setup_channel)
         self.trigger_level.setText(preferences.trigger_level)
         self.trigger_set_source.setChecked(preferences.trigger_set_source)
@@ -867,7 +885,9 @@ class QtScopeWindow(QMainWindow):
             self.statusBar().showMessage(f"Output folder set to: {folder}")
 
     def test_connection(self) -> None:
-        result = self._run_action("Testing scope connection", lambda scope: scope.scope.query("*IDN?").strip())
+        result = self._run_action(
+            "Testing scope connection", lambda scope: scope.scope.query("*IDN?").strip()
+        )
         if result is not None:
             self._message("Scope IDN", str(result))
 
@@ -881,7 +901,10 @@ class QtScopeWindow(QMainWindow):
                 self.channel_labels[int(channel)].setText(str(label))
 
     def apply_labels(self) -> None:
-        labels = {channel: self._safe_label_text(edit.text()) for channel, edit in self.channel_labels.items()}
+        labels = {
+            channel: self._safe_label_text(edit.text())
+            for channel, edit in self.channel_labels.items()
+        }
 
         def action(scope: DPO4054) -> dict[int, str]:
             for channel, label in labels.items():
@@ -953,7 +976,9 @@ class QtScopeWindow(QMainWindow):
         path.parent.mkdir(parents=True, exist_ok=True)
         result = self._run_action(
             "Saving enabled channel waveforms to CSV",
-            lambda scope: str(save_enabled_channels_to_single_csv(getattr(scope, "scope", None), path)),
+            lambda scope: str(
+                save_enabled_channels_to_single_csv(getattr(scope, "scope", None), path)
+            ),
         )
         if result is not None:
             self._message("CSV saved", str(result))
@@ -1011,7 +1036,9 @@ class QtScopeWindow(QMainWindow):
 
     def read_measurement_value(self) -> None:
         slot = int(self.measurement_slot.currentText())
-        result = self._run_action("Reading measurement", lambda scope: scope.read_measurement_value(slot))
+        result = self._run_action(
+            "Reading measurement", lambda scope: scope.read_measurement_value(slot)
+        )
         if result is not None:
             self.measurement_value.setText(str(result))
 
@@ -1020,7 +1047,9 @@ class QtScopeWindow(QMainWindow):
         self._run_action("Clearing measurement slot", lambda scope: scope.disable_measurement(slot))
 
     def clear_all_measurements(self) -> None:
-        self._run_action("Clearing all measurement slots", lambda scope: scope.disable_all_measurements())
+        self._run_action(
+            "Clearing all measurement slots", lambda scope: scope.disable_all_measurements()
+        )
 
     def read_trigger_level(self) -> None:
         channel = self._selected_trigger_channel()
@@ -1049,13 +1078,17 @@ class QtScopeWindow(QMainWindow):
             self.trigger_readback.setText(str(result))
 
     def read_horizontal_position(self) -> None:
-        result = self._run_action("Reading horizontal position", lambda scope: scope.get_horizontal_position())
+        result = self._run_action(
+            "Reading horizontal position", lambda scope: scope.get_horizontal_position()
+        )
         if result is not None:
             self.horizontal_position.setText(f"{float(result):g}")
 
     def set_horizontal_position(self) -> None:
         value = self.horizontal_position.text().strip()
-        self._run_action("Setting horizontal position", lambda scope: scope.set_horizontal_position(value))
+        self._run_action(
+            "Setting horizontal position", lambda scope: scope.set_horizontal_position(value)
+        )
 
     def nudge_horizontal_position(self, delta: int | float) -> None:
         result = self._run_action(
@@ -1079,7 +1112,9 @@ class QtScopeWindow(QMainWindow):
         self._run_action("Starting single acquisition", lambda scope: scope.single_acquisition())
 
     def continuous_acquisition(self) -> None:
-        self._run_action("Returning acquisition to continuous mode", lambda scope: scope.continuous_acquisition())
+        self._run_action(
+            "Returning acquisition to continuous mode", lambda scope: scope.continuous_acquisition()
+        )
 
     def force_trigger(self) -> None:
         self._run_action("Forcing trigger event", lambda scope: scope.force_trigger_event())

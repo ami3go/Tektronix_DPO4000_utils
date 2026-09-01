@@ -202,7 +202,7 @@ def test_display_settings_commands_match_display_page():
         "DISPLAY:INTENSITY:WAVEFORM 70",
         "DISPLAY:INTENSITY:GRATICULE 40",
         "DISPLAY:PERSISTENCE AUTO",
-        "MESSAGE:SHOW \"Hello Scope\"",
+        'MESSAGE:SHOW "Hello Scope"',
         "MESSAGE:STATE ON",
     ]
 
@@ -212,7 +212,7 @@ def test_clear_display_message_commands():
 
 
 def test_quote_scpi_string_single_line_and_safe_quotes():
-    assert quote_scpi_string('A "quoted"\nmessage') == '"A \'quoted\' message"'
+    assert quote_scpi_string('A "quoted"\nmessage') == "\"A 'quoted' message\""
 
 
 def test_edge_trigger_commands_channel_source():
@@ -233,10 +233,13 @@ def test_edge_trigger_commands_channel_source():
 
 
 def test_edge_trigger_commands_aux_source_uses_general_level():
-    assert build_edge_trigger_commands(
-        source="aux",
-        slope="fall",
-        coupling="ac",
-        mode="normal",
-        level="TTL",
-    )[-1] == "TRIGGER:A:LEVEL TTL"
+    assert (
+        build_edge_trigger_commands(
+            source="aux",
+            slope="fall",
+            coupling="ac",
+            mode="normal",
+            level="TTL",
+        )[-1]
+        == "TRIGGER:A:LEVEL TTL"
+    )

@@ -77,7 +77,7 @@ def test_i2c_config_commands_apply_protocol_before_common_display_state():
         "BUS:B2:I2C:ADDRESS:RWINCLUDE ON",
         "BUS:B2:I2C:CLOCK:SOURCE CH1",
         "BUS:B2:I2C:DATA:SOURCE CH2",
-        'BUS:B2:LABEL "ECU \'diag\'"',
+        "BUS:B2:LABEL \"ECU 'diag'\"",
         "BUS:B2:POSITION -2",
         "BUS:B2:DISPLAY:FORMAT HEXADECIMAL",
         "BUS:B2:DISPLAY:TYPE BUS",

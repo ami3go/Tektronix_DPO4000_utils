@@ -147,7 +147,12 @@ def test_theme_selectors_match_widgets_that_actually_exist(make_window):
     window = make_window()
     theme = (REPO_ROOT / "dpo4000_utils/gui_qt/theme.qss").read_text(encoding="utf-8")
 
-    for object_name in ("RightControlPanel", "RightControlStack", "ScopeStatusStrip", "MainSplitter"):
+    for object_name in (
+        "RightControlPanel",
+        "RightControlStack",
+        "ScopeStatusStrip",
+        "MainSplitter",
+    ):
         assert f"#{object_name}" in theme, f"theme no longer styles {object_name}"
         assert window.findChild(object, object_name) is not None, (
             f"theme styles #{object_name} but no widget has that name"

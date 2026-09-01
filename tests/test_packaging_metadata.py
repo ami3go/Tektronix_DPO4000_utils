@@ -55,6 +55,7 @@ def test_ruff_rules_are_pinned_rather_than_left_to_the_default_set():
 
     assert lint["select"], "no explicit rule selection"
     assert "F" in lint["select"]
+    assert "E501" in lint["select"], "the declared line-length is not enforced"
 
 
 def test_dev_extra_pins_a_ruff_range():

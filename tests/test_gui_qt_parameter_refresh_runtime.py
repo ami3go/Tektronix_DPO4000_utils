@@ -31,7 +31,9 @@ def test_full_parameter_refresh_runs_core_reference_bus_stages_in_order(monkeypa
     applied: list[dict] = []
     try:
         monkeypatch.setattr(window, "_ensure_scope_parameter_pages_built", lambda: None)
-        monkeypatch.setattr(window, "_apply_scope_snapshot", lambda snapshot: applied.append(snapshot))
+        monkeypatch.setattr(
+            window, "_apply_scope_snapshot", lambda snapshot: applied.append(snapshot)
+        )
 
         stage_results = {
             CORE_PARAMETER_REFRESH_DESCRIPTION: {

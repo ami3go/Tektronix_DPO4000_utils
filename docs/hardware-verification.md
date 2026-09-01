@@ -56,6 +56,7 @@ Confirm that the VISA resource is visible if needed:
 
 ```python
 from dpo4000_utils import list_visa_resources
+
 print(list_visa_resources())
 ```
 

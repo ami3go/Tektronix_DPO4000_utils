@@ -80,7 +80,9 @@ class QtScopeWindow(MatureQtScopeWindow):
         box: dict[str, WorkerResult | None] = {"result": None}
 
         def on_finished(result: object) -> None:
-            box["result"] = result if isinstance(result, WorkerResult) else WorkerResult(value=result)
+            box["result"] = (
+                result if isinstance(result, WorkerResult) else WorkerResult(value=result)
+            )
             loop.quit()
 
         # The handler must be connected before the worker starts, and the loop must
@@ -107,7 +109,9 @@ class QtScopeWindow(MatureQtScopeWindow):
 
         result = box["result"]
         if result is None:
-            return self._finish_scope_action_error(description, RuntimeError("Scope worker finished without result."))
+            return self._finish_scope_action_error(
+                description, RuntimeError("Scope worker finished without result.")
+            )
         if result.error is not None:
             return self._finish_scope_action_error(description, result.error)
         return self._finish_scope_action_success(description, result.value)

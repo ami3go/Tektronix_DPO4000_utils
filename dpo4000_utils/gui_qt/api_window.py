@@ -130,13 +130,17 @@ class QtScopeWindow(UiQtScopeWindow):
             lambda scope: scope.get_channel_configuration(channel),
         )
         if isinstance(result, dict):
-            self.channel_config_display.setChecked(bool_from_scope_response(result.get("display", "0")))
+            self.channel_config_display.setChecked(
+                bool_from_scope_response(result.get("display", "0"))
+            )
             self.channel_config_scale.setText(result.get("scale", ""))
             self.channel_config_position.setText(result.get("position", ""))
             self.channel_config_offset.setText(result.get("offset", ""))
             self._set_combo_text(self.channel_config_coupling, result.get("coupling", ""))
             self._set_combo_text(self.channel_config_bandwidth, result.get("bandwidth", ""))
-            self.channel_config_invert.setChecked(bool_from_scope_response(result.get("invert", "0")))
+            self.channel_config_invert.setChecked(
+                bool_from_scope_response(result.get("invert", "0"))
+            )
             self.channel_config_probe_gain.setText(result.get("probe_gain", ""))
 
     def apply_channel_configuration(self) -> None:
@@ -163,7 +167,9 @@ class QtScopeWindow(UiQtScopeWindow):
             lambda scope: scope.get_math_configuration(),
         )
         if isinstance(result, dict):
-            self.math_config_display.setChecked(bool_from_scope_response(result.get("display", "0")))
+            self.math_config_display.setChecked(
+                bool_from_scope_response(result.get("display", "0"))
+            )
             self.math_config_define.setText(result.get("define", ""))
             self.math_config_scale.setText(result.get("scale", ""))
             self.math_config_position.setText(result.get("position", ""))

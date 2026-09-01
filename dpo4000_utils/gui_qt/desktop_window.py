@@ -414,9 +414,7 @@ class QtScopeWindow(ApiQtScopeWindow):
         self._set_combo_text(self.acquisition_average_count, average_count)
         self._set_combo_text(self.acquisition_record_length, length_label)
         self._update_average_count_enabled()
-        self._acquisition_state = (
-            f"{mode or 'Unknown'}, {length_label or 'Unknown length'} pts"
-        )
+        self._acquisition_state = f"{mode or 'Unknown'}, {length_label or 'Unknown length'} pts"
 
     def _apply_display_snapshot(self, display: dict[str, Any]) -> None:
         if not hasattr(self, "display_backlight"):

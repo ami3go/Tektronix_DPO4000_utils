@@ -80,20 +80,20 @@ def build_reference_config_commands(config: ReferenceConfig) -> list[str]:
         commands.append(f"REF{reference}:LABEL {quote_scpi_string(label)}")
 
     if config.vertical_scale is not None:
-        commands.append(
-            f"REF{reference}:VERTICAL:SCALE "
-            f"{format_scpi_number(config.vertical_scale, field='Reference vertical scale', positive=True)}"
+        scale = format_scpi_number(
+            config.vertical_scale, field="Reference vertical scale", positive=True
         )
+        commands.append(f"REF{reference}:VERTICAL:SCALE {scale}")
     if config.vertical_position is not None:
         commands.append(
             f"REF{reference}:VERTICAL:POSITION "
             f"{format_scpi_number(config.vertical_position, field='Reference vertical position')}"
         )
     if config.horizontal_scale is not None:
-        commands.append(
-            f"REF{reference}:HORIZONTAL:SCALE "
-            f"{format_scpi_number(config.horizontal_scale, field='Reference horizontal scale', positive=True)}"
+        scale = format_scpi_number(
+            config.horizontal_scale, field="Reference horizontal scale", positive=True
         )
+        commands.append(f"REF{reference}:HORIZONTAL:SCALE {scale}")
     if config.horizontal_delay is not None:
         commands.append(
             f"REF{reference}:HORIZONTAL:DELAY:TIME "
@@ -155,7 +155,9 @@ class ReferenceMixin:
         instrument = self.ensure_connected()
         with _capability_timeout_context(self, timeout_ms):
             try:
-                response = normalize_scope_response_text(instrument.query(REFERENCE_COUNT_QUERY).strip())
+                response = normalize_scope_response_text(
+                    instrument.query(REFERENCE_COUNT_QUERY).strip()
+                )
                 count = int(float(response))
                 return max(0, min(len(REFERENCE_SLOTS), count))
             except Exception as exc:
@@ -205,9 +207,7 @@ class ReferenceMixin:
 
     def save_waveform_to_reference(self, source: str, reference: int | str) -> None:
         """Store a live analog/MATH/other REF waveform into reference memory."""
-        self.ensure_connected().write(
-            build_save_waveform_to_reference_command(source, reference)
-        )
+        self.ensure_connected().write(build_save_waveform_to_reference_command(source, reference))
 
 
 __all__ = [

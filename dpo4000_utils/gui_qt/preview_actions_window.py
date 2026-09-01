@@ -209,7 +209,9 @@ class QtScopeWindow(BusQtScopeWindow):
 
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802 - Qt API name.
         if getattr(self, "_operation_active", False) and self._persistent_scope_session is not None:
-            self.statusBar().showMessage("A scope operation is still active; close after it finishes")
+            self.statusBar().showMessage(
+                "A scope operation is still active; close after it finishes"
+            )
             event.ignore()
             return
         self._release_persistent_scope_session(log=False)

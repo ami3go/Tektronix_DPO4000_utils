@@ -99,9 +99,7 @@ def test_run_action_returns_when_the_session_fails_immediately(tmp_path, monkeyp
     def fail_fast(resource, timeout_ms, callback):
         raise RuntimeError("PyVISA is not available")
 
-    monkeypatch.setattr(
-        QtScopeWindow, "_run_snapshot_scope_session", staticmethod(fail_fast)
-    )
+    monkeypatch.setattr(QtScopeWindow, "_run_snapshot_scope_session", staticmethod(fail_fast))
 
     app = _app()
     window = QtScopeWindow()

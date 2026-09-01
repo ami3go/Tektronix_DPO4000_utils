@@ -108,9 +108,7 @@ with DPO4054(
     auto_connect=True,
 ) as scope:
     print(scope.query_identity())
-    scope.configure_channel(
-        ChannelConfig(channel=1, display=True, scale="0.5", coupling="DC")
-    )
+    scope.configure_channel(ChannelConfig(channel=1, display=True, scale="0.5", coupling="DC"))
     scope.configure_acquisition(
         AcquisitionConfig(mode="AVERAGE", average_count=16, record_length="10k")
     )

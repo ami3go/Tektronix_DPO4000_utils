@@ -418,7 +418,9 @@ class HardwareVerifier:
         assert len(slots) == count
         scope.get_all_bus_configurations()
         if not slots:
-            raise VerificationSkip("Scope reports zero BUS waveform slots or option is unavailable.")
+            raise VerificationSkip(
+                "Scope reports zero BUS waveform slots or option is unavailable."
+            )
         scope.probe_bus_support(slots[0])
         config = scope.get_bus_configuration(slots[0])
         return (
@@ -513,9 +515,7 @@ class HardwareVerifier:
     def _case_math_horizontal_write(self) -> str:
         scope = self._require_scope()
         math = scope.get_math_configuration()
-        scope.configure_math(
-            MathConfig(display=bool_from_scope_response(math.get("display", "0")))
-        )
+        scope.configure_math(MathConfig(display=bool_from_scope_response(math.get("display", "0"))))
         position = scope.get_horizontal_position()
         scope.set_horizontal_position(position)
         result = scope.nudge_horizontal_position(0)
@@ -608,9 +608,9 @@ class HardwareVerifier:
         try:
             if target != original_record:
                 scope.set_record_length(target)
-            current_display = scope.get_channel_configuration(
-                self.config.test_channel
-            ).get("display", "0")
+            current_display = scope.get_channel_configuration(self.config.test_channel).get(
+                "display", "0"
+            )
             if not bool_from_scope_response(current_display):
                 scope.configure_channel(
                     ChannelConfig(channel=self.config.test_channel, display=True)
@@ -661,7 +661,9 @@ class HardwareVerifier:
             restore_level=True,
         )
         scope.nudge_trigger_level_knob()
-        return "Disruptive acquisition/trigger methods executed; baseline restore will recover setup."
+        return (
+            "Disruptive acquisition/trigger methods executed; baseline restore will recover setup."
+        )
 
     def _case_reference_store(self) -> str:
         scope = self._require_scope()
@@ -673,7 +675,8 @@ class HardwareVerifier:
         slots = scope.get_available_reference_slots()
         if self.config.reference_destination not in slots:
             raise VerificationSkip(
-                f"Requested REF{self.config.reference_destination} is unavailable; available={slots}."
+                f"Requested REF{self.config.reference_destination} "
+                f"is unavailable; available={slots}."
             )
         scope.save_waveform_to_reference(
             f"CH{self.config.test_channel}",
@@ -681,12 +684,15 @@ class HardwareVerifier:
         )
         return (
             f"Stored CH{self.config.test_channel} into REF{self.config.reference_destination}. "
-            "This changes reference waveform contents and is intentionally not treated as reversible."
+            "This changes reference waveform contents and "
+            "is intentionally not treated as reversible."
         )
 
     def run(self) -> dict[str, Any]:
         self._register_and_run(
-            VerificationCase("manifest", "Public API manifest completeness", VerificationRisk.READ_ONLY),
+            VerificationCase(
+                "manifest", "Public API manifest completeness", VerificationRisk.READ_ONLY
+            ),
             self._case_manifest,
         )
         self._register_and_run(
@@ -709,7 +715,13 @@ class HardwareVerifier:
                 "lifecycle",
                 "VISA discovery and session lifecycle",
                 VerificationRisk.READ_ONLY,
-                covers_methods=("connect", "disconnect", "ensure_connected", "temporary_timeout", "query_identity"),
+                covers_methods=(
+                    "connect",
+                    "disconnect",
+                    "ensure_connected",
+                    "temporary_timeout",
+                    "query_identity",
+                ),
                 covers_functions=("list_visa_resources", "scope_session"),
             ),
             self._case_lifecycle,
@@ -733,7 +745,11 @@ class HardwareVerifier:
                         "identity-channels",
                         "Identity and channel readback",
                         VerificationRisk.READ_ONLY,
-                        covers_methods=("query_identity", "get_channel_label", "get_channel_labels"),
+                        covers_methods=(
+                            "query_identity",
+                            "get_channel_label",
+                            "get_channel_labels",
+                        ),
                     ),
                     self._case_identity_channels,
                 ),
@@ -802,7 +818,11 @@ class HardwareVerifier:
                         "waveform-readback",
                         "Structured binary waveform API",
                         VerificationRisk.READ_ONLY,
-                        covers_methods=("read_waveform", "read_channel_waveform_data", "read_enabled_waveforms"),
+                        covers_methods=(
+                            "read_waveform",
+                            "read_channel_waveform_data",
+                            "read_enabled_waveforms",
+                        ),
                         covers_functions=("read_waveform", "read_channel_waveform_data"),
                     ),
                     self._case_waveform_readback,
@@ -848,7 +868,11 @@ class HardwareVerifier:
                         "math-horizontal-write",
                         "MATH and horizontal write API",
                         VerificationRisk.REVERSIBLE,
-                        covers_methods=("configure_math", "set_horizontal_position", "nudge_horizontal_position"),
+                        covers_methods=(
+                            "configure_math",
+                            "set_horizontal_position",
+                            "nudge_horizontal_position",
+                        ),
                     ),
                     self._case_math_horizontal_write,
                 ),
@@ -857,7 +881,12 @@ class HardwareVerifier:
                         "acquisition-write",
                         "Acquisition configuration write API",
                         VerificationRisk.REVERSIBLE,
-                        covers_methods=("configure_acquisition", "set_acquisition_mode", "set_average_count", "set_record_length"),
+                        covers_methods=(
+                            "configure_acquisition",
+                            "set_acquisition_mode",
+                            "set_average_count",
+                            "set_record_length",
+                        ),
                     ),
                     self._case_acquisition_write,
                 ),
@@ -866,7 +895,11 @@ class HardwareVerifier:
                         "trigger-write",
                         "Reversible edge-trigger write API",
                         VerificationRisk.REVERSIBLE,
-                        covers_methods=("configure_edge_trigger", "set_trigger_level", "set_edge_trigger_source"),
+                        covers_methods=(
+                            "configure_edge_trigger",
+                            "set_trigger_level",
+                            "set_edge_trigger_source",
+                        ),
                     ),
                     self._case_trigger_write,
                 ),
@@ -875,7 +908,11 @@ class HardwareVerifier:
                         "display-write",
                         "Display/message write API",
                         VerificationRisk.REVERSIBLE,
-                        covers_methods=("apply_display_settings", "set_screen_message", "clear_display_message"),
+                        covers_methods=(
+                            "apply_display_settings",
+                            "set_screen_message",
+                            "clear_display_message",
+                        ),
                     ),
                     self._case_display_write,
                 ),
@@ -902,7 +939,11 @@ class HardwareVerifier:
                         "legacy-csv",
                         "Legacy waveform CSV compatibility methods",
                         VerificationRisk.REVERSIBLE,
-                        covers_methods=("save_waveform_to_csv", "save_all_channels_to_csv", "save_all_channels_to_single_csv"),
+                        covers_methods=(
+                            "save_waveform_to_csv",
+                            "save_all_channels_to_csv",
+                            "save_all_channels_to_single_csv",
+                        ),
                     ),
                     self._case_legacy_csv,
                 ),
@@ -1083,6 +1124,7 @@ class HardwareVerifier:
 
     @staticmethod
     def _render_markdown(report: dict[str, Any]) -> str:
+        api = report["api_totals"]
         lines = [
             "# DPO4000 Real-Hardware Verification Report",
             "",
@@ -1098,9 +1140,9 @@ class HardwareVerifier:
             f"- PASS cases: **{report['totals']['PASS']}**",
             f"- FAIL cases: **{report['totals']['FAIL']}**",
             f"- SKIP cases: **{report['totals']['SKIP']}**",
-            f"- Driver methods passed: **{report['api_totals']['methods_pass']}/{report['api_totals']['methods_total']}**",
-            f"- Package functions passed: **{report['api_totals']['functions_pass']}/{report['api_totals']['functions_total']}**",
-            f"- Unverified public symbols: **{report['api_totals']['unverified']}**",
+            f"- Driver methods passed: **{api['methods_pass']}/{api['methods_total']}**",
+            f"- Package functions passed: **{api['functions_pass']}/{api['functions_total']}**",
+            f"- Unverified public symbols: **{api['unverified']}**",
             "",
             "## Verification cases",
             "",
@@ -1108,7 +1150,9 @@ class HardwareVerifier:
             "| --- | --- | --- | ---: | --- |",
         ]
         for result in report["results"]:
-            detail = (result["detail"] or result["error_message"]).replace("|", "\\|").replace("\n", " ")
+            detail = (
+                (result["detail"] or result["error_message"]).replace("|", "\\|").replace("\n", " ")
+            )
             lines.append(
                 f"| `{result['case_id']}` | {result['risk']} | **{result['status']}** | "
                 f"{result['duration_s']:.3f} | {detail} |"
@@ -1180,25 +1224,25 @@ th,td{{border:1px solid #bbb;padding:.4rem;text-align:left;vertical-align:top}}
 code{{white-space:nowrap}}
 </style></head><body>
 <h1>DPO4000 Real-Hardware Verification Report</h1>
-<p><b>Package:</b> {html.escape(str(report['package_version']))}<br>
-<b>Resource:</b> {html.escape(str(report['resource']))}<br>
-<b>Instrument:</b> {html.escape(str(report['idn'] or 'unknown'))}<br>
-<b>Profile:</b> {html.escape(str(report['profile']))}</p>
+<p><b>Package:</b> {html.escape(str(report["package_version"]))}<br>
+<b>Resource:</b> {html.escape(str(report["resource"]))}<br>
+<b>Instrument:</b> {html.escape(str(report["idn"] or "unknown"))}<br>
+<b>Profile:</b> {html.escape(str(report["profile"]))}</p>
 <h2>Summary</h2>
-<p>PASS {report['totals']['PASS']} / FAIL {report['totals']['FAIL']} /
-SKIP {report['totals']['SKIP']}<br>
-Methods {report['api_totals']['methods_pass']}/{report['api_totals']['methods_total']} passed;
-functions {report['api_totals']['functions_pass']}/{report['api_totals']['functions_total']} passed;
-unverified {report['api_totals']['unverified']}.</p>
+<p>PASS {report["totals"]["PASS"]} / FAIL {report["totals"]["FAIL"]} /
+SKIP {report["totals"]["SKIP"]}<br>
+Methods {report["api_totals"]["methods_pass"]}/{report["api_totals"]["methods_total"]} passed;
+functions {report["api_totals"]["functions_pass"]}/{report["api_totals"]["functions_total"]} passed;
+unverified {report["api_totals"]["unverified"]}.</p>
 <h2>Verification cases</h2>
 <table><tr><th>Case</th><th>Risk</th><th>Status</th><th>s</th><th>Detail</th></tr>
-{''.join(case_rows)}</table>
+{"".join(case_rows)}</table>
 <h2>Public driver methods</h2>
 <table><tr><th>Method</th><th>Risk</th><th>Status</th><th>Cases</th></tr>
-{table_rows(report['methods'], 'symbol')}</table>
+{table_rows(report["methods"], "symbol")}</table>
 <h2>Package functions</h2>
 <table><tr><th>Function</th><th>Risk</th><th>Status</th><th>Cases</th></tr>
-{table_rows(report['functions'], 'symbol')}</table>
+{table_rows(report["functions"], "symbol")}</table>
 </body></html>"""
 
     def exit_code(self, report: dict[str, Any]) -> int:

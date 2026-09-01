@@ -280,7 +280,9 @@ def build_measurement_commands(config: MeasurementConfig) -> list[str]:
 
 def build_measurement_setup_queries(slot: int) -> dict[str, str]:
     valid_slot = validate_measurement_slot(slot)
-    return {name: query.format(slot=valid_slot) for name, query in MEASUREMENT_SETUP_QUERIES.items()}
+    return {
+        name: query.format(slot=valid_slot) for name, query in MEASUREMENT_SETUP_QUERIES.items()
+    }
 
 
 def build_disable_measurement_command(slot: int) -> str:
@@ -312,7 +314,8 @@ def build_channel_config_commands(config: ChannelConfig) -> list[str]:
         commands.append(f"SELECT:CH{channel} {scpi_bool(config.display)}")
     if config.scale is not None:
         commands.append(
-            f"CH{channel}:SCALE {format_scpi_number(config.scale, field='Channel scale', positive=True)}"
+            f"CH{channel}:SCALE "
+            f"{format_scpi_number(config.scale, field='Channel scale', positive=True)}"
         )
     if config.position is not None:
         commands.append(
@@ -323,13 +326,16 @@ def build_channel_config_commands(config: ChannelConfig) -> list[str]:
             f"CH{channel}:OFFSET {format_scpi_number(config.offset, field='Channel offset')}"
         )
     if config.coupling is not None:
-        coupling = normalize_scpi_enum(config.coupling, ("AC", "DC", "GND"), field="Channel coupling")
+        coupling = normalize_scpi_enum(
+            config.coupling, ("AC", "DC", "GND"), field="Channel coupling"
+        )
         commands.append(f"CH{channel}:COUPLING {coupling}")
     if config.bandwidth is not None:
         commands.append(f"CH{channel}:BANDWIDTH {_normalize_bandwidth(config.bandwidth)}")
     if config.probe_gain is not None:
         commands.append(
-            f"CH{channel}:PROBE:GAIN {format_scpi_number(config.probe_gain, field='Probe gain', positive=True)}"
+            f"CH{channel}:PROBE:GAIN "
+            f"{format_scpi_number(config.probe_gain, field='Probe gain', positive=True)}"
         )
     if config.invert is not None:
         commands.append(f"CH{channel}:INVERT {scpi_bool(config.invert)}")
@@ -347,7 +353,8 @@ def build_math_config_commands(config: MathConfig) -> list[str]:
         commands.append(f"MATH:DEFINE {quote_scpi_string(expression)}")
     if config.scale is not None:
         commands.append(
-            f"MATH:VERTICAL:SCALE {format_scpi_number(config.scale, field='MATH scale', positive=True)}"
+            f"MATH:VERTICAL:SCALE "
+            f"{format_scpi_number(config.scale, field='MATH scale', positive=True)}"
         )
     if config.position is not None:
         commands.append(
@@ -462,7 +469,9 @@ def build_edge_trigger_commands(
 ) -> list[str]:
     trigger_source = normalize_trigger_choice(source, TRIGGER_SOURCES, field="Trigger source")
     trigger_slope = normalize_trigger_choice(slope, TRIGGER_SLOPES, field="Trigger slope")
-    trigger_coupling = normalize_trigger_choice(coupling, TRIGGER_COUPLINGS, field="Trigger coupling")
+    trigger_coupling = normalize_trigger_choice(
+        coupling, TRIGGER_COUPLINGS, field="Trigger coupling"
+    )
     trigger_mode = normalize_trigger_choice(mode, TRIGGER_MODES, field="Trigger mode")
     trigger_level = normalize_trigger_level(level)
     commands = [
@@ -501,15 +510,18 @@ def build_display_settings_commands(config: DisplayConfig) -> list[str]:
     commands: list[str] = []
     if config.backlight is not None:
         commands.append(
-            f"DISPLAY:INTENSITY:BACKLIGHT {_normalize_display_intensity(config.backlight, field='Backlight intensity')}"
+            f"DISPLAY:INTENSITY:BACKLIGHT "
+            f"{_normalize_display_intensity(config.backlight, field='Backlight intensity')}"
         )
     if config.waveform is not None:
         commands.append(
-            f"DISPLAY:INTENSITY:WAVEFORM {_normalize_display_intensity(config.waveform, field='Waveform intensity')}"
+            f"DISPLAY:INTENSITY:WAVEFORM "
+            f"{_normalize_display_intensity(config.waveform, field='Waveform intensity')}"
         )
     if config.graticule is not None:
         commands.append(
-            f"DISPLAY:INTENSITY:GRATICULE {_normalize_display_intensity(config.graticule, field='Graticule intensity')}"
+            f"DISPLAY:INTENSITY:GRATICULE "
+            f"{_normalize_display_intensity(config.graticule, field='Graticule intensity')}"
         )
     if config.persistence is not None:
         commands.append(f"DISPLAY:PERSISTENCE {_normalize_persistence(config.persistence)}")
@@ -593,7 +605,9 @@ class ControlMixin:
 
     def get_math_configuration(self) -> dict[str, str]:
         scope = self.ensure_connected()
-        return {name: self._query_optional(scope, query) for name, query in MATH_CONFIG_QUERIES.items()}
+        return {
+            name: self._query_optional(scope, query) for name, query in MATH_CONFIG_QUERIES.items()
+        }
 
     def set_horizontal_position(self, position: str | float | int) -> None:
         self.ensure_connected().write(build_horizontal_position_command(position))

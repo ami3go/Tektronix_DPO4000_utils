@@ -165,8 +165,7 @@ def test_hardware_partial_waveform_uses_outgoing_xzero(scope: DPO4054) -> None:
     assert waveform.sample_count == point_count
     assert waveform.preamble.record_point_count == point_count
     assert waveform.time_at(0) == pytest.approx(
-        waveform.preamble.x_zero
-        - waveform.preamble.point_offset * waveform.preamble.x_increment
+        waveform.preamble.x_zero - waveform.preamble.point_offset * waveform.preamble.x_increment
     )
     if waveform.sample_count > 1:
         assert waveform.time_at(1) - waveform.time_at(0) == pytest.approx(

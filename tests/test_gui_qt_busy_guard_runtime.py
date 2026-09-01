@@ -150,9 +150,9 @@ def test_still_enabled_buttons_cannot_re_enter_run_action(window, monkeypatch, l
     button.click()
 
     assert descriptions, f"{label} did not reach _run_action at all"
-    assert window.statusBar().currentMessage().endswith(
-        "a scope operation is already running"
-    ), f"{label} was not refused: {window.statusBar().currentMessage()!r}"
+    assert window.statusBar().currentMessage().endswith("a scope operation is already running"), (
+        f"{label} was not refused: {window.statusBar().currentMessage()!r}"
+    )
 
 
 def test_idle_shortcut_still_reaches_run_action(window, monkeypatch):

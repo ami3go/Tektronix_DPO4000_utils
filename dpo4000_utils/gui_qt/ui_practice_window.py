@@ -129,7 +129,9 @@ class QtScopeWindow(CompactQtScopeWindow):
         header = QHBoxLayout()
         title = QLabel(APP_TITLE)
         title.setObjectName("TitleLabel")
-        subtitle = QLabel("PySide6 testing branch · tabbed controls · Tkinter GUI remains available")
+        subtitle = QLabel(
+            "PySide6 testing branch · tabbed controls · Tkinter GUI remains available"
+        )
         subtitle.setObjectName("MutedLabel")
         subtitle.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.compact_mode_button = QToolButton()
@@ -213,7 +215,9 @@ class QtScopeWindow(CompactQtScopeWindow):
         self._apply_button_tooltip(button, text, callback)
         return button
 
-    def _quick_button(self, text: str, callback: Callable[[], None], *, accent: bool = False) -> QToolButton:
+    def _quick_button(
+        self, text: str, callback: Callable[[], None], *, accent: bool = False
+    ) -> QToolButton:
         button = super()._quick_button(text, callback, accent=accent)
         self._register_button_if_scope_action(button, callback)
         tooltip = QUICK_TOOLTIPS.get(text)
@@ -221,7 +225,9 @@ class QtScopeWindow(CompactQtScopeWindow):
             button.setToolTip(tooltip)
         return button
 
-    def _register_button_if_scope_action(self, button: QWidget, callback: Callable[..., object]) -> None:
+    def _register_button_if_scope_action(
+        self, button: QWidget, callback: Callable[..., object]
+    ) -> None:
         if self._callback_requires_scope(callback):
             button.setProperty("scopeAction", True)
             self._scope_controls.append(button)
@@ -234,7 +240,9 @@ class QtScopeWindow(CompactQtScopeWindow):
             return True
         return name == "<lambda>"
 
-    def _apply_button_tooltip(self, button: QWidget, text: str, callback: Callable[..., object]) -> None:
+    def _apply_button_tooltip(
+        self, button: QWidget, text: str, callback: Callable[..., object]
+    ) -> None:
         name = getattr(callback, "__name__", "")
         shortcut_by_name = {
             "capture_preview": "F5",
@@ -284,8 +292,14 @@ class QtScopeWindow(CompactQtScopeWindow):
 
         layout.addStretch(1)
         layout.addWidget(self._status_button("Retry", self.retry_connection, "Retest *IDN?"))
-        layout.addWidget(self._status_button("Refresh", self.refresh_visa_resources, "Refresh VISA resource list"))
-        layout.addWidget(self._status_button("Disconnect", self.mark_disconnected, "Lock scope controls"))
+        layout.addWidget(
+            self._status_button(
+                "Refresh", self.refresh_visa_resources, "Refresh VISA resource list"
+            )
+        )
+        layout.addWidget(
+            self._status_button("Disconnect", self.mark_disconnected, "Lock scope controls")
+        )
         return strip
 
     def _configure_bottom_status_bar(self) -> None:
@@ -333,12 +347,24 @@ class QtScopeWindow(CompactQtScopeWindow):
     def _build_connection_tab(self) -> QWidget:
         page = super()._build_connection_tab()
         try:
-            self.resource.currentTextChanged.connect(lambda _text: self._mark_connection_stale("Resource changed"))
-            self.eth_host.textChanged.connect(lambda _text: self._mark_connection_stale("Ethernet host changed"))
-            self.eth_port.textChanged.connect(lambda _text: self._mark_connection_stale("Ethernet port changed"))
-            self.eth_protocol.currentTextChanged.connect(lambda _text: self._mark_connection_stale("Ethernet protocol changed"))
-            self.usb_mode.toggled.connect(lambda _checked: self._mark_connection_stale("Connection mode changed"))
-            self.eth_mode.toggled.connect(lambda _checked: self._mark_connection_stale("Connection mode changed"))
+            self.resource.currentTextChanged.connect(
+                lambda _text: self._mark_connection_stale("Resource changed")
+            )
+            self.eth_host.textChanged.connect(
+                lambda _text: self._mark_connection_stale("Ethernet host changed")
+            )
+            self.eth_port.textChanged.connect(
+                lambda _text: self._mark_connection_stale("Ethernet port changed")
+            )
+            self.eth_protocol.currentTextChanged.connect(
+                lambda _text: self._mark_connection_stale("Ethernet protocol changed")
+            )
+            self.usb_mode.toggled.connect(
+                lambda _checked: self._mark_connection_stale("Connection mode changed")
+            )
+            self.eth_mode.toggled.connect(
+                lambda _checked: self._mark_connection_stale("Connection mode changed")
+            )
         except Exception:
             pass
         return page
@@ -440,7 +466,9 @@ class QtScopeWindow(CompactQtScopeWindow):
         callback()
 
     def test_connection(self) -> None:
-        result = self._run_action("Testing scope connection", lambda scope: scope.scope.query("*IDN?").strip())
+        result = self._run_action(
+            "Testing scope connection", lambda scope: scope.scope.query("*IDN?").strip()
+        )
         if result is not None:
             self._last_idn = str(result)
             self._connection_ok = True
@@ -497,14 +525,25 @@ class QtScopeWindow(CompactQtScopeWindow):
         for key, label, method_name, requires_scope in SHORTCUTS:
             method = getattr(self, method_name)
             self._make_shortcut(
-                key,
-                lambda checked=False, callback=method, shortcut_label=label, guarded=requires_scope: (
-                    self._guarded_scope_call(callback, shortcut_label) if guarded else callback()
-                ),
+                key, self._shortcut_activation(method, label, guarded=requires_scope)
             )
         self._make_shortcut("Ctrl+L", self._focus_resource_field)
         for key, page, _title in PAGE_SHORTCUTS:
-            self._make_shortcut(key, lambda checked=False, index=page: self._select_drawer_page(index))
+            self._make_shortcut(
+                key, lambda checked=False, index=page: self._select_drawer_page(index)
+            )
+
+    def _shortcut_activation(
+        self, method: Callable[[], None], label: str, *, guarded: bool
+    ) -> Callable[..., None]:
+        """Build the callback a QShortcut fires, keeping the guard for scope actions.
+
+        Defaults bind the loop variables, which is why this is a factory rather than a
+        lambda written inline at each of the three _install_global_shortcuts overrides.
+        """
+        if not guarded:
+            return lambda checked=False, call=method: call()
+        return lambda checked=False, call=method, text=label: self._guarded_scope_call(call, text)
 
     def _make_shortcut(self, sequence: str, callback: Callable[[], None]) -> None:
         shortcut = QShortcut(QKeySequence(sequence), self)
