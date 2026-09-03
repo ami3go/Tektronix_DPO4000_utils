@@ -166,12 +166,6 @@ class QtScopeWindow(LoggerL12QtScopeWindow):
             return "--"
         return self._format_duration(free / bytes_per_s)
 
-    @staticmethod
-    def _set_health_text(window, name: str, text: str) -> None:
-        label = getattr(window, name, None)
-        if label is not None:
-            label.setText(text)
-
     def _logger_refresh_status(self) -> None:
         super()._logger_refresh_status()
         elapsed = self._logger_health_elapsed()
@@ -190,24 +184,47 @@ class QtScopeWindow(LoggerL12QtScopeWindow):
             elapsed_s=elapsed,
             buffer_policy=policy,
         )
-        set_text = lambda name, text: self._set_health_text(self, name, text)
+
+        def set_text(name: str, text: str) -> None:
+            label = getattr(self, name, None)
+            if label is not None:
+                label.setText(text)
+
         set_text("logger_health_elapsed_label", self._format_duration(metrics.elapsed_s))
         set_text("logger_health_captured_label", str(capture.captured_records))
-        set_text("logger_health_capture_rate_label", f"{metrics.capture_records_per_s:.3f} records/s")
-        set_text("logger_health_points_rate_label", f"{metrics.waveform_points_per_s:,.0f} points/s")
+        set_text(
+            "logger_health_capture_rate_label",
+            f"{metrics.capture_records_per_s:.3f} records/s",
+        )
+        set_text(
+            "logger_health_points_rate_label",
+            f"{metrics.waveform_points_per_s:,.0f} points/s",
+        )
         set_text(
             "logger_health_scope_payload_label",
             f"{metrics.scope_payload_bytes_per_s / 1_000_000:.3f} MB/s",
         )
-        set_text("logger_health_disk_rate_label", f"{metrics.disk_bytes_per_s / 1_000_000:.3f} MB/s")
-        set_text("logger_health_writer_duty_label", f"{metrics.writer_duty_fraction * 100.0:.1f} %")
+        set_text(
+            "logger_health_disk_rate_label",
+            f"{metrics.disk_bytes_per_s / 1_000_000:.3f} MB/s",
+        )
+        set_text(
+            "logger_health_writer_duty_label",
+            f"{metrics.writer_duty_fraction * 100.0:.1f} %",
+        )
         set_text("logger_health_scope_time_label", f"{capture.last_scope_operation_s:.3f} s")
         set_text(
             "logger_health_queue_peak_memory_label",
             f"{writer_snapshot.peak_bytes / (1024 * 1024):.1f} MB",
         )
-        set_text("logger_health_segment_bytes_label", self._format_bytes(writer_snapshot.current_segment_bytes))
-        set_text("logger_health_total_bytes_label", self._format_bytes(writer_snapshot.bytes_written))
+        set_text(
+            "logger_health_segment_bytes_label",
+            self._format_bytes(writer_snapshot.current_segment_bytes),
+        )
+        set_text(
+            "logger_health_total_bytes_label",
+            self._format_bytes(writer_snapshot.bytes_written),
+        )
         set_text("logger_health_measurement_rows_label", str(capture.measurement_rows))
         set_text("logger_health_bus_events_label", str(capture.bus_events))
         set_text(
@@ -216,12 +233,15 @@ class QtScopeWindow(LoggerL12QtScopeWindow):
         )
         set_text(
             "logger_health_last_record_status_label",
-            "--" if capture.last_record_sequence is None else (
-                "PARTIAL" if capture.last_record_partial else "Complete"
-            ),
+            "--"
+            if capture.last_record_sequence is None
+            else ("PARTIAL" if capture.last_record_partial else "Complete"),
         )
         set_text("logger_health_last_record_utc_label", capture.last_record_utc or "--")
-        set_text("logger_health_writer_state_label", self._logger_writer_state_text(writer_snapshot))
+        set_text(
+            "logger_health_writer_state_label",
+            self._logger_writer_state_text(writer_snapshot),
+        )
         set_text("logger_health_resource_label", self._logger_resource_text())
         identity = str(getattr(self, "_last_idn", "") or "").strip()
         set_text(
@@ -238,14 +258,20 @@ class QtScopeWindow(LoggerL12QtScopeWindow):
         recovery = getattr(self, "_recovery_statistics", None)
         reconnects = int(getattr(recovery, "reconnects", 0))
         retries = int(getattr(recovery, "retry_attempts", 0))
-        set_text("logger_health_recovery_label", f"{reconnects} reconnects / {retries} retries")
+        set_text(
+            "logger_health_recovery_label",
+            f"{reconnects} reconnects / {retries} retries",
+        )
         last_error = (
             str(getattr(self._logger_statistics, "last_error", "") or "")
             or str(writer_snapshot.error or "")
             or str(getattr(recovery, "last_error", "") or "")
         )
         set_text("logger_health_last_error_label", last_error or "--")
-        set_text("logger_health_disk_runway_label", self._logger_disk_runway(metrics.disk_bytes_per_s))
+        set_text(
+            "logger_health_disk_runway_label",
+            self._logger_disk_runway(metrics.disk_bytes_per_s),
+        )
 
         rate_label = getattr(self, "logger_rate_label", None)
         if rate_label is not None:
