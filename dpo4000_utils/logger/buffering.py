@@ -193,6 +193,9 @@ class LoggerWriterWorker:
     def start(self, *, ready_timeout_s: float = 5.0) -> None:
         self._thread.start()
         if not self._ready.wait(max(0.1, float(ready_timeout_s))):
+            # Revoke future writes before reporting timeout. If output creation
+            # eventually returns, the worker will observe stop_requested and close it.
+            self.request_stop(drain=False)
             raise TimeoutError("Logger writer thread did not initialize in time.")
         error = self.error
         if error is not None:

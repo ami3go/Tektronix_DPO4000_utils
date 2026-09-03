@@ -15,8 +15,8 @@ from ..logger.models import LoggerMode, LoggerRecord, LoggerState, LoggerStatist
 from ..logger.output import LoggerOutputSession
 from ..logger.producer import capture_logger_record
 from ..logger.retention import LoggerRetentionManager
-from .logger_recovery_window import QtScopeWindow as LoggerL10QtScopeWindow
 from .logger_page_layout import FILE_PAGE_INDEX
+from .logger_recovery_window import QtScopeWindow as LoggerL10QtScopeWindow
 
 
 class QtScopeWindow(LoggerL10QtScopeWindow):
@@ -133,6 +133,8 @@ class QtScopeWindow(LoggerL10QtScopeWindow):
             self._message("Logger", "Test the scope connection before starting Logger.", error=True)
             return
 
+        writer: LoggerWriterWorker | None = None
+        retention_manager: LoggerRetentionManager | None = None
         self._logger_starting = True
         self._recovery_statistics = RecoveryStatistics()
         try:
@@ -172,12 +174,20 @@ class QtScopeWindow(LoggerL10QtScopeWindow):
             )
             writer.start()
         except Exception as exc:  # noqa: BLE001 - start must be atomic/fail closed.
+            if writer is not None and writer.is_alive:
+                writer.request_stop(drain=False)
+                self._logger_writer = writer
+                self._logger_state = LoggerState.FAILED
+                monitor = self._logger_writer_monitor
+                if monitor is not None:
+                    monitor.start()
             self._message("Logger", f"Could not start Logger: {exc}", error=True)
-            self._logger_starting = False
             return
         finally:
             self._logger_starting = False
 
+        assert retention_manager is not None
+        assert writer is not None
         self._logger_retention_manager = retention_manager
         self._logger_writer = writer
         self._logger_last_writer_snapshot = writer.snapshot()
@@ -250,13 +260,11 @@ class QtScopeWindow(LoggerL10QtScopeWindow):
 
         self._logger_refresh_status()
 
-    def _request_writer_stop(self, *, drain: bool) -> None:
-        writer = self._logger_writer
-        if writer is None:
-            return
-        writer.request_stop(drain=drain)
-
-    def _wait_for_writer_stop(self, writer: LoggerWriterWorker, timeout_s: float = 30.0) -> bool:
+    def _wait_for_writer_stop(
+        self,
+        writer: LoggerWriterWorker,
+        timeout_s: float = 30.0,
+    ) -> bool:
         if writer.wait(0):
             return True
         loop = QEventLoop(self)
@@ -304,21 +312,38 @@ class QtScopeWindow(LoggerL10QtScopeWindow):
                 self._append_log(self._logger_statistics.last_error)
             elif snapshot.error:
                 self._logger_state = LoggerState.FAILED
-                self._logger_statistics.failed += 1
+                if not self._logger_writer_error_announced:
+                    self._logger_writer_error_announced = True
+                    self._logger_statistics.failed += 1
                 self._logger_statistics.last_error = snapshot.error
             else:
                 self._logger_writer = None
 
         if was_active:
             self._append_log(
-                "Logger stopped" if self._logger_state is LoggerState.IDLE else "Logger stopped with error"
+                "Logger stopped"
+                if self._logger_state is LoggerState.IDLE
+                else "Logger stopped with error"
             )
             self.statusBar().showMessage(
-                "Logger stopped" if self._logger_state is LoggerState.IDLE else "Logger failed during stop"
+                "Logger stopped"
+                if self._logger_state is LoggerState.IDLE
+                else "Logger failed during stop"
             )
         self._logger_refresh_status()
 
-    def _fail_buffered_logger(self, message: str, *, count_failure: bool = True) -> None:
+    def _fail_buffered_logger(
+        self,
+        message: str,
+        *,
+        count_failure: bool = True,
+        writer_error: bool = False,
+    ) -> None:
+        if writer_error:
+            if self._logger_writer_error_announced:
+                count_failure = False
+            else:
+                self._logger_writer_error_announced = True
         if count_failure:
             self._logger_statistics.failed += 1
         self._logger_statistics.last_error = str(message)
@@ -326,7 +351,9 @@ class QtScopeWindow(LoggerL10QtScopeWindow):
         timer = self._logger_timer
         if timer is not None:
             timer.stop()
-        self._request_writer_stop(drain=True)
+        writer = self._logger_writer
+        if writer is not None:
+            writer.request_stop(drain=True)
         self._append_log(f"Logger failed: {message}")
         self.statusBar().showMessage("Logger failed")
 
@@ -339,7 +366,7 @@ class QtScopeWindow(LoggerL10QtScopeWindow):
             return
         snapshot = writer.snapshot()
         if snapshot.error:
-            self._fail_buffered_logger(snapshot.error)
+            self._fail_buffered_logger(snapshot.error, writer_error=True)
             return
         if not writer.has_capacity():
             self._logger_statistics.skipped += 1
@@ -408,7 +435,7 @@ class QtScopeWindow(LoggerL10QtScopeWindow):
             if not accepted:
                 snapshot = writer.snapshot()
                 if snapshot.error:
-                    self._fail_buffered_logger(snapshot.error)
+                    self._fail_buffered_logger(snapshot.error, writer_error=True)
                     return
                 self._logger_statistics.last_error = "Writer queue overflow"
                 if snapshot.consecutive_overflows >= writer.policy.stop_after_overflows:
