@@ -38,6 +38,7 @@ class LoggerRetentionManager:
         self.policy = policy
         self.statistics = LoggerRetentionStatistics()
         self._seen_events: set[str] = set()
+        self._registered_segments: list[tuple[Path, ...]] = []
 
     @staticmethod
     def _event_id(paths: Iterable[Path]) -> str:
@@ -46,6 +47,11 @@ class LoggerRetentionManager:
             raise LoggerRetentionError("A Logger retention segment must contain files.")
         return "logger-segment:" + "|".join(names)
 
+    @property
+    def registered_segments(self) -> tuple[tuple[Path, ...], ...]:
+        """Return every closed segment registered during this run, including later deletions."""
+        return tuple(self._registered_segments)
+
     def register_closed_segment(self, paths: Iterable[str | Path]) -> None:
         normalized = tuple(Path(path).expanduser() for path in paths)
         event_id = self._event_id(normalized)
@@ -53,6 +59,7 @@ class LoggerRetentionManager:
             return
         register_retention_event(self.root, event_id, normalized)
         self._seen_events.add(event_id)
+        self._registered_segments.append(normalized)
         self.statistics.registered_segments += 1
 
     def register_closed_segments(

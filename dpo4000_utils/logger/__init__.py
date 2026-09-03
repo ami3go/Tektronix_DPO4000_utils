@@ -42,6 +42,7 @@ from .profiles import (
     save_logger_profile,
     validate_logger_profile_config,
 )
+from .reporting import LOGGER_REPORT_SCHEMA_VERSION, LoggerRunReporter
 from .retention import (
     LoggerRetentionError,
     LoggerRetentionManager,
@@ -59,6 +60,7 @@ __all__ = [
     "Dpo4LogScanResult",
     "Dpo4LogWriter",
     "LOGGER_PROFILE_SCHEMA_VERSION",
+    "LOGGER_REPORT_SCHEMA_VERSION",
     "LoggerCaptureHealth",
     "LoggerCaptureCancelled",
     "LoggerConfig",
@@ -74,6 +76,7 @@ __all__ = [
     "LoggerRetentionManager",
     "LoggerRetentionPolicy",
     "LoggerRetentionStatistics",
+    "LoggerRunReporter",
     "LoggerState",
     "LoggerStatistics",
     "LoggerWriterWorker",
