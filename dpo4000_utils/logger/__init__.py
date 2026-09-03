@@ -21,6 +21,12 @@ from .producer import (
     LoggerCaptureCancelled,
     capture_logger_record,
 )
+from .retention import (
+    LoggerRetentionError,
+    LoggerRetentionManager,
+    LoggerRetentionPolicy,
+    LoggerRetentionStatistics,
+)
 from .rotation import RotationPolicy
 
 __all__ = [
@@ -34,6 +40,10 @@ __all__ = [
     "LoggerOutputFormat",
     "LoggerOutputSession",
     "LoggerRecord",
+    "LoggerRetentionError",
+    "LoggerRetentionManager",
+    "LoggerRetentionPolicy",
+    "LoggerRetentionStatistics",
     "LoggerState",
     "LoggerStatistics",
     "MeasurementCsvStreamWriter",
