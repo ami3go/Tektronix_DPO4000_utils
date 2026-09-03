@@ -5,6 +5,8 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pytest
+
 from dpo4000_utils.logger.reporting import LoggerRunReporter
 from dpo4000_utils.logger.retention import LoggerRetentionManager, LoggerRetentionPolicy
 
@@ -41,7 +43,7 @@ def test_l14_checkpoint_survives_before_finalization(tmp_path: Path) -> None:
     reporter = LoggerRunReporter(
         tmp_path,
         config={"mode": "Waveform records", "waveform_sources": ["CH1"]},
-        package_version="0.6.57",
+        package_version="0.6.58",
         profile_name="Burn-in",
         resource="TCPIP::scope",
         idn="TEKTRONIX,DPO4054,...",
@@ -51,7 +53,7 @@ def test_l14_checkpoint_survives_before_finalization(tmp_path: Path) -> None:
     checkpoint = reporter.checkpoint(_state(), reason="periodic")
 
     payload = json.loads(checkpoint.read_text(encoding="utf-8"))
-    assert payload["status"] == "running"
+    assert payload["status"] == "checkpoint"
     assert payload["profile_name"] == "Burn-in"
     assert payload["resource"] == "TCPIP::scope"
     assert payload["started_utc"].endswith("+00:00")
@@ -73,7 +75,7 @@ def test_l14_finalize_is_atomic_idempotent_and_preserves_reconciliation(tmp_path
     reporter = LoggerRunReporter(
         tmp_path,
         config={"mode": "Measurements", "measurement_slots": [1, 2]},
-        package_version="0.6.57",
+        package_version="0.6.58",
     )
     reporter.checkpoint(_state(), reason="run_started")
     reporter.append_event("RUN_END", details={"stop_reason": "operator_stop"})
@@ -98,6 +100,28 @@ def test_l14_finalize_is_atomic_idempotent_and_preserves_reconciliation(tmp_path
     assert payload["ended_local"]
     assert payload["event_count"] == 1
     assert reporter.finalized
+
+
+def test_l14_jsonl_event_remains_counted_when_secondary_csv_write_fails(
+    tmp_path: Path,
+) -> None:
+    reporter = LoggerRunReporter(tmp_path, config={"mode": "Waveform records"})
+    reporter.event_csv_path.unlink()
+    reporter.event_csv_path.mkdir()
+
+    with pytest.raises(OSError):
+        reporter.append_event("RECOVERY", details={"reconnects": 1})
+
+    assert reporter.event_count == 1
+    rows = reporter.event_jsonl_path.read_text(encoding="utf-8").splitlines()
+    assert len(rows) == 1
+    assert json.loads(rows[0])["event_type"] == "RECOVERY"
+    summary = reporter.finalize(
+        stop_reason="report_failure",
+        state=_state(),
+        final_error="secondary CSV unavailable",
+    )
+    assert json.loads(summary.read_text(encoding="utf-8"))["event_count"] == 1
 
 
 def test_l14_retention_exposes_complete_registered_segment_manifest(tmp_path: Path) -> None:

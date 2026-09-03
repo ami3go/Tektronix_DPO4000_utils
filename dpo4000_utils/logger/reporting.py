@@ -102,7 +102,13 @@ class LoggerRunReporter:
         details: Mapping[str, Any] | None = None,
         at: datetime | None = None,
     ) -> None:
-        """Durably append one low-frequency run lifecycle event."""
+        """Durably append one low-frequency run lifecycle event.
+
+        JSONL is authoritative. Once its fsync succeeds, ``event_count`` is
+        advanced even if the secondary convenience CSV write subsequently
+        fails. This keeps later checkpoints/final summaries consistent with
+        the durable event source.
+        """
         if self._finalized:
             raise RuntimeError("Logger report is already finalized.")
         moment = at or _utc_now()
@@ -119,6 +125,8 @@ class LoggerRunReporter:
             handle.write("\n")
             handle.flush()
             os.fsync(handle.fileno())
+        self.event_count += 1
+
         csv_payload = dict(payload)
         csv_payload["details"] = json.dumps(
             payload["details"], sort_keys=True, separators=(",", ":"), allow_nan=False
@@ -128,7 +136,6 @@ class LoggerRunReporter:
             writer.writerow(csv_payload)
             handle.flush()
             os.fsync(handle.fileno())
-        self.event_count += 1
 
     def _common_payload(self) -> dict[str, Any]:
         return {
@@ -161,7 +168,7 @@ class LoggerRunReporter:
         payload = self._common_payload()
         payload.update(
             {
-                "status": "running",
+                "status": "checkpoint",
                 "checkpoint_reason": str(reason),
                 "updated_utc": _iso_utc(moment),
                 "updated_local": _iso_local(moment),
