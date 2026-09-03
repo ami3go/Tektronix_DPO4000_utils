@@ -80,6 +80,28 @@ def test_logger_profile_rejects_unknown_top_level_and_nested_fields(tmp_path: Pa
         validate_logger_profile_config(config)
 
 
+def test_logger_profile_rejects_sources_ignored_by_selected_mode(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    config.update(
+        mode="Measurements",
+        waveform_sources=["CH1"],
+        measurement_slots=[1],
+        bus_slots=[],
+    )
+    with pytest.raises(LoggerProfileError, match="Measurements mode may contain MEAS slots only"):
+        validate_logger_profile_config(config)
+
+    config = _config(tmp_path)
+    config.update(
+        mode="Waveform records",
+        waveform_sources=["CH1"],
+        measurement_slots=[1],
+        bus_slots=[],
+    )
+    with pytest.raises(LoggerProfileError, match="Waveform mode may contain waveform sources only"):
+        validate_logger_profile_config(config)
+
+
 def test_logger_profile_rejects_non_finite_numbers(tmp_path: Path) -> None:
     config = _config(tmp_path)
     config["interval_s"] = float("nan")

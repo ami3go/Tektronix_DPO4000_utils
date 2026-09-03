@@ -92,6 +92,19 @@ def _mapping_section(candidate: Mapping[str, Any], name: str) -> Mapping[str, An
     return value
 
 
+def _validate_mode_sources(config: LoggerConfig) -> None:
+    """Reject source groups that the selected mode would silently ignore."""
+    if config.mode is LoggerMode.WAVEFORM:
+        if config.measurement_slots or config.bus_slots:
+            raise ValueError("Waveform mode may contain waveform sources only")
+    elif config.mode is LoggerMode.MEASUREMENTS:
+        if config.waveform_sources or config.bus_slots:
+            raise ValueError("Measurements mode may contain MEAS slots only")
+    elif config.mode is LoggerMode.BUS:
+        if config.waveform_sources or config.measurement_slots:
+            raise ValueError("BUS mode may contain BUS slots only")
+
+
 def validate_logger_profile_config(config: Mapping[str, Any]) -> dict[str, Any]:
     """Validate all sections before UI mutation and return normalized JSON-safe data."""
     if not isinstance(config, Mapping):
@@ -117,6 +130,7 @@ def validate_logger_profile_config(config: Mapping[str, Any]) -> dict[str, Any]:
             sample_width=candidate.get("sample_width", 2),
             point_count=candidate.get("point_count"),
         )
+        _validate_mode_sources(core)
         output_format = LoggerOutputFormat(
             candidate.get("output_format", LoggerOutputFormat.BINARY.value)
         )
