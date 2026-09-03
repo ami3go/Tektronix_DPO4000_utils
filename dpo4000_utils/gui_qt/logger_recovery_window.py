@@ -104,16 +104,38 @@ class QtScopeWindow(LoggerL9QtScopeWindow):
         self._update_status_strip()
         return None
 
-    def _fail_logger_runtime(self, message: str, output) -> None:
-        self._logger_statistics.failed += 1
+    def _fail_logger_runtime(
+        self,
+        message: str,
+        output,
+        *,
+        count_failure: bool = True,
+        retain_closed_segments: bool = False,
+    ) -> None:
+        if count_failure:
+            self._logger_statistics.failed += 1
         self._logger_statistics.last_error = str(message)
         timer = self._logger_timer
         if timer is not None:
             timer.stop()
+
+        close_succeeded = False
         try:
             output.close()
-        except Exception as close_exc:  # noqa: BLE001
+            close_succeeded = True
+            self._logger_statistics.bytes_written = output.bytes_written
+        except Exception as close_exc:  # noqa: BLE001 - preserve the primary failure.
             self._append_log(f"Logger output close after failure also failed: {close_exc}")
+
+        if retain_closed_segments and close_succeeded:
+            try:
+                self._apply_completed_logger_segments(output)
+            except LoggerRetentionError as retention_exc:
+                self._append_log(
+                    "Logger retention finalization after transport failure also failed: "
+                    f"{retention_exc}"
+                )
+
         self._logger_output_session = None
         self._logger_state = LoggerState.FAILED
         self._append_log(f"Logger failed: {message}")
@@ -178,6 +200,8 @@ class QtScopeWindow(LoggerL9QtScopeWindow):
                         self._fail_logger_runtime(
                             f"{consecutive} consecutive transport failures: {error}",
                             output,
+                            count_failure=False,
+                            retain_closed_segments=True,
                         )
                     else:
                         self._append_log(
