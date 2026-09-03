@@ -21,6 +21,7 @@ from .producer import (
     LoggerCaptureCancelled,
     capture_logger_record,
 )
+from .rotation import RotationPolicy
 
 __all__ = [
     "BusCsvStreamWriter",
@@ -37,6 +38,7 @@ __all__ = [
     "LoggerStatistics",
     "MeasurementCsvStreamWriter",
     "MixedCsvStreamWriter",
+    "RotationPolicy",
     "WaveformCsvStreamWriter",
     "WaveformSnapshot",
     "capture_logger_record",
