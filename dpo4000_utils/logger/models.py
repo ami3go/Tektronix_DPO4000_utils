@@ -10,7 +10,12 @@ from datetime import timezone
 from enum import Enum
 from typing import Any, Mapping
 
-from ..waveform import WaveformData, normalize_waveform_source
+from ..waveform import (
+    WaveformData,
+    normalize_sample_width,
+    normalize_waveform_encoding,
+    normalize_waveform_source,
+)
 
 
 class LoggerState(str, Enum):
@@ -173,6 +178,8 @@ class LoggerConfig:
             raise ValueError("BUS Logger requires at least one BUS slot.")
         if mode is LoggerMode.MIXED and not (sources or slots or buses):
             raise ValueError("Mixed Logger requires at least one source.")
+        encoding = normalize_waveform_encoding(self.encoding)
+        sample_width = normalize_sample_width(self.sample_width)
         point_count = self.point_count
         if point_count is not None:
             if isinstance(point_count, bool) or int(point_count) < 1:
@@ -183,6 +190,8 @@ class LoggerConfig:
         object.__setattr__(self, "waveform_sources", tuple(sources))
         object.__setattr__(self, "measurement_slots", tuple(slots))
         object.__setattr__(self, "bus_slots", tuple(buses))
+        object.__setattr__(self, "encoding", encoding)
+        object.__setattr__(self, "sample_width", sample_width)
         object.__setattr__(self, "point_count", point_count)
 
 

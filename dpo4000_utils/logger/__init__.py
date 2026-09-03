@@ -27,6 +27,15 @@ from .producer import (
     LoggerCaptureCancelled,
     capture_logger_record,
 )
+from .profiles import (
+    LOGGER_PROFILE_SCHEMA_VERSION,
+    LoggerProfile,
+    LoggerProfileError,
+    load_logger_profile,
+    safe_profile_filename,
+    save_logger_profile,
+    validate_logger_profile_config,
+)
 from .retention import (
     LoggerRetentionError,
     LoggerRetentionManager,
@@ -43,11 +52,14 @@ __all__ = [
     "BusDecodedEventsUnavailable",
     "Dpo4LogScanResult",
     "Dpo4LogWriter",
+    "LOGGER_PROFILE_SCHEMA_VERSION",
     "LoggerCaptureCancelled",
     "LoggerConfig",
     "LoggerMode",
     "LoggerOutputFormat",
     "LoggerOutputSession",
+    "LoggerProfile",
+    "LoggerProfileError",
     "LoggerRecord",
     "LoggerRetentionError",
     "LoggerRetentionManager",
@@ -62,6 +74,10 @@ __all__ = [
     "WaveformCsvStreamWriter",
     "WaveformSnapshot",
     "capture_logger_record",
+    "load_logger_profile",
+    "safe_profile_filename",
+    "save_logger_profile",
     "scan_dpo4log",
+    "validate_logger_profile_config",
     "write_waveform_record_csv",
 ]
