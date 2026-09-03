@@ -10,6 +10,12 @@ from .bus_csv import BusCsvStreamWriter
 from .csv_record import write_waveform_record_csv
 from .csv_stream import WaveformCsvStreamWriter
 from .dpo4log import Dpo4LogScanResult, Dpo4LogWriter, scan_dpo4log
+from .health import (
+    LoggerCaptureHealth,
+    LoggerHealthAccumulator,
+    LoggerHealthMetrics,
+    compute_logger_health,
+)
 from .measurement_csv import MeasurementCsvStreamWriter
 from .mixed_csv import MixedCsvStreamWriter
 from .models import (
@@ -53,8 +59,11 @@ __all__ = [
     "Dpo4LogScanResult",
     "Dpo4LogWriter",
     "LOGGER_PROFILE_SCHEMA_VERSION",
+    "LoggerCaptureHealth",
     "LoggerCaptureCancelled",
     "LoggerConfig",
+    "LoggerHealthAccumulator",
+    "LoggerHealthMetrics",
     "LoggerMode",
     "LoggerOutputFormat",
     "LoggerOutputSession",
@@ -74,6 +83,7 @@ __all__ = [
     "WaveformCsvStreamWriter",
     "WaveformSnapshot",
     "capture_logger_record",
+    "compute_logger_health",
     "load_logger_profile",
     "safe_profile_filename",
     "save_logger_profile",
