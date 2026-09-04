@@ -9,7 +9,14 @@ from .buffering import (
 from .bus_csv import BusCsvStreamWriter
 from .csv_record import write_waveform_record_csv
 from .csv_stream import WaveformCsvStreamWriter
-from .dpo4log import Dpo4LogScanResult, Dpo4LogWriter, scan_dpo4log
+from .dpo4log import (
+    Dpo4LogCorruptionError,
+    Dpo4LogError,
+    Dpo4LogScanResult,
+    Dpo4LogWriter,
+    iter_dpo4log_records,
+    scan_dpo4log,
+)
 from .health import (
     LoggerCaptureHealth,
     LoggerHealthAccumulator,
@@ -60,6 +67,8 @@ __all__ = [
     "BusDecodedEventsUnavailable",
     "CsvSyncController",
     "CsvSyncPolicy",
+    "Dpo4LogCorruptionError",
+    "Dpo4LogError",
     "Dpo4LogScanResult",
     "Dpo4LogWriter",
     "LOGGER_PROFILE_SCHEMA_VERSION",
@@ -90,6 +99,7 @@ __all__ = [
     "WaveformSnapshot",
     "capture_logger_record",
     "compute_logger_health",
+    "iter_dpo4log_records",
     "load_logger_profile",
     "safe_profile_filename",
     "save_logger_profile",
