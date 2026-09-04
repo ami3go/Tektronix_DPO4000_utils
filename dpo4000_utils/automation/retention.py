@@ -1,4 +1,11 @@
-"""Safe persistent A9 automation artifact retention."""
+"""Safe persistent A9 automation artifact retention.
+
+The retention index is owner-namespaced so Automation and Logger can safely share
+an output root. Deletion uses a two-step staging transaction: all candidate files
+are atomically renamed into a private trash directory, the updated ownership
+index is committed, and only then are staged files unlinked. Any failure before
+the index commit rolls all staged files back to their original paths.
+"""
 
 from __future__ import annotations
 
@@ -6,13 +13,16 @@ import json
 import math
 import os
 import shutil
-from dataclasses import dataclass, field
+import uuid
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Iterable
 
 RETENTION_SCHEMA_VERSION = 1
 RETENTION_INDEX_FILENAME = ".dpo4000-automation-retention-v1.json"
+RETENTION_TRASH_DIRNAME = ".dpo4000-retention-trash"
+DEFAULT_RETENTION_OWNER = "automation"
 MAX_RETENTION_BYTES = 100 * 1024**4
 MAX_RETENTION_AGE_S = 10 * 365 * 24 * 60 * 60.0
 
@@ -23,8 +33,6 @@ class RetentionError(RuntimeError):
 
 @dataclass(frozen=True)
 class RetentionPolicy:
-    """A9 event-retention and disk-space policy."""
-
     keep_last_events: int | None = None
     max_bytes: int | None = None
     max_age_s: float | None = None
@@ -32,10 +40,11 @@ class RetentionPolicy:
 
     def __post_init__(self) -> None:
         if self.keep_last_events is not None:
-            if isinstance(self.keep_last_events, bool):
+            raw = self.keep_last_events
+            if isinstance(raw, bool):
                 raise ValueError("Retention event count must be a positive integer.")
-            count = int(self.keep_last_events)
-            if float(self.keep_last_events) != float(count) or count < 1:
+            count = int(raw)
+            if float(raw) != float(count) or count < 1:
                 raise ValueError("Retention event count must be a positive integer.")
             object.__setattr__(self, "keep_last_events", count)
         for name in ("max_bytes", "min_free_bytes"):
@@ -76,6 +85,7 @@ class RetentionEvent:
     event_id: str
     completed_utc: str
     files: tuple[str, ...]
+    owner: str = DEFAULT_RETENTION_OWNER
 
 
 @dataclass(frozen=True)
@@ -103,6 +113,7 @@ class RetentionPlan:
     projected_free_bytes: int = 0
     satisfied: bool = True
     diagnostics: tuple[str, ...] = ()
+    owner: str = DEFAULT_RETENTION_OWNER
 
 
 @dataclass(frozen=True)
@@ -110,6 +121,13 @@ class RetentionApplyResult:
     deleted_events: int = 0
     deleted_files: int = 0
     reclaimed_bytes: int = 0
+
+
+def _normalize_owner(owner: str) -> str:
+    value = str(owner).strip().lower()
+    if not value or not all(ch.isalnum() or ch in {"-", "_"} for ch in value):
+        raise RetentionError(f"Invalid retention owner namespace: {owner!r}")
+    return value
 
 
 def _utc_iso(value: datetime | None = None) -> str:
@@ -142,8 +160,8 @@ def _validate_relative_text(relative: str) -> PurePosixPath:
     value = PurePosixPath(str(relative))
     if value.is_absolute() or not value.parts or any(part in {"", ".", ".."} for part in value.parts):
         raise RetentionError(f"Unsafe retention path: {relative!r}")
-    if value.as_posix() == RETENTION_INDEX_FILENAME:
-        raise RetentionError("Retention index can never own/delete itself.")
+    if value.as_posix() == RETENTION_INDEX_FILENAME or value.parts[0] == RETENTION_TRASH_DIRNAME:
+        raise RetentionError("Retention metadata/trash can never be owned as an artifact.")
     return value
 
 
@@ -178,8 +196,20 @@ def _index_path(root: Path) -> Path:
     return root / RETENTION_INDEX_FILENAME
 
 
+def _fsync_directory(path: Path) -> None:
+    if os.name == "nt":
+        return
+    try:
+        fd = os.open(path, os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
 def load_retention_index(root: str | Path) -> RetentionIndex:
-    """Load and safety-validate the persistent ownership index."""
     resolved_root = _root_path(root, create=True)
     path = _index_path(resolved_root)
     if not path.exists():
@@ -194,14 +224,16 @@ def load_retention_index(root: str | Path) -> RetentionIndex:
     if not isinstance(raw_events, list):
         raise RetentionError("Retention index events must be a list.")
     events: list[RetentionEvent] = []
-    seen_ids: set[str] = set()
+    seen_ids: set[tuple[str, str]] = set()
     seen_files: set[str] = set()
     for item in raw_events:
         if not isinstance(item, dict):
             raise RetentionError("Retention event entry must be an object.")
+        owner = _normalize_owner(item.get("owner", DEFAULT_RETENTION_OWNER))
         event_id = str(item.get("event_id", "")).strip()
-        if not event_id or event_id in seen_ids:
-            raise RetentionError("Retention event IDs must be unique and non-empty.")
+        identity = (owner, event_id)
+        if not event_id or identity in seen_ids:
+            raise RetentionError("Retention event IDs must be unique and non-empty within an owner.")
         completed = str(item.get("completed_utc", ""))
         _parse_utc(completed)
         raw_files = item.get("files")
@@ -215,19 +247,19 @@ def load_retention_index(root: str | Path) -> RetentionIndex:
                 raise RetentionError(f"Retention artifact is owned by multiple events: {text}")
             seen_files.add(text)
             files.append(text)
-        seen_ids.add(event_id)
-        events.append(RetentionEvent(event_id, completed, tuple(files)))
-    events.sort(key=lambda event: (_parse_utc(event.completed_utc), event.event_id))
+        seen_ids.add(identity)
+        events.append(RetentionEvent(event_id, completed, tuple(files), owner))
+    events.sort(key=lambda event: (_parse_utc(event.completed_utc), event.owner, event.event_id))
     return RetentionIndex(tuple(events))
 
 
 def save_retention_index(root: str | Path, index: RetentionIndex) -> Path:
-    """Atomically persist a validated retention index."""
     resolved_root = _root_path(root, create=True)
     payload = {
         "schema_version": RETENTION_SCHEMA_VERSION,
         "events": [
             {
+                "owner": event.owner,
                 "event_id": event.event_id,
                 "completed_utc": event.completed_utc,
                 "files": list(event.files),
@@ -244,6 +276,7 @@ def save_retention_index(root: str | Path, index: RetentionIndex) -> Path:
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temporary, target)
+        _fsync_directory(resolved_root)
     except OSError as exc:
         try:
             temporary.unlink(missing_ok=True)
@@ -259,14 +292,15 @@ def register_retention_event(
     artifacts: Iterable[str | Path],
     *,
     completed_utc: datetime | None = None,
+    owner: str = DEFAULT_RETENTION_OWNER,
 ) -> RetentionIndex:
-    """Register one completed automation event after all artifact files are closed."""
     resolved_root = _root_path(root, create=True)
+    namespace = _normalize_owner(owner)
     identifier = str(event_id).strip()
     if not identifier:
         raise ValueError("Retention event ID must not be empty.")
     index = load_retention_index(resolved_root)
-    if any(event.event_id == identifier for event in index.events):
+    if any(event.owner == namespace and event.event_id == identifier for event in index.events):
         return index
     owned_elsewhere = {file for event in index.events for file in event.files}
     files: list[str] = []
@@ -282,8 +316,8 @@ def register_retention_event(
     if not files:
         raise RetentionError("A completed retention event must contain at least one artifact.")
     events = list(index.events)
-    events.append(RetentionEvent(identifier, _utc_iso(completed_utc), tuple(files)))
-    events.sort(key=lambda event: (_parse_utc(event.completed_utc), event.event_id))
+    events.append(RetentionEvent(identifier, _utc_iso(completed_utc), tuple(files), namespace))
+    events.sort(key=lambda event: (_parse_utc(event.completed_utc), event.owner, event.event_id))
     updated = RetentionIndex(tuple(events))
     save_retention_index(resolved_root, updated)
     return updated
@@ -309,21 +343,22 @@ def plan_retention(
     protected_paths: Iterable[str | Path] = (),
     now_utc: datetime | None = None,
     free_bytes_override: int | None = None,
+    owner: str = DEFAULT_RETENTION_OWNER,
 ) -> RetentionPlan:
-    """Build a dry-run deletion plan in age -> count -> size -> free-space order."""
     resolved_root = _root_path(root, create=True)
+    namespace = _normalize_owner(owner)
     index = load_retention_index(resolved_root)
+    events = [event for event in index.events if event.owner == namespace]
     now = now_utc or datetime.now(timezone.utc)
     if now.tzinfo is None:
         now = now.replace(tzinfo=timezone.utc)
     now = now.astimezone(timezone.utc)
-
     protected = {
         _owned_relative_path(resolved_root, path)
         for path in protected_paths
         if Path(path).exists()
     }
-    event_sizes = {event.event_id: _event_size(resolved_root, event) for event in index.events}
+    event_sizes = {event.event_id: _event_size(resolved_root, event) for event in events}
     selected: dict[str, list[str]] = {}
 
     def can_delete(event: RetentionEvent) -> bool:
@@ -337,17 +372,16 @@ def plan_retention(
 
     if policy.max_age_s is not None:
         cutoff = now.timestamp() - policy.max_age_s
-        for event in index.events:
+        for event in events:
             if _parse_utc(event.completed_utc).timestamp() < cutoff:
                 select(event, "age")
 
     def remaining_events() -> list[RetentionEvent]:
-        return [event for event in index.events if event.event_id not in selected]
+        return [event for event in events if event.event_id not in selected]
 
     if policy.keep_last_events is not None:
-        remaining = remaining_events()
-        excess = max(0, len(remaining) - policy.keep_last_events)
-        for event in remaining:
+        excess = max(0, len(remaining_events()) - policy.keep_last_events)
+        for event in remaining_events():
             if excess <= 0:
                 break
             if select(event, "count"):
@@ -373,20 +407,17 @@ def plan_retention(
             if select(event, "free-space"):
                 projected += event_sizes[event.event_id]
 
-    deletion_entries: list[RetentionDeletion] = []
-    for event in index.events:
-        reasons = selected.get(event.event_id)
-        if reasons:
-            deletion_entries.append(
-                RetentionDeletion(
-                    event_id=event.event_id,
-                    files=event.files,
-                    bytes=event_sizes[event.event_id],
-                    reasons=tuple(dict.fromkeys(reasons)),
-                )
-            )
-
-    remaining = [event for event in index.events if event.event_id not in selected]
+    deletions = tuple(
+        RetentionDeletion(
+            event.event_id,
+            event.files,
+            event_sizes[event.event_id],
+            tuple(dict.fromkeys(selected[event.event_id])),
+        )
+        for event in events
+        if event.event_id in selected
+    )
+    remaining = [event for event in events if event.event_id not in selected]
     diagnostics: list[str] = []
     satisfied = True
     if policy.keep_last_events is not None and len(remaining) > policy.keep_last_events:
@@ -396,38 +427,53 @@ def plan_retention(
     if policy.max_bytes is not None and remaining_bytes > policy.max_bytes:
         satisfied = False
         diagnostics.append("Protected events prevent satisfying the storage-size limit.")
-    projected = free_bytes + sum(entry.bytes for entry in deletion_entries)
+    projected = free_bytes + sum(entry.bytes for entry in deletions)
     if policy.min_free_bytes is not None and projected < policy.min_free_bytes:
         satisfied = False
         diagnostics.append("Retention cannot reclaim enough space for the minimum-free-space guard.")
-
     return RetentionPlan(
         root=str(resolved_root),
-        deletions=tuple(deletion_entries),
-        tracked_events=len(index.events),
+        deletions=deletions,
+        tracked_events=len(events),
         tracked_bytes=sum(event_sizes.values()),
-        bytes_to_reclaim=sum(entry.bytes for entry in deletion_entries),
+        bytes_to_reclaim=sum(entry.bytes for entry in deletions),
         free_bytes=free_bytes,
         projected_free_bytes=projected,
         satisfied=satisfied,
         diagnostics=tuple(diagnostics),
+        owner=namespace,
     )
 
 
+def _remove_empty_parents(path: Path, stop: Path) -> None:
+    current = path
+    while current != stop:
+        try:
+            current.rmdir()
+        except OSError:
+            break
+        current = current.parent
+
+
 def apply_retention_plan(root: str | Path, plan: RetentionPlan) -> RetentionApplyResult:
-    """Apply a previously previewed plan, re-validating every path before unlink."""
     resolved_root = _root_path(root, create=True)
     if str(resolved_root) != str(Path(plan.root).resolve()):
         raise RetentionError("Retention plan belongs to a different output root.")
+    namespace = _normalize_owner(plan.owner)
     index = load_retention_index(resolved_root)
-    by_id = {event.event_id: event for event in index.events}
-    deleted_ids: set[str] = set()
-    deleted_files = 0
-    reclaimed = 0
+    by_id = {
+        event.event_id: event
+        for event in index.events
+        if event.owner == namespace
+    }
+
+    selected: list[RetentionEvent] = []
+    sources: list[tuple[Path, int]] = []
     for deletion in plan.deletions:
         event = by_id.get(deletion.event_id)
         if event is None or event.files != deletion.files:
             raise RetentionError("Retention index changed after preview; preview again before deleting.")
+        selected.append(event)
         for relative in event.files:
             lexical = _lexical_index_path(resolved_root, relative)
             if lexical.is_symlink():
@@ -435,23 +481,75 @@ def apply_retention_plan(root: str | Path, plan: RetentionPlan) -> RetentionAppl
             if lexical.exists():
                 if not lexical.is_file():
                     raise RetentionError(f"Refusing to delete non-file artifact: {lexical}")
-                size = lexical.stat().st_size
-                lexical.unlink()
-                reclaimed += size
-                deleted_files += 1
-        deleted_ids.add(event.event_id)
-    updated = RetentionIndex(tuple(event for event in index.events if event.event_id not in deleted_ids))
-    save_retention_index(resolved_root, updated)
+                sources.append((lexical, lexical.stat().st_size))
+
+    if not selected:
+        return RetentionApplyResult()
+
+    trash_root = resolved_root / RETENTION_TRASH_DIRNAME
+    transaction = trash_root / uuid.uuid4().hex
+    staged: list[tuple[Path, Path, int]] = []
+    try:
+        for source, size in sources:
+            relative = source.relative_to(resolved_root)
+            destination = transaction / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            os.replace(source, destination)
+            staged.append((source, destination, size))
+        _fsync_directory(resolved_root)
+
+        selected_ids = {event.event_id for event in selected}
+        updated = RetentionIndex(
+            tuple(
+                event
+                for event in index.events
+                if not (event.owner == namespace and event.event_id in selected_ids)
+            )
+        )
+        save_retention_index(resolved_root, updated)
+    except BaseException as exc:
+        rollback_errors: list[str] = []
+        for source, destination, _size in reversed(staged):
+            if not destination.exists():
+                continue
+            try:
+                source.parent.mkdir(parents=True, exist_ok=True)
+                os.replace(destination, source)
+            except OSError as rollback_exc:
+                rollback_errors.append(str(rollback_exc))
+        _remove_empty_parents(transaction, trash_root)
+        detail = f"Retention transaction failed and was rolled back: {exc}"
+        if rollback_errors:
+            detail += "; rollback errors: " + "; ".join(rollback_errors)
+        raise RetentionError(detail) from exc
+
+    cleanup_errors: list[str] = []
+    reclaimed = 0
+    deleted_files = 0
+    for _source, destination, size in staged:
+        try:
+            destination.unlink(missing_ok=True)
+            reclaimed += size
+            deleted_files += 1
+        except OSError as exc:
+            cleanup_errors.append(f"{destination}: {exc}")
+    _remove_empty_parents(transaction, trash_root)
+    if cleanup_errors:
+        raise RetentionError(
+            "Retention index committed but trash cleanup was incomplete: " + "; ".join(cleanup_errors)
+        )
     return RetentionApplyResult(
-        deleted_events=len(deleted_ids),
+        deleted_events=len(selected),
         deleted_files=deleted_files,
         reclaimed_bytes=reclaimed,
     )
 
 
 __all__ = [
+    "DEFAULT_RETENTION_OWNER",
     "RETENTION_INDEX_FILENAME",
     "RETENTION_SCHEMA_VERSION",
+    "RETENTION_TRASH_DIRNAME",
     "RetentionApplyResult",
     "RetentionDeletion",
     "RetentionError",
