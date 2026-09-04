@@ -154,10 +154,24 @@ def trigger_acquisition_complete(*, acquisition_active: bool, trigger_state: str
     return not bool(acquisition_active) and str(trigger_state).strip().upper() == "SAVE"
 
 
-def _fresh_state_observed(*, acquisition_active: bool, trigger_state: str) -> bool:
-    """Return True when the new Single acquisition is visibly active/armed."""
+def _fresh_state_observed(
+    *,
+    baseline_active: bool,
+    baseline_trigger_state: str,
+    acquisition_active: bool,
+    trigger_state: str,
+) -> bool:
+    """Return True only for a changed post-arm active/armed state."""
 
-    return bool(acquisition_active) or str(trigger_state).strip().upper() in FRESH_TRIGGER_STATES
+    current_trigger = str(trigger_state).strip().upper()
+    baseline_trigger = str(baseline_trigger_state).strip().upper()
+    state_changed = (bool(acquisition_active), current_trigger) != (
+        bool(baseline_active),
+        baseline_trigger,
+    )
+    if not state_changed:
+        return False
+    return bool(acquisition_active) or current_trigger in FRESH_TRIGGER_STATES
 
 
 def wait_for_fresh_single(
@@ -169,11 +183,10 @@ def wait_for_fresh_single(
 ) -> TriggerWaitResult:
     """Arm Single and wait for a *fresh* completed acquisition.
 
-    The helper samples the pre-arm state for diagnostics, then requires observing
-    an active/armed state after ``single_acquisition()`` before ``SAVE`` can count
-    as completion. This prevents a stale ``SAVE`` left by the previous acquisition
-    from being accepted as new evidence. Timeout and cancellation both stop the
-    acquisition before returning.
+    The helper samples the pre-arm state, then requires observing a changed
+    active/armed state after ``single_acquisition()`` before ``SAVE`` can count as
+    completion. A stale pre-existing ``SAVE`` or ``READY`` state is therefore not
+    sufficient. Timeout and cancellation both stop acquisition before returning.
     """
 
     config = TriggerImageConfig(
@@ -209,6 +222,8 @@ def wait_for_fresh_single(
         last_active = bool(scope.get_acquisition_state())
         last_trigger_state = str(scope.get_trigger_state())
         if _fresh_state_observed(
+            baseline_active=baseline_active,
+            baseline_trigger_state=baseline_trigger,
             acquisition_active=last_active,
             trigger_state=last_trigger_state,
         ):

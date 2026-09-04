@@ -41,6 +41,11 @@ class _StateScope:
         self.calls.append("stop")
 
 
+def _clock(monkeypatch):
+    values = iter([0.0, 0.0, 0.6, 1.1, 1.2])
+    monkeypatch.setattr(triggered.time, "monotonic", lambda: next(values, 1.2))
+
+
 def test_trigger_config_poll_interval_and_timeout_validation() -> None:
     assert TriggerImageConfig().poll_interval_s == 0.5
     assert TriggerImageConfig().timeout_s == 30.0
@@ -62,7 +67,7 @@ def test_trigger_completion_requires_stopped_and_save() -> None:
     assert not trigger_acquisition_complete(acquisition_active=False, trigger_state="TRIGGER")
 
 
-def test_fresh_single_requires_active_or_armed_state_before_save() -> None:
+def test_fresh_single_requires_changed_active_or_armed_state_before_save() -> None:
     scope = _StateScope(
         active=[False, True, False],
         trigger=["SAVE", "READY", "SAVE"],
@@ -81,9 +86,22 @@ def test_fresh_single_requires_active_or_armed_state_before_save() -> None:
 
 def test_stale_save_never_counts_as_new_single(monkeypatch) -> None:
     scope = _StateScope(active=[False], trigger=["SAVE"])
-    clock = iter([0.0, 0.0, 0.6, 1.1, 1.2])
-    monkeypatch.setattr(triggered.time, "monotonic", lambda: next(clock, 1.2))
+    _clock(monkeypatch)
+    result = wait_for_fresh_single(
+        scope,
+        _NeverCancel(),
+        poll_interval_s=0.1,
+        timeout_s=1.0,
+    )
+    assert result.completed is False
+    assert result.timed_out is True
+    assert result.observed_fresh_state is False
+    assert scope.calls[-1] == "stop"
 
+
+def test_unchanged_ready_does_not_prove_new_acquisition(monkeypatch) -> None:
+    scope = _StateScope(active=[False], trigger=["READY"])
+    _clock(monkeypatch)
     result = wait_for_fresh_single(
         scope,
         _NeverCancel(),

@@ -13,7 +13,8 @@ def main() -> int:
         from PySide6.QtWidgets import QApplication
     except ModuleNotFoundError as exc:
         raise SystemExit(
-            "PySide6 is not installed. Install with `python -m pip install -e .[pyside6]`."
+            "PySide6 is not installed. Install with `python -m pip install -e .[pyside6]` "
+            "or `python -m pip install -r requirements-pyside6.txt`."
         ) from exc
 
     from .production_hardening_window import QtScopeWindow
@@ -27,10 +28,15 @@ def main() -> int:
         if startup_debug.enabled
         else None
     )
+    if debug_probe is not None:
+        debug_probe.snapshot("before-window-construction")
     window = QtScopeWindow()
+    if debug_probe is not None:
+        debug_probe.snapshot("after-window-construction-before-show")
     window.statusBar().showMessage("Ready. DPO4000 Desk (PySide6).")
     window.show()
     if debug_probe is not None:
+        debug_probe.snapshot("after-main-window-show")
         app._dpo4000_startup_debug_probe = debug_probe  # type: ignore[attr-defined]
     if startup_check:
         QTimer.singleShot(2500, app.quit)
