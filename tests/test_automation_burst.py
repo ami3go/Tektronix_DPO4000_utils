@@ -11,6 +11,7 @@ from dpo4000_utils.automation import (
     PeriodicImageController,
     run_burst_event,
 )
+from dpo4000_utils.automation import triggered
 from dpo4000_utils.errors import DPOTransportError
 
 
@@ -29,10 +30,14 @@ class _Cancel:
 
 class _FakeScope:
     def __init__(self, *, active_states=None, trigger_states=None, image_error=None) -> None:
-        self.active_states = list(active_states or [False])
-        self.trigger_states = list(trigger_states or ["SAVE"])
+        self.active_states = list(active_states or [False, True, False])
+        self.trigger_states = list(trigger_states or ["SAVE", "READY", "SAVE"])
         self.image_error = image_error
         self.calls: list[str] = []
+
+    @staticmethod
+    def _next(values):
+        return values.pop(0) if len(values) > 1 else values[0]
 
     def single_acquisition(self) -> None:
         self.calls.append("single")
@@ -42,11 +47,11 @@ class _FakeScope:
 
     def get_acquisition_state(self) -> bool:
         self.calls.append("acq_state")
-        return bool(self.active_states.pop(0))
+        return bool(self._next(self.active_states))
 
     def get_trigger_state(self) -> str:
         self.calls.append("trigger_state")
-        return str(self.trigger_states.pop(0))
+        return str(self._next(self.trigger_states))
 
     def save_image_path(self, path: Path) -> Path:
         self.calls.append("image")
@@ -69,6 +74,7 @@ def test_a7_config_validates_count_delay_action_and_single_poll() -> None:
     assert config.delay_s == 0.0
     assert config.action is ArtifactAction.IMAGE_CSV
     assert config.single_acquisition is True
+    assert config.trigger_timeout_s == 30.0
 
     with pytest.raises(ValueError, match="positive integer"):
         BurstConfig(0, 1.0)
@@ -78,6 +84,8 @@ def test_a7_config_validates_count_delay_action_and_single_poll() -> None:
         BurstConfig(1, 1.0, "binary")
     with pytest.raises(ValueError, match="Poll interval"):
         BurstConfig(1, 1.0, poll_interval_s=0.01)
+    with pytest.raises(ValueError, match="timeout"):
+        BurstConfig(1, 1.0, trigger_timeout_s=0.5)
 
 
 def test_a7_direct_image_event_uses_public_artifact_api(tmp_path: Path) -> None:
@@ -105,11 +113,8 @@ def test_a7_direct_image_csv_event_preserves_artifact_order(tmp_path: Path) -> N
     assert scope.calls == ["image", "record_length", "csv:1000"]
 
 
-def test_a7_single_waits_for_completed_acquisition_before_artifacts(tmp_path: Path) -> None:
-    scope = _FakeScope(
-        active_states=[True, False],
-        trigger_states=["READY", "SAVE"],
-    )
+def test_a7_single_requires_fresh_acquisition_before_artifacts(tmp_path: Path) -> None:
+    scope = _FakeScope()
     result = run_burst_event(
         scope,
         _Cancel(),
@@ -117,7 +122,10 @@ def test_a7_single_waits_for_completed_acquisition_before_artifacts(tmp_path: Pa
         csv_path=tmp_path / "burst.csv",
     )
     assert result.success is True
+    assert result.observed_fresh_state is True
     assert scope.calls == [
+        "acq_state",
+        "trigger_state",
         "single",
         "acq_state",
         "trigger_state",
@@ -128,8 +136,32 @@ def test_a7_single_waits_for_completed_acquisition_before_artifacts(tmp_path: Pa
     ]
 
 
+def test_a7_stale_save_times_out_without_artifacts(monkeypatch, tmp_path: Path) -> None:
+    scope = _FakeScope(active_states=[False], trigger_states=["SAVE"])
+    clock = iter([0.0, 0.0, 0.6, 1.1, 1.2])
+    monkeypatch.setattr(triggered.time, "monotonic", lambda: next(clock, 1.2))
+    result = run_burst_event(
+        scope,
+        _Cancel(),
+        BurstConfig(
+            1,
+            0.0,
+            ArtifactAction.IMAGE,
+            single_acquisition=True,
+            poll_interval_s=0.1,
+            trigger_timeout_s=1.0,
+        ),
+        image_path=tmp_path / "burst.png",
+    )
+    assert result.success is False
+    assert result.timed_out is True
+    assert result.observed_fresh_state is False
+    assert "image" not in scope.calls
+    assert scope.calls[-1] == "stop"
+
+
 def test_a7_pause_stop_cancellation_while_waiting_single_saves_no_artifact(tmp_path: Path) -> None:
-    scope = _FakeScope(active_states=[True], trigger_states=["READY"])
+    scope = _FakeScope(active_states=[False, True], trigger_states=["SAVE", "READY"])
     cancel = _Cancel(cancel_on_wait=True)
     result = run_burst_event(
         scope,

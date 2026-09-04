@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from dpo4000_utils.automation import triggered
 from dpo4000_utils.automation.bundle import (
     acquire_trigger_bundle,
     collision_safe_bundle_paths,
@@ -25,9 +26,21 @@ class _CancelImmediately:
 
 
 class _FakeScope:
-    def __init__(self, *, csv_error: Exception | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        csv_error: Exception | None = None,
+        active_states=None,
+        trigger_states=None,
+    ) -> None:
         self.calls: list[object] = []
         self.csv_error = csv_error
+        self.active_states = list(active_states or [False, True, False])
+        self.trigger_states = list(trigger_states or ["SAVE", "READY", "SAVE"])
+
+    @staticmethod
+    def _next(values):
+        return values.pop(0) if len(values) > 1 else values[0]
 
     def single_acquisition(self) -> None:
         self.calls.append("single")
@@ -37,11 +50,11 @@ class _FakeScope:
 
     def get_acquisition_state(self) -> bool:
         self.calls.append("acquisition_state")
-        return False
+        return bool(self._next(self.active_states))
 
     def get_trigger_state(self) -> str:
         self.calls.append("trigger_state")
-        return "SAVE"
+        return str(self._next(self.trigger_states))
 
     def save_image_path(self, path: Path) -> Path:
         self.calls.append(("image", Path(path)))
@@ -73,12 +86,17 @@ def test_a3_saves_image_then_full_record_csv_before_any_rearm(tmp_path: Path) ->
 
     assert result.completed is True
     assert result.cancelled is False
+    assert result.observed_fresh_state is True
     assert result.artifacts_complete is True
     assert result.image_path == image
     assert result.csv_path == csv
     assert result.point_count == 100_000
     assert scope.calls == [
+        "acquisition_state",
+        "trigger_state",
         "single",
+        "acquisition_state",
+        "trigger_state",
         "acquisition_state",
         "trigger_state",
         ("image", image),
@@ -87,7 +105,7 @@ def test_a3_saves_image_then_full_record_csv_before_any_rearm(tmp_path: Path) ->
     ]
 
 
-def test_a3_cancellation_stops_acquisition_without_writing_artifacts(tmp_path: Path) -> None:
+def test_a3_pre_cancel_does_not_arm_or_write_artifacts(tmp_path: Path) -> None:
     scope = _FakeScope()
 
     result = acquire_trigger_bundle(
@@ -101,7 +119,28 @@ def test_a3_cancellation_stops_acquisition_without_writing_artifacts(tmp_path: P
     assert result.cancelled is True
     assert result.completed is False
     assert result.artifacts_complete is False
-    assert scope.calls == ["single", "stop"]
+    assert scope.calls == []
+
+
+def test_a3_stale_save_times_out_without_writing(monkeypatch, tmp_path: Path) -> None:
+    scope = _FakeScope(active_states=[False], trigger_states=["SAVE"])
+    clock = iter([0.0, 0.0, 0.6, 1.1, 1.2])
+    monkeypatch.setattr(triggered.time, "monotonic", lambda: next(clock, 1.2))
+
+    result = acquire_trigger_bundle(
+        scope,
+        _NeverCancel(),
+        poll_interval_s=0.1,
+        timeout_s=1.0,
+        image_path=tmp_path / "capture.png",
+        csv_path=tmp_path / "capture.csv",
+    )
+
+    assert result.completed is False
+    assert result.timed_out is True
+    assert result.observed_fresh_state is False
+    assert "image" not in [call for call in scope.calls if isinstance(call, str)]
+    assert scope.calls[-1] == "stop"
 
 
 def test_a3_non_transport_csv_failure_is_structured_partial_result(tmp_path: Path) -> None:
