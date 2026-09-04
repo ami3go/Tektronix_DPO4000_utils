@@ -3,14 +3,18 @@ from __future__ import annotations
 from pathlib import Path
 
 
-def test_qt_ui_polish_window_sits_above_preview_bus_desktop_api_layers():
+def test_qt_production_window_keeps_polish_preview_bus_desktop_api_chain():
     runner = Path("dpo4000_utils/gui_qt/runner.py").read_text(encoding="utf-8")
+    production = Path("dpo4000_utils/gui_qt/production_hardening_window.py").read_text(
+        encoding="utf-8"
+    )
     polish = Path("dpo4000_utils/gui_qt/ui_polish_window.py").read_text(encoding="utf-8")
     preview = Path("dpo4000_utils/gui_qt/preview_actions_window.py").read_text(encoding="utf-8")
     bus = Path("dpo4000_utils/gui_qt/bus_window.py").read_text(encoding="utf-8")
     desktop = Path("dpo4000_utils/gui_qt/desktop_window.py").read_text(encoding="utf-8")
 
-    assert "from .ui_polish_window import QtScopeWindow" in runner
+    assert "from .production_hardening_window import QtScopeWindow" in runner
+    assert "LoggerReportReviewedQtScopeWindow" in production
     assert "from .preview_actions_window import QtScopeWindow as PreviewQtScopeWindow" in polish
     assert "class QtScopeWindow(PreviewQtScopeWindow)" in polish
     assert "from .bus_window import QtScopeWindow as BusQtScopeWindow" in preview
@@ -91,7 +95,10 @@ def test_qt_every_direct_card_becomes_collapsible_with_primary_open():
 def test_qt_secondary_sections_default_to_collapsed_and_remove_body_space():
     content = Path("dpo4000_utils/gui_qt/collapsible_window.py").read_text(encoding="utf-8")
 
-    assert "def _collapsible_section(self, title: str, content: QWidget, *, expanded: bool = False)" in content
+    assert (
+        "def _collapsible_section(self, title: str, content: QWidget, *, expanded: bool = False)"
+        in content
+    )
     assert 'self._content_shell.setVisible(expanded)' in content
     assert '_COLLAPSED_OBJECT_NAME = "InlineCollapsibleCardCollapsed"' in content
     assert "self.setMinimumHeight(0)" in content

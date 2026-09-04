@@ -2,18 +2,26 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from dpo4000_utils.control import ACQUISITION_MODES, AVERAGE_COUNTS, RECORD_LENGTH_LABELS
 
-def test_qt_runner_uses_polish_above_preview_bus_desktop_api_chain():
+
+def test_qt_runner_uses_final_production_window_above_legacy_chain():
     runner = Path("dpo4000_utils/gui_qt/runner.py").read_text(encoding="utf-8")
     package_init = Path("dpo4000_utils/gui_qt/__init__.py").read_text(encoding="utf-8")
+    production = Path("dpo4000_utils/gui_qt/production_hardening_window.py").read_text(
+        encoding="utf-8"
+    )
     polish = Path("dpo4000_utils/gui_qt/ui_polish_window.py").read_text(encoding="utf-8")
     preview = Path("dpo4000_utils/gui_qt/preview_actions_window.py").read_text(encoding="utf-8")
     bus = Path("dpo4000_utils/gui_qt/bus_window.py").read_text(encoding="utf-8")
     desktop = Path("dpo4000_utils/gui_qt/desktop_window.py").read_text(encoding="utf-8")
     api = Path("dpo4000_utils/gui_qt/api_window.py").read_text(encoding="utf-8")
 
-    assert "from .ui_polish_window import QtScopeWindow" in runner
-    assert "from .ui_polish_window import QtScopeWindow" in package_init
+    final_import = "from .production_hardening_window import QtScopeWindow"
+    assert final_import in runner
+    assert final_import in package_init
+    assert "LoggerReportReviewedQtScopeWindow" in production
+    assert "wait_for_fresh_single" in production
     assert "from .preview_actions_window import QtScopeWindow as PreviewQtScopeWindow" in polish
     assert "class QtScopeWindow(PreviewQtScopeWindow)" in polish
     assert "from .bus_window import QtScopeWindow as BusQtScopeWindow" in preview
@@ -69,11 +77,13 @@ def test_qt_measurement_window_keeps_existing_measurement_manager():
 def test_qt_acquisition_setup_contract_is_preserved():
     content = Path("dpo4000_utils/gui_qt/acquisition_window.py").read_text(encoding="utf-8")
 
-    assert "ACQUISITION_MODES" in content
-    assert '"HIRES"' in content
-    assert '"AVERAGE"' in content
-    assert "AVERAGE_COUNTS" in content
-    assert "RECORD_LENGTHS" in content
+    assert "HIRES" in ACQUISITION_MODES
+    assert "AVERAGE" in ACQUISITION_MODES
+    assert "16" in AVERAGE_COUNTS
+    assert "1M" in RECORD_LENGTH_LABELS
+    assert "RECORD_LENGTHS = RECORD_LENGTH_LABELS" in content
+    assert "scope.get_acquisition_setup()" in content
+    assert "scope.configure_acquisition(config)" in content
     assert "_update_average_count_enabled" in content
 
 
@@ -92,7 +102,9 @@ def test_qt_channel_and_math_configuration_cards_are_preserved():
 def test_qt_preview_has_ctrl_c_and_quick_controls():
     content = Path("dpo4000_utils/gui_qt/enhanced_window.py").read_text(encoding="utf-8")
 
-    preview_block = content[content.index("def _build_preview_card"):content.index("    def _quick_button")]
+    preview_block = content[
+        content.index("def _build_preview_card") : content.index("    def _quick_button")
+    ]
     assert "_build_quick_control_bar" in preview_block
     assert "QKeySequence.StandardKey.Copy" in preview_block
     assert "preview_copy_shortcut" in preview_block

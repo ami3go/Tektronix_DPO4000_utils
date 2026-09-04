@@ -50,13 +50,19 @@ class RawScopeAttributeVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
 
-def test_desktop_entrypoint_uses_final_pyside_window():
+def test_desktop_entrypoint_uses_production_hardening_window():
     runner = (ROOT / "dpo4000_utils" / "gui_qt" / "runner.py").read_text(encoding="utf-8")
     package_init = (ROOT / "dpo4000_utils" / "gui_qt" / "__init__.py").read_text(encoding="utf-8")
+    production = (
+        ROOT / "dpo4000_utils" / "gui_qt" / "production_hardening_window.py"
+    ).read_text(encoding="utf-8")
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
 
-    assert "from .automation_burst_window import QtScopeWindow" in runner
-    assert "from .automation_burst_window import QtScopeWindow" in package_init
+    final_import = "from .production_hardening_window import QtScopeWindow"
+    assert final_import in runner
+    assert final_import in package_init
+    assert "LoggerReportReviewedQtScopeWindow" in production
+    assert "wait_for_fresh_single" in production
     assert 'dpo4000-desk = "dpo4000_utils.gui_qt.runner:main"' in pyproject
     assert "dpo4000-gui" not in pyproject
 
@@ -200,7 +206,10 @@ def test_python_package_has_no_tkinter_imports():
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
-                if any(alias.name == "tkinter" or alias.name.startswith("tkinter.") for alias in node.names):
+                if any(
+                    alias.name == "tkinter" or alias.name.startswith("tkinter.")
+                    for alias in node.names
+                ):
                     violations.append(str(path.relative_to(ROOT)))
             elif isinstance(node, ast.ImportFrom):
                 module = node.module or ""
