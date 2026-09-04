@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ..control import DISPLAY_PERSISTENCE_VALUES, DisplayConfig, bool_from_scope_response
 from .stable_window import QtScopeWindow as StableQtScopeWindow
 from .ui_practice_window import SHORTCUTS
 
@@ -59,25 +60,6 @@ DISPLAY_PAGE_SHORTCUTS = (
 FILE_PAGE_INDEX = 5
 DISPLAY_PAGE_INDEX = 6
 LOG_PAGE_INDEX = 7
-DISPLAY_PERSISTENCE_VALUES = (
-    "AUTO",
-    "MINIMUM",
-    "INFINITE",
-    "CLEAR",
-    "0.5",
-    "1",
-    "2",
-    "5",
-    "10",
-)
-DISPLAY_SETUP_QUERIES = {
-    "backlight": "DISPLAY:INTENSITY:BACKLIGHT?",
-    "waveform": "DISPLAY:INTENSITY:WAVEFORM?",
-    "graticule": "DISPLAY:INTENSITY:GRATICULE?",
-    "persistence": "DISPLAY:PERSISTENCE?",
-    "message_text": "MESSAGE:SHOW?",
-    "message_state": "MESSAGE:STATE?",
-}
 DISPLAY_SCOPE_ACTIONS = {
     "read_display_settings",
     "apply_display_settings",
@@ -137,7 +119,7 @@ class QtScopeWindow(StableQtScopeWindow):
         """Select the requested top-menu page using the Display-aware page list."""
         self._ensure_control_page_built(index)
         stack = getattr(self, "control_stack", None)
-        if stack is None or index < 0 or index >= stack.count():
+        if stack is none or index < 0 or index >= stack.count():
             return
         stack.setCurrentIndex(index)
         title = CONTROL_TAB_TITLES[index]
@@ -215,22 +197,22 @@ class QtScopeWindow(StableQtScopeWindow):
         self._prepare_form(form)
 
         self.display_backlight = QLineEdit("100")
-        self.display_backlight.setToolTip("DISPLAY:INTENSITY:BACKLIGHT, usually 0..100.")
+        self.display_backlight.setToolTip("Display backlight intensity, usually 0..100.")
         self.display_waveform_intensity = QLineEdit("")
-        self.display_waveform_intensity.setToolTip("Optional DISPLAY:INTENSITY:WAVEFORM value.")
+        self.display_waveform_intensity.setToolTip("Optional waveform display intensity.")
         self.display_graticule_intensity = QLineEdit("")
-        self.display_graticule_intensity.setToolTip("Optional DISPLAY:INTENSITY:GRATICULE value.")
+        self.display_graticule_intensity.setToolTip("Optional graticule display intensity.")
 
         self.display_persistence = QComboBox()
         self.display_persistence.setEditable(True)
         self.display_persistence.addItems(DISPLAY_PERSISTENCE_VALUES)
         self.display_persistence.setToolTip(
-            "DISPLAY:PERSISTENCE accepts AUTO, MINIMUM, INFINITE, CLEAR, or a time value."
+            "Persistence accepts AUTO, MINIMUM, INFINITE, CLEAR, or a time value."
         )
 
         self.display_message_text = QLineEdit("")
         self.display_message_text.setMaxLength(120)
-        self.display_message_text.setToolTip("MESSAGE:SHOW text added as a message box on the scope screen.")
+        self.display_message_text.setToolTip("Optional message box text shown on the scope screen.")
         self.display_message_state = QCheckBox("Show text box on scope screen")
 
         form.addRow("Contrast / backlight %", self.display_backlight)
@@ -241,9 +223,8 @@ class QtScopeWindow(StableQtScopeWindow):
         form.addRow(self.display_message_state)
 
         hint = QLabel(
-            "Backlight/waveform/graticule values map to DISPLAY:INTENSITY commands. "
-            "Persistence maps to DISPLAY:PERSISTENCE. Screen text uses MESSAGE:SHOW, "
-            "MESSAGE:STATE, and MESSAGE:CLEAR. Some firmware may reject unsupported values."
+            "Display controls are applied through the public DPO4000 driver API. "
+            "Unsupported values may be rejected by older instrument firmware."
         )
         hint.setObjectName("MutedLabel")
         hint.setWordWrap(True)
@@ -260,25 +241,13 @@ class QtScopeWindow(StableQtScopeWindow):
         return self._prepare_drawer_card(card)
 
     # ------------------------------------------------------------------
-    # SCPI actions
+    # Public-driver actions
     # ------------------------------------------------------------------
-    @staticmethod
-    def _quote_scpi_string(value: str) -> str:
-        """Quote screen message text for SCPI while keeping it single-line and safe."""
-        clean = " ".join(str(value).replace('"', "'").splitlines()).strip()
-        return f'"{clean}"'
-
     def read_display_settings(self) -> None:
-        def action(scope) -> dict[str, str]:
-            instrument = getattr(scope, "scope", None)
-            if instrument is None:
-                raise ConnectionError("Oscilloscope is not connected.")
-            return {
-                name: self._query_optional(instrument, query)
-                for name, query in DISPLAY_SETUP_QUERIES.items()
-            }
-
-        result = self._run_action("Reading display settings", action)
+        result = self._run_action(
+            "Reading display settings",
+            lambda scope: scope.get_display_settings(),
+        )
         if isinstance(result, dict):
             self.display_backlight.setText(result.get("backlight", ""))
             self.display_waveform_intensity.setText(result.get("waveform", ""))
@@ -286,43 +255,29 @@ class QtScopeWindow(StableQtScopeWindow):
             self._set_combo_text(self.display_persistence, result.get("persistence", ""))
             self.display_message_text.setText(result.get("message_text", ""))
             self.display_message_state.setChecked(
-                self._bool_from_scope_response(result.get("message_state", "0"))
+                bool_from_scope_response(result.get("message_state", "0"))
             )
 
     def apply_display_settings(self) -> None:
-        backlight = self.display_backlight.text()
-        waveform = self.display_waveform_intensity.text()
-        graticule = self.display_graticule_intensity.text()
-        persistence = self.display_persistence.currentText().strip().upper()
-        message_text = self.display_message_text.text().strip()
-        message_state = self.display_message_state.isChecked()
-
-        def action(scope) -> str:
-            instrument = getattr(scope, "scope", None)
-            if instrument is None:
-                raise ConnectionError("Oscilloscope is not connected.")
-            self._write_if_text(instrument, "DISPLAY:INTENSITY:BACKLIGHT", backlight)
-            self._write_if_text(instrument, "DISPLAY:INTENSITY:WAVEFORM", waveform)
-            self._write_if_text(instrument, "DISPLAY:INTENSITY:GRATICULE", graticule)
-            self._write_if_text(instrument, "DISPLAY:PERSISTENCE", persistence)
-            if message_text:
-                instrument.write(f"MESSAGE:SHOW {self._quote_scpi_string(message_text)}")
-            instrument.write(f"MESSAGE:STATE {'ON' if message_state else 'OFF'}")
-            return "Display settings applied"
-
-        self._run_action("Applying display settings", action)
+        config = DisplayConfig(
+            backlight=self.display_backlight.text().strip() or None,
+            waveform=self.display_waveform_intensity.text().strip() or None,
+            graticule=self.display_graticule_intensity.text().strip() or None,
+            persistence=self.display_persistence.currentText().strip() or None,
+            message_text=self.display_message_text.text().strip() or None,
+            message_state=self.display_message_state.isChecked(),
+        )
+        self._run_action(
+            "Applying display settings",
+            lambda scope: scope.apply_display_settings(config),
+        )
 
     def clear_display_message(self) -> None:
-        def action(scope) -> str:
-            instrument = getattr(scope, "scope", None)
-            if instrument is None:
-                raise ConnectionError("Oscilloscope is not connected.")
-            instrument.write("MESSAGE:CLEAR")
-            instrument.write("MESSAGE:STATE OFF")
-            return "Screen text cleared"
-
-        result = self._run_action("Clearing display screen text", action)
-        if result is not None:
+        result = self._run_action(
+            "Clearing display screen text",
+            lambda scope: scope.clear_display_message(),
+        )
+        if result is not None or getattr(self, "_connection_ok", False):
             self.display_message_text.clear()
             self.display_message_state.setChecked(False)
 
@@ -334,7 +289,6 @@ __all__ = [
     "DISPLAY_PAGE_SHORTCUTS",
     "DISPLAY_PERSISTENCE_VALUES",
     "DISPLAY_SCOPE_ACTIONS",
-    "DISPLAY_SETUP_QUERIES",
     "FILE_PAGE_INDEX",
     "LOG_PAGE_INDEX",
     "QtScopeWindow",

@@ -1,9 +1,8 @@
-"""Experimental PySide6 main window for the DPO4000 utility.
+"""Base PySide6 window for the DPO4000 Desk application.
 
-The Qt GUI is intentionally kept beside the existing Tkinter GUI while the
-project compares modern UI options.  This module ports the user-facing actions
-from the Tk ``main`` GUI to PySide6 while continuing to call the same shared
-DPO4000 driver/helper modules.
+This module owns GUI layout, preferences, validation, and user interaction only.
+Instrument operations are delegated exclusively to the public ``dpo4000_utils``
+driver API; the GUI never accesses the underlying PyVISA resource directly.
 """
 
 from __future__ import annotations
@@ -56,10 +55,8 @@ from ..control import (
     TRIGGER_SOURCES,
     MeasurementConfig,
 )
-from ..hardcopy import save_screen_png
-from ..instrument import DPO4054
-from ..settings import apply_scope_settings_file
-from ..waveform import save_enabled_channels_to_single_csv
+from ..instrument import DPO4000Scope
+from ..session import scope_session
 from ..gui.config import FileNaming, build_output_path, resolve_output_folder
 from ..gui.preferences import GuiPreferences, load_preferences, save_preferences
 
@@ -70,7 +67,7 @@ DEFAULT_RESTORE_TIMEOUT_MS = 60_000
 
 
 class QtScopeWindow(QMainWindow):
-    """PySide6 GUI used for testing a modern replacement UI."""
+    """PySide6 base window whose instrument actions use the public driver API."""
 
     def __init__(self, preferences_path: str | Path | None = None) -> None:
         super().__init__()
@@ -81,15 +78,11 @@ class QtScopeWindow(QMainWindow):
         self._last_drawer_width = DEFAULT_DRAWER_WIDTH
         self._preferences_path = Path(preferences_path) if preferences_path is not None else None
         self._preferences = load_preferences(self._preferences_path)
-
         self._apply_theme()
         self._build_ui()
         self._apply_preferences(self._preferences)
-        self.statusBar().showMessage("Ready. Experimental PySide6 GUI; Tk GUI remains unchanged.")
+        self.statusBar().showMessage("Ready.")
 
-    # ------------------------------------------------------------------
-    # Theme and layout
-    # ------------------------------------------------------------------
     def _apply_theme(self) -> None:
         qss_path = Path(__file__).with_name("theme.qss")
         if qss_path.exists():
@@ -101,13 +94,12 @@ class QtScopeWindow(QMainWindow):
         root.setContentsMargins(18, 18, 18, 12)
         root.setSpacing(14)
         self.setCentralWidget(central)
-
         header = QHBoxLayout()
         title = QLabel(APP_TITLE)
         title.setObjectName("TitleLabel")
-        subtitle = QLabel("PySide6 testing branch · existing Tkinter GUI is still available")
+        subtitle = QLabel("DPO4000 Desk · public-driver API")
         subtitle.setObjectName("MutedLabel")
-        subtitle.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        subtitle.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.show_drawer_button = self._button("Show controls", self.show_control_drawer)
         self.show_drawer_button.setObjectName("DrawerShowButton")
         self.show_drawer_button.setVisible(False)
@@ -115,23 +107,19 @@ class QtScopeWindow(QMainWindow):
         header.addWidget(subtitle, 1)
         header.addWidget(self.show_drawer_button)
         root.addLayout(header)
-
-        self.main_splitter = QSplitter(Qt.Horizontal)
+        self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
         self.main_splitter.setObjectName("MainSplitter")
         root.addWidget(self.main_splitter, 1)
-
         preview_card = self._build_preview_card()
-        preview_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        preview_card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.main_splitter.addWidget(preview_card)
-
         self.drawer = self._build_control_drawer()
         self.drawer.setMinimumWidth(360)
-        self.drawer.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+        self.drawer.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
         self.main_splitter.addWidget(self.drawer)
         self.main_splitter.setStretchFactor(0, 3)
         self.main_splitter.setStretchFactor(1, 1)
         self.main_splitter.setSizes([810, DEFAULT_DRAWER_WIDTH])
-
         self.setStatusBar(QStatusBar())
 
     def _card(self, title: str) -> QGroupBox:
@@ -155,21 +143,16 @@ class QtScopeWindow(QMainWindow):
         button.clicked.connect(callback)
         return button
 
-    # ------------------------------------------------------------------
-    # Preview
-    # ------------------------------------------------------------------
     def _build_preview_card(self) -> QGroupBox:
         card = self._card("Screen preview")
         layout = QVBoxLayout(card)
         layout.setSpacing(10)
-
         self.preview_label = QLabel("Capture preview to show the scope screen here.")
         self.preview_label.setObjectName("PreviewLabel")
-        self.preview_label.setAlignment(Qt.AlignCenter)
+        self.preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.preview_label.setMinimumSize(640, 420)
         self.preview_label.setScaledContents(False)
         layout.addWidget(self.preview_label, 1)
-
         buttons = QHBoxLayout()
         buttons.addWidget(self._button("Capture preview", self.capture_preview))
         buttons.addWidget(self._button("Copy preview", self.copy_preview))
@@ -178,22 +161,17 @@ class QtScopeWindow(QMainWindow):
         layout.addLayout(buttons)
         return card
 
-    # ------------------------------------------------------------------
-    # Resizable control drawer
-    # ------------------------------------------------------------------
     def _build_control_drawer(self) -> QWidget:
         drawer = QWidget()
         drawer.setObjectName("ControlDrawer")
         layout = QHBoxLayout(drawer)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(10)
-
         content = QWidget()
         content.setObjectName("DrawerContent")
         content_layout = QVBoxLayout(content)
         content_layout.setContentsMargins(12, 10, 12, 12)
         content_layout.setSpacing(10)
-
         header = QWidget()
         header.setObjectName("DrawerHeader")
         header_layout = QHBoxLayout(header)
@@ -202,7 +180,6 @@ class QtScopeWindow(QMainWindow):
         self.drawer_title.setObjectName("DrawerTitle")
         header_layout.addWidget(self.drawer_title, 1)
         content_layout.addWidget(header)
-
         self.drawer_stack = QStackedWidget()
         self.drawer_stack.setObjectName("DrawerStack")
         self.drawer_stack.addWidget(self._build_connection_tab())
@@ -213,16 +190,14 @@ class QtScopeWindow(QMainWindow):
         self.drawer_stack.addWidget(self._build_log_tab())
         content_layout.addWidget(self.drawer_stack, 1)
         layout.addWidget(content, 1)
-
         nav = QWidget()
         nav.setObjectName("DrawerNav")
         nav.setMinimumWidth(156)
         nav.setMaximumWidth(190)
-        nav.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+        nav.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
         nav_layout = QVBoxLayout(nav)
         nav_layout.setContentsMargins(8, 8, 8, 8)
         nav_layout.setSpacing(6)
-
         nav_controls = QWidget()
         nav_controls.setObjectName("DrawerControls")
         nav_controls_layout = QHBoxLayout(nav_controls)
@@ -236,23 +211,21 @@ class QtScopeWindow(QMainWindow):
         nav_controls_layout.addWidget(self.pin_drawer_button, 1)
         nav_controls_layout.addWidget(self.hide_drawer_button, 1)
         nav_layout.addWidget(nav_controls)
-
         self.drawer_buttons = QButtonGroup(self)
         self.drawer_buttons.setExclusive(True)
-        for index, title in enumerate(DRAWER_PAGE_TITLES):
+        for index, title_text in enumerate(DRAWER_PAGE_TITLES):
             button = QToolButton()
-            button.setText(title)
+            button.setText(title_text)
             button.setCheckable(True)
-            button.setToolButtonStyle(Qt.ToolButtonTextOnly)
+            button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
             button.setObjectName("DrawerNavButton")
             button.setMinimumHeight(42)
-            button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             button.clicked.connect(lambda checked=False, page=index: self._select_drawer_page(page))
             self.drawer_buttons.addButton(button, index)
             nav_layout.addWidget(button)
         nav_layout.addStretch(1)
         layout.addWidget(nav)
-
         first_button = self.drawer_buttons.button(0)
         if first_button is not None:
             first_button.setChecked(True)
@@ -291,17 +264,12 @@ class QtScopeWindow(QMainWindow):
         self.main_splitter.setSizes([preview_width, self._last_drawer_width])
         self.statusBar().showMessage("Control drawer shown")
 
-    # ------------------------------------------------------------------
-    # Drawer pages
-    # ------------------------------------------------------------------
     def _build_connection_tab(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setSpacing(10)
-
         card = self._card("Connection")
         form = QFormLayout(card)
-
         mode_box = QWidget()
         mode_layout = QHBoxLayout(mode_box)
         mode_layout.setContentsMargins(0, 0, 0, 0)
@@ -314,7 +282,6 @@ class QtScopeWindow(QMainWindow):
         mode_layout.addWidget(self.eth_mode)
         mode_layout.addStretch(1)
         form.addRow("Mode", mode_box)
-
         resource_box = QWidget()
         resource_layout = QHBoxLayout(resource_box)
         resource_layout.setContentsMargins(0, 0, 0, 0)
@@ -325,7 +292,6 @@ class QtScopeWindow(QMainWindow):
         resource_layout.addWidget(self.resource, 1)
         resource_layout.addWidget(self._button("Refresh", self.refresh_visa_resources))
         form.addRow("VISA resource", resource_box)
-
         self.eth_host = QLineEdit()
         self.eth_port = QLineEdit("4000")
         self.eth_protocol = QComboBox()
@@ -333,27 +299,22 @@ class QtScopeWindow(QMainWindow):
         self.generated_resource = QLineEdit()
         self.generated_resource.setReadOnly(True)
         self.timeout_ms = QLineEdit("20000")
-
         self.eth_host.textChanged.connect(lambda _text: self._refresh_generated_ethernet_resource())
         self.eth_port.textChanged.connect(lambda _text: self._refresh_generated_ethernet_resource())
         self.eth_protocol.currentTextChanged.connect(lambda _text: self._refresh_generated_ethernet_resource())
-
         form.addRow("Ethernet IP/host", self.eth_host)
         form.addRow("Protocol", self.eth_protocol)
         form.addRow("Socket port", self.eth_port)
         form.addRow("Generated resource", self.generated_resource)
         form.addRow("Timeout ms", self.timeout_ms)
-
         ethernet_button_row = QHBoxLayout()
         ethernet_button_row.addWidget(self._button("Use Ethernet resource", self.apply_ethernet_resource))
         ethernet_button_row.addWidget(self._accent_button("Test IDN", self.test_connection))
         form.addRow(ethernet_button_row)
-
         hint = QLabel("VXI-11: TCPIP0::<ip>::INSTR. Socket: TCPIP0::<ip>::4000::SOCKET.")
         hint.setObjectName("MutedLabel")
         hint.setWordWrap(True)
         form.addRow(hint)
-
         layout.addWidget(card)
         layout.addStretch(1)
         return page
@@ -368,7 +329,6 @@ class QtScopeWindow(QMainWindow):
             edit = QLineEdit()
             self.channel_labels[channel] = edit
             form.addRow(f"CH{channel} label", edit)
-
         buttons = QHBoxLayout()
         buttons.addWidget(self._button("Read labels", self.read_labels))
         buttons.addWidget(self._accent_button("Apply labels", self.apply_labels))
@@ -382,7 +342,6 @@ class QtScopeWindow(QMainWindow):
         layout = QVBoxLayout(page)
         card = self._card("Measurement")
         form = QFormLayout(card)
-
         self.measurement_slot = QComboBox()
         self.measurement_slot.addItems([str(slot) for slot in MEASUREMENT_SLOTS])
         self.measurement_group = QComboBox()
@@ -397,14 +356,12 @@ class QtScopeWindow(QMainWindow):
         self.measurement_source2.addItems([""] + list(MEASUREMENT_SOURCES))
         self.measurement_value = QLineEdit()
         self.measurement_value.setReadOnly(True)
-
         form.addRow("Slot", self.measurement_slot)
         form.addRow("Group", self.measurement_group)
         form.addRow("Measurement type", self.measurement_type)
         form.addRow("Source 1", self.measurement_source1)
         form.addRow("Source 2", self.measurement_source2)
         form.addRow("Last read value", self.measurement_value)
-
         buttons = QHBoxLayout()
         buttons.addWidget(self._accent_button("Add / update", self.add_measurement))
         buttons.addWidget(self._button("Read value", self.read_measurement_value))
@@ -462,12 +419,10 @@ class QtScopeWindow(QMainWindow):
         form.addRow(self.trigger_set_source)
         form.addRow("Readback", self.trigger_readback)
         form.addRow("Horizontal position", self.horizontal_position)
-
         trigger_buttons = QHBoxLayout()
         trigger_buttons.addWidget(self._button("Read level", self.read_trigger_level))
         trigger_buttons.addWidget(self._accent_button("Set level", self.apply_trigger_level))
         form.addRow(trigger_buttons)
-
         horizontal_buttons = QHBoxLayout()
         horizontal_buttons.addWidget(self._button("Read position", self.read_horizontal_position))
         horizontal_buttons.addWidget(self._button("-10", lambda: self.nudge_horizontal_position(-10)))
@@ -504,7 +459,6 @@ class QtScopeWindow(QMainWindow):
         layout = QVBoxLayout(page)
         card = self._card("Output and scope settings")
         form = QFormLayout(card)
-
         folder_box = QWidget()
         folder_layout = QHBoxLayout(folder_box)
         folder_layout.setContentsMargins(0, 0, 0, 0)
@@ -513,34 +467,13 @@ class QtScopeWindow(QMainWindow):
         folder_layout.addWidget(self.output_folder, 1)
         folder_layout.addWidget(self._button("Pick folder", self.pick_output_folder))
         form.addRow("Destination folder", folder_box)
-
         hint = QLabel("Filename format: <prefix><base><_timestamp optional>.<extension>")
         hint.setObjectName("MutedLabel")
         hint.setWordWrap(True)
         form.addRow(hint)
-
-        self.png_prefix, self.png_base, self.png_timestamp = self._add_naming_row(
-            form,
-            "PNG images",
-            "scope_",
-            "screen",
-            True,
-        )
-        self.csv_prefix, self.csv_base, self.csv_timestamp = self._add_naming_row(
-            form,
-            "CSV waveforms",
-            "scope_",
-            "waveform",
-            True,
-        )
-        self.settings_prefix, self.settings_base, self.settings_timestamp = self._add_naming_row(
-            form,
-            "Settings JSON",
-            "dpo4054_",
-            "setup",
-            True,
-        )
-
+        self.png_prefix, self.png_base, self.png_timestamp = self._add_naming_row(form, "PNG images", "scope_", "screen", True)
+        self.csv_prefix, self.csv_base, self.csv_timestamp = self._add_naming_row(form, "CSV waveforms", "scope_", "waveform", True)
+        self.settings_prefix, self.settings_base, self.settings_timestamp = self._add_naming_row(form, "Settings JSON", "dpo4054_", "setup", True)
         self.restore_wait_opc = QCheckBox("Wait for *OPC? after restore (can timeout on DPO4000)")
         form.addRow(self.restore_wait_opc)
         form.addRow(self._button("Save settings JSON", self.save_settings))
@@ -549,14 +482,7 @@ class QtScopeWindow(QMainWindow):
         layout.addStretch(1)
         return page
 
-    def _add_naming_row(
-        self,
-        form: QFormLayout,
-        title: str,
-        default_prefix: str,
-        default_base: str,
-        timestamp: bool,
-    ) -> tuple[QLineEdit, QLineEdit, QCheckBox]:
+    def _add_naming_row(self, form: QFormLayout, title: str, default_prefix: str, default_base: str, timestamp: bool) -> tuple[QLineEdit, QLineEdit, QCheckBox]:
         row = QWidget()
         layout = QHBoxLayout(row)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -582,9 +508,6 @@ class QtScopeWindow(QMainWindow):
         layout.addWidget(self.log)
         return page
 
-    # ------------------------------------------------------------------
-    # Preferences
-    # ------------------------------------------------------------------
     def _apply_preferences(self, preferences: GuiPreferences) -> None:
         self.eth_host.setText(preferences.ethernet_host)
         self.eth_port.setText(preferences.ethernet_port)
@@ -647,13 +570,10 @@ class QtScopeWindow(QMainWindow):
             self._append_log(f"Could not save GUI preferences: {exc}")
             return None
 
-    def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802 - Qt API name
+    def closeEvent(self, event: QCloseEvent) -> None:
         self._save_preferences_safely()
         super().closeEvent(event)
 
-    # ------------------------------------------------------------------
-    # Connection / validation / path helpers
-    # ------------------------------------------------------------------
     @staticmethod
     def _set_combo_text(combo: QComboBox, value: str) -> None:
         index = combo.findText(value)
@@ -708,29 +628,11 @@ class QtScopeWindow(QMainWindow):
 
     def _build_output_path(self, kind: str) -> Path:
         if kind == "png":
-            naming = FileNaming(
-                prefix=self.png_prefix.text(),
-                base=self.png_base.text(),
-                extension=".png",
-                fallback="scope_screen",
-                add_timestamp=self.png_timestamp.isChecked(),
-            )
+            naming = FileNaming(prefix=self.png_prefix.text(), base=self.png_base.text(), extension=".png", fallback="scope_screen", add_timestamp=self.png_timestamp.isChecked())
         elif kind == "csv":
-            naming = FileNaming(
-                prefix=self.csv_prefix.text(),
-                base=self.csv_base.text(),
-                extension=".csv",
-                fallback="scope_waveform",
-                add_timestamp=self.csv_timestamp.isChecked(),
-            )
+            naming = FileNaming(prefix=self.csv_prefix.text(), base=self.csv_base.text(), extension=".csv", fallback="scope_waveform", add_timestamp=self.csv_timestamp.isChecked())
         elif kind == "settings":
-            naming = FileNaming(
-                prefix=self.settings_prefix.text(),
-                base=self.settings_base.text(),
-                extension=".json",
-                fallback="dpo4054_setup",
-                add_timestamp=self.settings_timestamp.isChecked(),
-            )
+            naming = FileNaming(prefix=self.settings_prefix.text(), base=self.settings_base.text(), extension=".json", fallback="dpo4054_setup", add_timestamp=self.settings_timestamp.isChecked())
         else:
             raise ValueError(f"Unknown output kind: {kind}")
         return build_output_path(self.output_folder.text(), naming)
@@ -738,14 +640,8 @@ class QtScopeWindow(QMainWindow):
     def _confirm_or_cancel_overwrite(self, path: Path) -> bool:
         if not path.exists():
             return True
-        answer = QMessageBox.question(
-            self,
-            APP_TITLE,
-            f"File already exists:\n{path}\n\nOverwrite it?",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
-        )
-        return answer == QMessageBox.Yes
+        answer = QMessageBox.question(self, APP_TITLE, f"File already exists:\n{path}\n\nOverwrite it?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+        return answer == QMessageBox.StandardButton.Yes
 
     @staticmethod
     def _safe_label_text(text: str) -> str:
@@ -776,23 +672,9 @@ class QtScopeWindow(QMainWindow):
         except ValueError as exc:
             raise ValueError("Trigger level must be a number in volts, or TTL/ECL.") from exc
 
-    def _new_scope_session(self, callback: Callable[[DPO4054], object]) -> object:
-        scope = DPO4054(self._selected_resource(), auto_connect=False)
-        try:
-            scope.connect()
-            if getattr(scope, "scope", None) is not None:
-                scope.scope.timeout = self._timeout()
-                try:
-                    scope.scope.write_termination = "\n"
-                    scope.scope.read_termination = "\n"
-                except Exception:
-                    pass
+    def _new_scope_session(self, callback: Callable[[DPO4000Scope], object]) -> object:
+        with scope_session(self._selected_resource(), timeout_ms=self._timeout()) as scope:
             return callback(scope)
-        finally:
-            try:
-                scope.disconnect()
-            except Exception:
-                pass
 
     def _refresh_generated_ethernet_resource(self) -> None:
         if not self.eth_host.text().strip():
@@ -831,9 +713,6 @@ class QtScopeWindow(QMainWindow):
         self._append_log(f"Ethernet resource selected: {resource}")
         self.statusBar().showMessage(f"Ethernet resource selected: {resource}")
 
-    # ------------------------------------------------------------------
-    # GUI actions
-    # ------------------------------------------------------------------
     def refresh_visa_resources(self) -> None:
         self.statusBar().showMessage("Refreshing VISA resources")
         try:
@@ -843,21 +722,14 @@ class QtScopeWindow(QMainWindow):
             self._message("Refresh VISA resources", str(exc), error=True)
             return
         self._update_visa_resource_list(resources)
-        if resources:
-            message = "VISA resources found:\n" + "\n".join(resources)
-        else:
-            message = "No VISA resources found."
+        message = "VISA resources found:\n" + "\n".join(resources) if resources else "No VISA resources found."
         self._append_log(message)
         self._message("Refresh VISA resources", message)
         self.statusBar().showMessage("VISA resource list refreshed")
 
     def pick_output_folder(self) -> None:
         initial_dir = str(self._configured_output_folder(create=False))
-        selected = QFileDialog.getExistingDirectory(
-            self,
-            "Select output folder for PNG, CSV, and scope settings",
-            initial_dir,
-        )
+        selected = QFileDialog.getExistingDirectory(self, "Select output folder for PNG, CSV, and scope settings", initial_dir)
         if selected:
             self.output_folder.setText(selected)
             folder = self._configured_output_folder(create=True)
@@ -865,27 +737,22 @@ class QtScopeWindow(QMainWindow):
             self.statusBar().showMessage(f"Output folder set to: {folder}")
 
     def test_connection(self) -> None:
-        result = self._run_action("Testing scope connection", lambda scope: scope.scope.query("*IDN?").strip())
+        result = self._run_action("Testing scope connection", lambda scope: scope.query_identity())
         if result is not None:
             self._message("Scope IDN", str(result))
 
     def read_labels(self) -> None:
-        result = self._run_action(
-            "Reading CH1..CH4 labels",
-            lambda scope: {channel: scope.get_channel_label(channel) for channel in range(1, 5)},
-        )
+        result = self._run_action("Reading CH1..CH4 labels", lambda scope: {channel: scope.get_channel_label(channel) for channel in range(1, 5)})
         if isinstance(result, dict):
             for channel, label in result.items():
                 self.channel_labels[int(channel)].setText(str(label))
 
     def apply_labels(self) -> None:
         labels = {channel: self._safe_label_text(edit.text()) for channel, edit in self.channel_labels.items()}
-
-        def action(scope: DPO4054) -> dict[int, str]:
+        def action(scope: DPO4000Scope) -> dict[int, str]:
             for channel, label in labels.items():
                 scope.set_channel_label(channel, label)
             return {channel: scope.get_channel_label(channel) for channel in range(1, 5)}
-
         result = self._run_action("Applying CH1..CH4 labels", action)
         if isinstance(result, dict):
             for channel, label in result.items():
@@ -893,27 +760,23 @@ class QtScopeWindow(QMainWindow):
 
     def capture_preview(self) -> None:
         path = self._build_output_path("png")
-        if not self._confirm_or_cancel_overwrite(path):
-            return
-        self._capture_image_to(path, "Capturing scope image preview")
+        if self._confirm_or_cancel_overwrite(path):
+            self._capture_image_to(path, "Capturing scope image preview")
 
     def save_png_image(self) -> None:
         path = self._build_output_path("png")
-        if not self._confirm_or_cancel_overwrite(path):
-            return
-        self._capture_image_to(path, "Saving scope PNG image")
+        if self._confirm_or_cancel_overwrite(path):
+            self._capture_image_to(path, "Saving scope PNG image")
 
     def _capture_image_to(self, path: Path, description: str) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         rearm = self.rearm_after_image.isChecked()
         trigger_channel = self._trigger_channel_or_none()
-
-        def action(scope: DPO4054) -> str:
-            saved_path = save_screen_png(getattr(scope, "scope", None), path)
+        def action(scope: DPO4000Scope) -> str:
+            saved_path = scope.save_image_path(path)
             if rearm:
                 scope.rearm_trigger_after_image(trigger_channel=trigger_channel)
             return str(saved_path)
-
         result = self._run_action(description, action)
         if isinstance(result, str):
             self._last_image_path = Path(result)
@@ -924,13 +787,7 @@ class QtScopeWindow(QMainWindow):
         if pixmap.isNull():
             self.preview_label.setText(f"Image saved, but preview could not be loaded:\n{path}")
             return
-        self.preview_label.setPixmap(
-            pixmap.scaled(
-                self.preview_label.size(),
-                Qt.KeepAspectRatio,
-                Qt.SmoothTransformation,
-            )
-        )
+        self.preview_label.setPixmap(pixmap.scaled(self.preview_label.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
 
     def copy_preview(self) -> None:
         if self._last_image_path is None or not self._last_image_path.exists():
@@ -949,10 +806,7 @@ class QtScopeWindow(QMainWindow):
         if not self._confirm_or_cancel_overwrite(path):
             return
         path.parent.mkdir(parents=True, exist_ok=True)
-        result = self._run_action(
-            "Saving enabled channel waveforms to CSV",
-            lambda scope: str(save_enabled_channels_to_single_csv(getattr(scope, "scope", None), path)),
-        )
+        result = self._run_action("Saving enabled channel waveforms to CSV", lambda scope: str(scope.save_all_channels_to_single_csv(path)))
         if result is not None:
             self._message("CSV saved", str(result))
 
@@ -961,51 +815,26 @@ class QtScopeWindow(QMainWindow):
         if not self._confirm_or_cancel_overwrite(path):
             return
         path.parent.mkdir(parents=True, exist_ok=True)
-        result = self._run_action(
-            "Saving scope settings JSON",
-            lambda scope: str(scope.save_scope_settings(str(path), ask_before_overwrite=False)),
-        )
+        result = self._run_action("Saving scope settings JSON", lambda scope: str(scope.save_scope_settings(str(path), ask_before_overwrite=False)))
         if result is not None:
             self._message("Settings saved", str(result))
 
     def restore_settings(self) -> None:
-        selected, _filter = QFileDialog.getOpenFileName(
-            self,
-            "Restore scope settings JSON",
-            str(self._configured_output_folder(create=True)),
-            "JSON files (*.json);;All files (*.*)",
-        )
+        selected, _filter = QFileDialog.getOpenFileName(self, "Restore scope settings JSON", str(self._configured_output_folder(create=True)), "JSON files (*.json);;All files (*.*)")
         if not selected:
             return
         path = Path(selected)
         wait_opc = self.restore_wait_opc.isChecked()
-        result = self._run_action(
-            "Restoring scope settings JSON",
-            lambda scope: apply_scope_settings_file(
-                getattr(scope, "scope", None),
-                path,
-                wait_complete=wait_opc,
-                check_error=True,
-                opc_timeout_ms=DEFAULT_RESTORE_TIMEOUT_MS,
-            ),
-        )
+        result = self._run_action("Restoring scope settings JSON", lambda scope: scope.apply_scope_settings(path, wait_complete=wait_opc, check_error=True, opc_timeout_ms=DEFAULT_RESTORE_TIMEOUT_MS))
         if isinstance(result, dict):
             self._message("Settings restored", f"Instrument: {result.get('instrument', 'Unknown')}")
 
     def _selected_measurement_config(self) -> MeasurementConfig:
-        return MeasurementConfig(
-            slot=int(self.measurement_slot.currentText()),
-            measurement_type=self.measurement_type.currentText(),
-            source1=self.measurement_source1.currentText(),
-            source2=self.measurement_source2.currentText() or None,
-        )
+        return MeasurementConfig(slot=int(self.measurement_slot.currentText()), measurement_type=self.measurement_type.currentText(), source1=self.measurement_source1.currentText(), source2=self.measurement_source2.currentText() or None)
 
     def add_measurement(self) -> None:
         config = self._selected_measurement_config()
-        self._run_action(
-            f"Adding {config.measurement_type.upper()} measurement to MEAS{config.slot}",
-            lambda scope: scope.add_measurement(config),
-        )
+        self._run_action(f"Adding {config.measurement_type.upper()} measurement to MEAS{config.slot}", lambda scope: scope.add_measurement(config))
 
     def read_measurement_value(self) -> None:
         slot = int(self.measurement_slot.currentText())
@@ -1022,10 +851,7 @@ class QtScopeWindow(QMainWindow):
 
     def read_trigger_level(self) -> None:
         channel = self._selected_trigger_channel()
-        result = self._run_action(
-            f"Reading trigger level for CH{channel}",
-            lambda scope: scope.get_trigger_level(channel=channel),
-        )
+        result = self._run_action(f"Reading trigger level for CH{channel}", lambda scope: scope.get_trigger_level(channel=channel))
         if result is not None:
             self.trigger_readback.setText(str(result))
 
@@ -1033,17 +859,12 @@ class QtScopeWindow(QMainWindow):
         channel = self._selected_trigger_channel()
         level = self._parsed_trigger_level()
         set_source = self.trigger_set_source.isChecked()
-
-        def action(scope: DPO4054) -> object:
+        def action(scope: DPO4000Scope) -> object:
             if set_source:
                 scope.set_edge_trigger_source(channel)
             readback = scope.set_trigger_level(level, channel=channel, verify=True)
-            try:
-                scope.scope.write("ACQUIRE:STATE RUN")
-            except Exception:
-                pass
+            scope.run_acquisition()
             return readback
-
         result = self._run_action(f"Setting trigger CH{channel} level to {level}", action)
         if result is not None:
             self.trigger_readback.setText(str(result))
@@ -1058,10 +879,7 @@ class QtScopeWindow(QMainWindow):
         self._run_action("Setting horizontal position", lambda scope: scope.set_horizontal_position(value))
 
     def nudge_horizontal_position(self, delta: int | float) -> None:
-        result = self._run_action(
-            f"Nudging horizontal position by {delta:g}",
-            lambda scope: scope.nudge_horizontal_position(delta),
-        )
+        result = self._run_action(f"Nudging horizontal position by {delta:g}", lambda scope: scope.nudge_horizontal_position(delta))
         if result is not None:
             self.horizontal_position.setText(f"{float(result):g}")
 
@@ -1086,18 +904,9 @@ class QtScopeWindow(QMainWindow):
 
     def apply_edge_trigger(self) -> None:
         level = self._parsed_trigger_level(self.edge_level.text())
-        self._run_action(
-            "Applying edge trigger",
-            lambda scope: scope.configure_edge_trigger(
-                source=self.edge_source.currentText(),
-                slope=self.edge_slope.currentText(),
-                coupling=self.edge_coupling.currentText(),
-                mode=self.edge_mode.currentText(),
-                level=level,
-            ),
-        )
+        self._run_action("Applying edge trigger", lambda scope: scope.configure_edge_trigger(source=self.edge_source.currentText(), slope=self.edge_slope.currentText(), coupling=self.edge_coupling.currentText(), mode=self.edge_mode.currentText(), level=level))
 
-    def _run_action(self, description: str, callback: Callable[[DPO4054], object]) -> object | None:
+    def _run_action(self, description: str, callback: Callable[[DPO4000Scope], object]) -> object | None:
         self.statusBar().showMessage(description)
         self._append_log(description)
         try:
@@ -1120,7 +929,7 @@ class QtScopeWindow(QMainWindow):
         box = QMessageBox(self)
         box.setWindowTitle(title)
         box.setText(text)
-        box.setIcon(QMessageBox.Critical if error else QMessageBox.Information)
+        box.setIcon(QMessageBox.Icon.Critical if error else QMessageBox.Icon.Information)
         box.exec()
 
     def _append_log(self, text: str) -> None:
