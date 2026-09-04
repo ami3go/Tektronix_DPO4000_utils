@@ -13,7 +13,8 @@ from typing import Any
 
 from PySide6.QtCore import QEventLoop
 
-from ..instrument import DPO4054
+from ..instrument import DPO4000Scope
+from ..session import scope_session
 from .collapsible_window import (
     CONNECTION_PAGE_INDEX,
     CONTROL_PAGE_BUILDERS,
@@ -82,26 +83,11 @@ class QtScopeWindow(MatureQtScopeWindow):
     def _run_snapshot_scope_session(
         resource: str,
         timeout_ms: int,
-        callback: Callable[[DPO4054], object],
+        callback: Callable[[DPO4000Scope], object],
     ) -> object:
-        """Open a scope session using GUI-state snapshots captured on the GUI thread."""
-        scope = DPO4054(resource, auto_connect=False)
-        try:
-            scope.connect()
-            instrument = getattr(scope, "scope", None)
-            if instrument is not None:
-                instrument.timeout = timeout_ms
-                try:
-                    instrument.write_termination = "\n"
-                    instrument.read_termination = "\n"
-                except Exception:
-                    pass
+        """Open one driver-owned short-lived session from GUI-state snapshots."""
+        with scope_session(resource, timeout_ms=timeout_ms) as scope:
             return callback(scope)
-        finally:
-            try:
-                scope.disconnect()
-            except Exception:
-                pass
 
     def _finish_scope_action_error(self, description: str, exc: BaseException) -> None:
         self._connection_ok = False

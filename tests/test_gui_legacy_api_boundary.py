@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import ast
-from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -42,86 +41,8 @@ class BoundaryViolation:
     kind: str
     line: int
 
-    @property
-    def fingerprint(self) -> tuple[str, str, str]:
-        return (self.path, self.context, self.kind)
-
     def format(self) -> str:
         return f"{self.path}:{self.line}: {self.context}: {self.kind}"
-
-
-# These are pre-existing violations that still need to be migrated behind public driver APIs.
-# Keep this baseline exact: when debt is removed, remove its fingerprint here in the same change.
-# That prevents an old allowance from silently permitting the violation to return later.
-KNOWN_LEGACY_DEBT: Counter[tuple[str, str, str]] = Counter(
-    {
-        (
-            "dpo4000_utils/gui_qt/enhanced_window.py",
-            "QtScopeWindow._query_optional",
-            "transport-call:query:instrument",
-        ): 1,
-        (
-            "dpo4000_utils/gui_qt/enhanced_window.py",
-            "QtScopeWindow._write_if_text",
-            "transport-call:write:instrument",
-        ): 1,
-        (
-            "dpo4000_utils/gui_qt/enhanced_window.py",
-            "QtScopeWindow.read_channel_configuration.action",
-            "raw-handle:getattr:scope.scope",
-        ): 1,
-        (
-            "dpo4000_utils/gui_qt/enhanced_window.py",
-            "QtScopeWindow.apply_channel_configuration.action",
-            "raw-handle:getattr:scope.scope",
-        ): 1,
-        (
-            "dpo4000_utils/gui_qt/enhanced_window.py",
-            "QtScopeWindow.apply_channel_configuration.action",
-            "transport-call:write:instrument",
-        ): 2,
-        (
-            "dpo4000_utils/gui_qt/enhanced_window.py",
-            "QtScopeWindow.read_math_configuration.action",
-            "raw-handle:getattr:scope.scope",
-        ): 1,
-        (
-            "dpo4000_utils/gui_qt/enhanced_window.py",
-            "QtScopeWindow.apply_math_configuration.action",
-            "raw-handle:getattr:scope.scope",
-        ): 1,
-        (
-            "dpo4000_utils/gui_qt/enhanced_window.py",
-            "QtScopeWindow.apply_math_configuration.action",
-            "transport-call:write:instrument",
-        ): 2,
-        (
-            "dpo4000_utils/gui_qt/stable_window.py",
-            "QtScopeWindow._run_snapshot_scope_session",
-            "raw-handle:getattr:scope.scope",
-        ): 1,
-        (
-            "dpo4000_utils/gui_qt/ui_practice_window.py",
-            "QtScopeWindow.test_connection",
-            "transport-call:query:scope.scope",
-        ): 1,
-        (
-            "dpo4000_utils/gui_qt/ui_practice_window.py",
-            "QtScopeWindow.test_connection",
-            "raw-handle:scope.scope",
-        ): 1,
-        (
-            "dpo4000_utils/gui_qt/enhanced_window.py",
-            "<module>",
-            "gui-scpi-map:CHANNEL_CONFIG_QUERIES",
-        ): 1,
-        (
-            "dpo4000_utils/gui_qt/enhanced_window.py",
-            "<module>",
-            "gui-scpi-map:MATH_CONFIG_QUERIES",
-        ): 1,
-    }
-)
 
 
 def _gui_files() -> list[Path]:
@@ -256,31 +177,10 @@ def _scan_gui_boundary() -> list[BoundaryViolation]:
     return violations
 
 
-def _format_counter(counter: Counter[tuple[str, str, str]]) -> str:
-    if not counter:
-        return "  (none)"
-    lines: list[str] = []
-    for fingerprint, count in sorted(counter.items()):
-        path, context, kind = fingerprint
-        lines.append(f"  {count}x {path}: {context}: {kind}")
-    return "\n".join(lines)
-
-
-def test_all_qt_gui_modules_do_not_expand_driver_boundary_debt() -> None:
-    """Keep every present and future Qt GUI module behind the public driver boundary."""
+def test_all_qt_gui_modules_stay_behind_public_driver_boundary() -> None:
+    """Reject raw VISA/SCPI ownership from every present and future Qt GUI module."""
     violations = _scan_gui_boundary()
-    actual = Counter(violation.fingerprint for violation in violations)
-    added = actual - KNOWN_LEGACY_DEBT
-    removed = KNOWN_LEGACY_DEBT - actual
-
-    assert actual == KNOWN_LEGACY_DEBT, (
-        "Qt GUI driver-boundary debt changed. New debt is forbidden. If legacy debt was "
-        "removed, delete its exact KNOWN_LEGACY_DEBT fingerprint in the same change so the "
-        "old allowance cannot silently permit a regression later.\n"
-        "Added debt:\n"
-        f"{_format_counter(added)}\n"
-        "Removed debt still present in baseline:\n"
-        f"{_format_counter(removed)}\n"
-        "Observed findings:\n"
+    assert not violations, (
+        "Qt GUI code must delegate instrument I/O through public dpo4000_utils APIs:\n"
         + "\n".join(f"  {violation.format()}" for violation in violations)
     )
