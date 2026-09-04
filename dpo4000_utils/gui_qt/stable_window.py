@@ -1,9 +1,9 @@
 """Stable launched PySide6 window for the DPO4000 GUI.
 
-This module is the public launch target for ``dpo4000-gui-qt``.  It keeps the
-mature top-menu/collapsible-card UI behavior from the testing layers, and adds a
-worker-backed scope action path so VISA/SCPI I/O is not executed directly on the
-Qt GUI thread.
+This module is the public launch foundation for the desktop application. It keeps
+the mature top-menu/collapsible-card UI and exposes one worker-backed scope-action
+gateway so later reliability layers can retry the same serialized operation path
+without adding another VISA implementation.
 """
 
 from __future__ import annotations
@@ -32,16 +32,34 @@ from .scope_worker import WorkerResult, start_scope_worker
 class QtScopeWindow(MatureQtScopeWindow):
     """Stable launched Qt window with worker-threaded scope actions."""
 
-    def _run_action(self, description: str, callback: Callable[[Any], object]) -> object | None:
-        """Run a scope action through a Qt worker thread while preserving return values.
+    def _execute_scope_action_once(
+        self,
+        resource: str,
+        timeout_ms: int,
+        callback: Callable[[Any], object],
+    ) -> WorkerResult:
+        """Execute one action attempt through the established short-lived worker path."""
+        worker = start_scope_worker(
+            lambda: self._run_snapshot_scope_session(resource, timeout_ms, callback)
+        )
+        loop = QEventLoop(self)
+        box: dict[str, WorkerResult | None] = {"result": None}
 
-        Parent UI code historically expects ``_run_action`` to return readback
-        data synchronously.  To avoid a risky rewrite of all handlers at once,
-        this method snapshots GUI state, executes the blocking VISA/SCPI session
-        in ``ScopeWorker``, and waits using a nested ``QEventLoop``.  The GUI
-        thread remains free to repaint/process Qt events, while the instrument
-        I/O itself does not run on the GUI thread.
-        """
+        def on_finished(result: object) -> None:
+            box["result"] = result if isinstance(result, WorkerResult) else WorkerResult(value=result)
+            loop.quit()
+
+        worker.signals.finished.connect(on_finished)
+        self._active_scope_worker = worker
+        loop.exec()
+        self._active_scope_worker = None
+        result = box["result"]
+        if result is None:
+            return WorkerResult(error=RuntimeError("Scope worker finished without result."))
+        return result
+
+    def _run_action(self, description: str, callback: Callable[[Any], object]) -> object | None:
+        """Run a scope action through the shared worker gateway and preserve return values."""
         self._operation_active = True
         self._last_action = description
         self.statusBar().showMessage(description)
@@ -55,22 +73,7 @@ class QtScopeWindow(MatureQtScopeWindow):
         except Exception as exc:  # noqa: BLE001 - show exact GUI validation failure.
             return self._finish_scope_action_error(description, exc)
 
-        worker = start_scope_worker(lambda: self._run_snapshot_scope_session(resource, timeout_ms, callback))
-        loop = QEventLoop(self)
-        box: dict[str, WorkerResult | None] = {"result": None}
-
-        def on_finished(result: object) -> None:
-            box["result"] = result if isinstance(result, WorkerResult) else WorkerResult(value=result)
-            loop.quit()
-
-        worker.signals.finished.connect(on_finished)
-        self._active_scope_worker = worker
-        loop.exec()
-        self._active_scope_worker = None
-
-        result = box["result"]
-        if result is None:
-            return self._finish_scope_action_error(description, RuntimeError("Scope worker finished without result."))
+        result = self._execute_scope_action_once(resource, timeout_ms, callback)
         if result.error is not None:
             return self._finish_scope_action_error(description, result.error)
         return self._finish_scope_action_success(description, result.value)

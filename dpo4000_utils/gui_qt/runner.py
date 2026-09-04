@@ -8,48 +8,32 @@ STARTUP_CHECK_FLAG = "--startup-check"
 
 
 def main() -> int:
-    """Run DPO4000 Desk."""
     try:
         from PySide6.QtCore import QTimer
         from PySide6.QtWidgets import QApplication
     except ModuleNotFoundError as exc:
         raise SystemExit(
-            "PySide6 is not installed. Install the DPO4000 Desk GUI dependencies with:\n"
-            "  python -m pip install -e .[pyside6]\n"
-            "or:\n"
-            "  python -m pip install -r requirements-pyside6.txt\n"
+            "PySide6 is not installed. Install with `python -m pip install -e .[pyside6]`."
         ) from exc
 
-    from .ui_polish_window import QtScopeWindow
+    from .logger_report_review_window import QtScopeWindow
     from .startup_debug import install_startup_debug_probe, parse_startup_debug_args
 
     startup_debug = parse_startup_debug_args(sys.argv)
     startup_check = STARTUP_CHECK_FLAG in startup_debug.argv
-    app_argv = [argument for argument in startup_debug.argv if argument != STARTUP_CHECK_FLAG]
-
-    app = QApplication(app_argv)
-    debug_probe = None
-    if startup_debug.enabled:
-        debug_probe = install_startup_debug_probe(app, startup_debug.log_path)
-        debug_probe.log("QApplication created")
-
-    if debug_probe is not None:
-        debug_probe.snapshot("before-window-construction")
+    app = QApplication([arg for arg in startup_debug.argv if arg != STARTUP_CHECK_FLAG])
+    debug_probe = (
+        install_startup_debug_probe(app, startup_debug.log_path)
+        if startup_debug.enabled
+        else None
+    )
     window = QtScopeWindow()
     window.statusBar().showMessage("Ready. DPO4000 Desk (PySide6).")
-    if debug_probe is not None:
-        debug_probe.log("QtScopeWindow constructed")
-        debug_probe.snapshot("after-window-construction-before-show")
-
     window.show()
     if debug_probe is not None:
-        debug_probe.log("main window show() called")
-        debug_probe.snapshot("after-main-window-show")
         app._dpo4000_startup_debug_probe = debug_probe  # type: ignore[attr-defined]
-
     if startup_check:
         QTimer.singleShot(2500, app.quit)
-
     return app.exec()
 
 
