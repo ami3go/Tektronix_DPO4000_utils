@@ -4,20 +4,21 @@ from __future__ import annotations
 
 import csv
 import json
-import os
 from pathlib import Path
 
 from .models import LoggerRecord
+from .sync import CsvSyncController, CsvSyncPolicy
 
 _COMMON = {"protocol", "timestamp_s", "event_type", "address", "data", "flags", "raw_text"}
 
 
 class BusCsvStreamWriter:
-    def __init__(self, path: str | Path) -> None:
+    def __init__(self, path: str | Path, *, sync_policy: CsvSyncPolicy | None = None) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._handle = self.path.open("x", encoding="utf-8", newline="")
         self._writer = csv.writer(self._handle)
+        self._sync = CsvSyncController(self._handle, self.path, sync_policy)
         self._closed = False
         self.records_written = 0
         self.events_written = 0
@@ -35,12 +36,7 @@ class BusCsvStreamWriter:
             "raw_text",
             "details_json",
         ])
-        self._flush()
-
-    def _flush(self) -> None:
-        self._handle.flush()
-        os.fsync(self._handle.fileno())
-        self.bytes_written = self.path.stat().st_size
+        self.bytes_written = self._sync.force()
 
     def append(self, record: LoggerRecord) -> None:
         if self._closed:
@@ -48,7 +44,11 @@ class BusCsvStreamWriter:
         for bus, events in sorted(record.bus_events.items()):
             for event in events:
                 values = dict(event)
-                details = {key: value for key, value in values.items() if key not in _COMMON and key != "bus"}
+                details = {
+                    key: value
+                    for key, value in values.items()
+                    if key not in _COMMON and key != "bus"
+                }
                 self._writer.writerow([
                     record.captured_utc,
                     record.sequence,
@@ -64,14 +64,16 @@ class BusCsvStreamWriter:
                 ])
                 self.events_written += 1
         self.records_written += 1
-        self._flush()
+        self.bytes_written = self._sync.after_record()
 
     def close(self) -> None:
         if self._closed:
             return
-        self._flush()
-        self._handle.close()
-        self._closed = True
+        try:
+            self.bytes_written = self._sync.close()
+        finally:
+            self._handle.close()
+            self._closed = True
 
 
 __all__ = ["BusCsvStreamWriter"]

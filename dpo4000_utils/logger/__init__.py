@@ -50,6 +50,7 @@ from .retention import (
     LoggerRetentionStatistics,
 )
 from .rotation import RotationPolicy
+from .sync import CsvSyncController, CsvSyncPolicy
 
 __all__ = [
     "BoundedRecordBuffer",
@@ -57,6 +58,8 @@ __all__ = [
     "BufferSnapshot",
     "BusCsvStreamWriter",
     "BusDecodedEventsUnavailable",
+    "CsvSyncController",
+    "CsvSyncPolicy",
     "Dpo4LogScanResult",
     "Dpo4LogWriter",
     "LOGGER_PROFILE_SCHEMA_VERSION",

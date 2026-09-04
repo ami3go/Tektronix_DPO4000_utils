@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import time
 from datetime import datetime, timezone
 from typing import Any
 
@@ -77,6 +78,11 @@ def capture_logger_record(
         metadata["trigger_state"] = _wait_mixed_single(scope, cancel_event)
         metadata["acquisition_policy"] = "fresh-single-complete-before-read"
 
+    # Timestamp at the producer/acquisition boundary, before potentially slow
+    # waveform/BUS transfers and before the record enters the writer queue.
+    captured_monotonic = time.monotonic()
+    captured_utc = datetime.now(timezone.utc).isoformat()
+
     waveforms: list[WaveformSnapshot] = []
     waveform_errors: dict[str, str] = {}
     if config.mode in {LoggerMode.WAVEFORM, LoggerMode.MIXED}:
@@ -130,7 +136,8 @@ def capture_logger_record(
 
     return LoggerRecord(
         sequence=int(sequence),
-        captured_utc=datetime.now(timezone.utc).isoformat(),
+        captured_utc=captured_utc,
+        captured_monotonic=captured_monotonic,
         waveforms=tuple(waveforms),
         measurements=measurements,
         measurement_errors=measurement_errors,

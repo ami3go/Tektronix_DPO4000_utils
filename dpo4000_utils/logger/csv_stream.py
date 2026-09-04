@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import csv
-import os
 from pathlib import Path
 
 from .models import LoggerRecord, WaveformSnapshot
+from .sync import CsvSyncController, CsvSyncPolicy
 
 
 def _samples(snapshot: WaveformSnapshot):
@@ -14,23 +14,19 @@ def _samples(snapshot: WaveformSnapshot):
 
 
 class WaveformCsvStreamWriter:
-    """Append complete waveform records to one CSV segment and flush per record."""
+    """Append complete waveform records to one CSV segment."""
 
-    def __init__(self, path: str | Path) -> None:
+    def __init__(self, path: str | Path, *, sync_policy: CsvSyncPolicy | None = None) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._handle = self.path.open("x", encoding="utf-8", newline="")
         self._writer = csv.writer(self._handle)
+        self._sync = CsvSyncController(self._handle, self.path, sync_policy)
         self.records_written = 0
         self.bytes_written = 0
         self._closed = False
         self._writer.writerow(["DPO4000_LOGGER_CSV", "schema", 1])
-        self._flush()
-
-    def _flush(self) -> None:
-        self._handle.flush()
-        os.fsync(self._handle.fileno())
-        self.bytes_written = self.path.stat().st_size
+        self.bytes_written = self._sync.force()
 
     def append(self, record: LoggerRecord) -> None:
         if self._closed:
@@ -63,14 +59,16 @@ class WaveformCsvStreamWriter:
                 )
             self._writer.writerow([index, first.time_at(index), *values])
         self.records_written += 1
-        self._flush()
+        self.bytes_written = self._sync.after_record()
 
     def close(self) -> None:
         if self._closed:
             return
-        self._flush()
-        self._handle.close()
-        self._closed = True
+        try:
+            self.bytes_written = self._sync.close()
+        finally:
+            self._handle.close()
+            self._closed = True
 
     def __enter__(self) -> "WaveformCsvStreamWriter":
         return self
