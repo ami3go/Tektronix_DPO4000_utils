@@ -60,6 +60,7 @@ def test_composition_services_have_explicit_cross_cutting_dependencies() -> None
     source = (COMPOSITION / "services.py").read_text(encoding="utf-8")
     for controller in (
         "ScopeDispatchController",
+        "FeaturePageController",
         "PageController",
         "LogController",
         "OutputPathController",
@@ -80,6 +81,26 @@ def test_composition_services_have_explicit_cross_cutting_dependencies() -> None
         "lifecycle_controller",
     ):
         assert f"self.{attribute}" in window
+
+
+def test_composed_page_registry_owns_lazy_build_and_navigation_trigger() -> None:
+    services = (COMPOSITION / "services.py").read_text(encoding="utf-8")
+    window = (COMPOSITION / "window.py").read_text(encoding="utf-8")
+    for title in (
+        "Connection",
+        "Channels",
+        "Measurement",
+        "Trigger",
+        "Acquisition",
+        "File",
+        "Display",
+        "Log",
+    ):
+        assert f'"{title}"' in services
+    assert "def ensure_built" in services
+    assert "def select" in services
+    assert "surface._ensure_control_page_built = self.page_controller.ensure_built" in window
+    assert "surface._select_drawer_page = self.page_controller.select" in window
 
 
 def test_composition_layer_has_no_raw_visa_or_scpi_ownership() -> None:
@@ -109,6 +130,7 @@ def test_composition_window_routes_mature_cross_cutting_methods_to_controllers()
     for assignment in (
         "surface._append_log = self.log_controller.append",
         "surface._run_action = self.scope_controller.run_action",
+        "surface._ensure_control_page_built = self.page_controller.ensure_built",
         "surface._select_drawer_page = self.page_controller.select",
         "surface._configured_output_folder = self.output_controller.configured_folder",
         "surface._build_output_path = self.output_controller.build_path",
