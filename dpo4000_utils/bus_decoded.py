@@ -7,19 +7,29 @@ command path is verified against real DPO4000 firmware.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any
+from dataclasses import asdict, dataclass, field
+from typing import Any, Mapping
 
 
 @dataclass(frozen=True, slots=True)
 class BusDecodedEvent:
-    """One normalized decoded serial/parallel BUS event."""
+    """One normalized decoded serial/parallel BUS event.
+
+    The field order is kept compatible with the Logger L6 public contract so
+    existing callers may continue to construct events positionally as
+    ``(bus, protocol, timestamp_s, event_type, fields, raw_text)``.
+    """
 
     bus: int
+    protocol: str
+    timestamp_s: float | None
     event_type: str
-    timestamp_s: float | None = None
-    value: str = ""
-    raw: Any = None
+    fields: Mapping[str, Any] = field(default_factory=dict)
+    raw_text: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return a plain serializable mapping for Logger/export integrations."""
+        return asdict(self)
 
 
 @dataclass(frozen=True, slots=True)
