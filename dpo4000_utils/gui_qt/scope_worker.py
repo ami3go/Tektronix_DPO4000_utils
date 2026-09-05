@@ -2,7 +2,7 @@
 
 The production GUI uses one dedicated worker thread for one retained DPO4054/VISA
 session. Requests are serialized by Qt's queued connection and completed through
-signals/callbacks; this module deliberately contains no nested ``QEventLoop`` wait.
+signals/callbacks; this module deliberately contains no nested event-loop wait.
 """
 
 from __future__ import annotations
