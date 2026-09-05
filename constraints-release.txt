@@ -3,6 +3,7 @@
 # Library metadata remains intentionally range-based for downstream consumers;
 # release workflows install with this constraints file to freeze the build inputs.
 
+pip==26.2.1
 PyVISA==1.16.2
 Pillow==12.3.0
 PySide6==6.11.2
