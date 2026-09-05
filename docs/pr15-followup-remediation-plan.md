@@ -1,8 +1,9 @@
 # PR #15 Follow-up Remediation Plan
 
-Status: **Milestone A software complete; Milestone B planned**
+Status: **Milestone A and Milestone B software complete**
 Baseline: **v0.6.72 / main after PR #15**
 Milestone A target: **v0.7.0**
+Milestone B target: **v0.8.0**
 
 This plan closes the work intentionally left outside PR #15. It preserves the repository rule that the persistent-session runtime rewrite and the GUI composition rewrite are separate release milestones.
 
@@ -59,7 +60,7 @@ This plan closes the work intentionally left outside PR #15. It preserves the re
 
 ## Milestone-A acceptance evidence
 
-Automated validation on PR #16 head includes:
+Final PR #16 hosted validation includes:
 - Ruff: PASS
 - Core Python 3.10: PASS
 - Core Python 3.11: PASS
@@ -70,24 +71,41 @@ Automated validation on PR #16 head includes:
 
 Additional v0.7 regression coverage enforces the asynchronous production gateway, bounded-writer Logger path, completion-time Automation retention/run-limit hooks, and absence of nested event-loop use in the launched Milestone-A shutdown override.
 
-## Milestone B — v0.8.0: Qt composition architecture — PLANNED
+## Milestone B — v0.8.0: Qt composition architecture — COMPLETE
 
-### B1. Replace historical window inheritance as the production architecture
-- Introduce one launched `QMainWindow` shell.
-- Move page construction/behavior into composed page/controller objects with explicit dependencies.
-- Move cross-cutting scope dispatch, preferences, logging and output-path services into composed services/controllers.
-- Migrate one functional group at a time while preserving behavior tests.
-- Keep legacy window modules only as temporary compatibility shims during migration; they must no longer be on the production launch MRO when the milestone is complete.
+### B1. Replace historical window inheritance as the production architecture — DONE
+- `dpo4000_utils.gui_qt.composition.window.QtScopeWindow` is the production top-level shell and directly inherits only `QMainWindow`.
+- Scope dispatch, page construction/navigation, preferences, logging, output paths, frameless window chrome and lifecycle/shutdown are explicit composed controller dependencies.
+- Eight named `FeaturePageController` objects represent Connection, Channels, Measurement, Trigger, Acquisition, File, Display and Log.
+- Lazy page construction and page selection are routed through `PageController` rather than being a responsibility of the production window MRO.
+- The mature v0.7 feature implementation is isolated behind `composition/legacy_surface.py`. Legacy `*_window.py` modules remain compatibility implementation shims, but none is a production launch ancestor.
+- The adapter preserves v0.7 Automation, Logger, BUS, preview and runtime behavior while allowing feature implementations to be retired incrementally without changing the production shell contract.
 
-### B2. Strengthen architecture CI
-- Assert the launched class has a shallow, intentional MRO.
-- Recursively reject raw VISA/SCPI ownership from every Qt module.
-- Assert page/controllers depend on the public driver/runtime facade rather than other historical window subclasses.
+### B2. Strengthen architecture CI — DONE
+- Architecture tests assert the production class directly inherits only `QMainWindow`.
+- Runner and package exports are required to select the composed production window.
+- Only `composition/legacy_surface.py` may import the historical window stack from inside the composition package.
+- Composition controllers are checked for raw PyVISA/SCPI ownership regressions.
+- Existing recursive public-driver boundary and asynchronous-runtime tests remain active.
+- Offscreen runtime tests construct the composed shell, verify controller routing, and exercise lazy page activation and shutdown.
 
-### B3. Final documentation cleanup
-- Replace diagrams and text that still describe the historical inheritance chain.
-- Record the final v0.8.0 composition boundaries and migration notes.
+### B3. Final documentation cleanup — DONE
+- `CURRENT_STATE.md` describes the v0.8 composition-first production shell.
+- `docs/architecture.md` documents the controller/service boundary, compatibility adapter and migration policy.
+- `docs/releases/v0.8.0.md` and `CHANGELOG.d/v0.8.0.md` record the v0.8 architecture release.
+
+## Milestone-B acceptance evidence
+
+GitHub Actions run **#360** on PR #17 validated the v0.8 implementation:
+- Ruff: PASS
+- Core Python 3.10: PASS
+- Core Python 3.11: PASS
+- Core Python 3.12: PASS
+- Core Python 3.13: PASS
+- full PySide6 desktop GUI suite: **396 passed / 7 skipped**
+
+The production launch MRO is now shallow and architecture CI prevents historical feature-window subclasses from returning to it. The compatibility surface remains an explicit implementation seam, not a production inheritance architecture.
 
 ## Hardware-only completion note
 
-Milestone A is software-complete. Physical qualification remains evidence generated by the bench, not by hosted CI. Before declaring the hardware qualification itself complete, run the self-hosted DPO4054 verification/soak workflow and retain the corresponding 24 h / 72 h artifact with the release records.
+Milestones A and B are software-complete. Physical qualification remains evidence generated by the bench, not by hosted CI. Before declaring the hardware qualification itself complete, run the self-hosted DPO4054 verification/soak workflow and retain the corresponding 24 h / 72 h artifact with the release records.

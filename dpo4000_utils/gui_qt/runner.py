@@ -10,21 +10,20 @@ STARTUP_CHECK_FLAG = "--startup-check"
 def main() -> int:
     try:
         from PySide6.QtCore import QTimer
-        from PySide6.QtWidgets import QApplication
+        from PySide6.QtWidgets import QApplication, QMainWindow
     except ModuleNotFoundError as exc:
         raise SystemExit(
             "PySide6 is not installed. Install with `python -m pip install -e .[pyside6]` "
             "or `python -m pip install -r requirements-pyside6.txt`."
         ) from exc
 
-    from .production_hardening_window import QtScopeWindow as ProductionHardenedQtScopeWindow
-    from .milestone_a_window import QtScopeWindow
+    from .composition.window import QtScopeWindow
     from .startup_debug import install_startup_debug_probe, parse_startup_debug_args
 
-    # Milestone A is deliberately a thin final shell above the reviewed production
-    # hardening layer; v0.8 will replace the historical chain with composition.
-    if not issubclass(QtScopeWindow, ProductionHardenedQtScopeWindow):
-        raise RuntimeError("Milestone-A window must extend the production hardening window")
+    # v0.8 deliberately launches one shallow QMainWindow. The historical feature
+    # chain is available only behind the composition compatibility adapter.
+    if QtScopeWindow.__bases__ != (QMainWindow,):
+        raise RuntimeError("v0.8 production window must directly inherit only QMainWindow")
 
     startup_debug = parse_startup_debug_args(sys.argv)
     startup_check = STARTUP_CHECK_FLAG in startup_debug.argv
@@ -39,7 +38,7 @@ def main() -> int:
     window = QtScopeWindow()
     if debug_probe is not None:
         debug_probe.snapshot("after-window-construction-before-show")
-    window.statusBar().showMessage("Ready. DPO4000 Desk (PySide6).")
+    window.statusBar().showMessage("Ready. DPO4000 Desk (PySide6, v0.8 composition).")
     window.show()
     if debug_probe is not None:
         debug_probe.snapshot("after-main-window-show")
