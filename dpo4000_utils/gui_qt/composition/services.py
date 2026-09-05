@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +13,16 @@ from ...gui.preferences import GuiPreferences, save_preferences
 
 TITLEBAR_DRAG_SURFACE_PROPERTY = "titlebarDragSurface"
 TITLEBAR_DOUBLE_CLICK_SURFACE_PROPERTY = "titlebarDoubleClickSurface"
+DEFAULT_PAGE_TITLES = (
+    "Connection",
+    "Channels",
+    "Measurement",
+    "Trigger",
+    "Acquisition",
+    "File",
+    "Display",
+    "Log",
+)
 
 
 class ScopeDispatchController:
@@ -39,16 +49,46 @@ class ScopeDispatchController:
         )
 
 
-class PageController:
-    """Own application page selection independently of the top-level window MRO."""
+class FeaturePageController:
+    """One named page in the composed production page registry."""
 
-    def __init__(self, delegate: Callable[[int], Any]) -> None:
-        self._delegate = delegate
+    def __init__(self, owner: "PageController", index: int, title: str) -> None:
+        self._owner = owner
+        self.index = int(index)
+        self.title = str(title)
+
+    def ensure_built(self) -> Any:
+        return self._owner.ensure_built(self.index)
+
+    def activate(self) -> Any:
+        return self._owner.select(self.index)
+
+
+class PageController:
+    """Own lazy page construction and navigation independently of window inheritance."""
+
+    def __init__(
+        self,
+        select_delegate: Callable[[int], Any],
+        ensure_delegate: Callable[[int], Any],
+        *,
+        titles: Sequence[str] = DEFAULT_PAGE_TITLES,
+    ) -> None:
+        self._select_delegate = select_delegate
+        self._ensure_delegate = ensure_delegate
         self.current_index = 0
+        self.pages = tuple(
+            FeaturePageController(self, index, title)
+            for index, title in enumerate(titles)
+        )
+        self.by_title = {page.title: page for page in self.pages}
+
+    def ensure_built(self, index: int) -> Any:
+        return self._ensure_delegate(int(index))
 
     def select(self, index: int) -> Any:
         self.current_index = int(index)
-        return self._delegate(self.current_index)
+        return self._select_delegate(self.current_index)
 
 
 class LogController:
@@ -144,7 +184,6 @@ class WindowChromeController(QObject):
                 elif button.text() in {"—", "-"}:
                     self._rewire(button, self._host.showMinimized)
 
-        # Dynamic calls made by mature helpers now target the composed host.
         self._surface._toggle_maximized = self.toggle_maximized
         self._surface._sync_maximize_button = self.sync_maximize_button
         self.sync_maximize_button()
@@ -249,12 +288,11 @@ class LifecycleController:
         if self._closed:
             return
         self._closed = True
-        # The mature close chain stops Logger/Automation and the retained scope
-        # worker. Preference persistence is routed through this controller.
         self._surface.close()
 
 
 __all__ = [
+    "FeaturePageController",
     "LifecycleController",
     "LogController",
     "OutputPathController",
