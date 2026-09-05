@@ -17,6 +17,7 @@ for _name in (
     "get_acquisition_state",
     "get_trigger_state",
     "is_acquiring",
+    "get_decoded_bus_capability",
     "supports_decoded_bus_events",
     "read_decoded_bus_events",
 ):
@@ -46,7 +47,8 @@ class HardwareVerifier(_core.HardwareVerifier):
 
     def _case_bus_readbacks(self) -> str:
         scope = self._require_scope()
-        self._decoded_bus_supported = bool(scope.supports_decoded_bus_events())
+        capability = scope.get_decoded_bus_capability()
+        self._decoded_bus_supported = bool(capability.supported and capability.qualified)
         detail = super()._case_bus_readbacks()
         if self._decoded_bus_supported:
             slots = scope.get_available_bus_slots()
@@ -54,7 +56,10 @@ class HardwareVerifier(_core.HardwareVerifier):
                 scope.read_decoded_bus_events(slots[0])
                 detail += f" Qualified decoded BUS{slots[0]} event extraction passed."
         else:
-            detail += " Decoded BUS event extraction is explicitly capability-gated unavailable."
+            detail += (
+                " Decoded BUS event extraction is explicitly capability-gated unavailable: "
+                f"{capability.reason}"
+            )
         return detail
 
     def _case_settings_apply(self) -> str:
@@ -84,7 +89,10 @@ class HardwareVerifier(_core.HardwareVerifier):
             "is_acquiring",
         }:
             return super()._symbol_status("get_acquisition_setup", method=True)
-        if method and symbol == "supports_decoded_bus_events":
+        if method and symbol in {
+            "get_decoded_bus_capability",
+            "supports_decoded_bus_events",
+        }:
             return super()._symbol_status("probe_bus_support", method=True)
         if method and symbol == "read_decoded_bus_events":
             status, cases = super()._symbol_status("probe_bus_support", method=True)
