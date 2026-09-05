@@ -8,7 +8,11 @@ from typing import Any
 from .acquisition_modes import AcquisitionModeReadbackMixin
 from .acquisition_state import AcquisitionStateMixin
 from .bus import BusMixin, normalize_bus
-from .bus_decoded import DecodedBusEventsUnavailable
+from .bus_decoded import (
+    DecodedBusCapability,
+    DecodedBusEventsUnavailable,
+    UNQUALIFIED_DECODED_BUS_CAPABILITY,
+)
 from .channels import ChannelMixin
 from .connection import ConnectionMixin
 from .control import ControlMixin
@@ -76,20 +80,21 @@ class DPO4000Scope(
             raise DPOSettingsError(f"Could not restore scope default setup: {exc}") from exc
         return "Scope default setup restored"
 
-    def supports_decoded_bus_events(self) -> bool:
-        """Return whether decoded BUS transaction extraction is hardware-qualified.
+    def get_decoded_bus_capability(self) -> DecodedBusCapability:
+        """Return the explicit qualification state for decoded BUS event export."""
+        return UNQUALIFIED_DECODED_BUS_CAPABILITY
 
-        Configuration/decoder setup support does not imply transaction-table export
-        support. The stock driver therefore reports False until a programmer-manual
-        command and real-hardware response are qualified.
-        """
-        return False
+    def supports_decoded_bus_events(self) -> bool:
+        """Return whether decoded BUS transaction extraction is hardware-qualified."""
+        capability = self.get_decoded_bus_capability()
+        return bool(capability.supported and capability.qualified)
 
     def read_decoded_bus_events(self, bus: int | str):
         """Return structured decoded BUS events when a qualified backend exists."""
         valid_bus = normalize_bus(bus)
+        capability = self.get_decoded_bus_capability()
         raise DecodedBusEventsUnavailable(
-            f"Decoded BUS{valid_bus} event extraction is not yet hardware-qualified for the stock DPO4000 driver."
+            f"Decoded BUS{valid_bus} event extraction is unavailable: {capability.reason}"
         )
 
 

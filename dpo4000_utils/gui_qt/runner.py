@@ -17,8 +17,14 @@ def main() -> int:
             "or `python -m pip install -r requirements-pyside6.txt`."
         ) from exc
 
-    from .production_hardening_window import QtScopeWindow
+    from .production_hardening_window import QtScopeWindow as ProductionHardenedQtScopeWindow
+    from .milestone_a_window import QtScopeWindow
     from .startup_debug import install_startup_debug_probe, parse_startup_debug_args
+
+    # Milestone A is deliberately a thin final shell above the reviewed production
+    # hardening layer; v0.8 will replace the historical chain with composition.
+    if not issubclass(QtScopeWindow, ProductionHardenedQtScopeWindow):
+        raise RuntimeError("Milestone-A window must extend the production hardening window")
 
     startup_debug = parse_startup_debug_args(sys.argv)
     startup_check = STARTUP_CHECK_FLAG in startup_debug.argv

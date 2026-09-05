@@ -148,56 +148,109 @@ class QtScopeWindow(AutomationA11ReviewedQtScopeWindow):
             return "periodic_measurement"
         return "periodic_or_manual_run_once"
 
-    def _run_action(self, description, callback):
+    def _append_async_automation_report_event(
+        self,
+        *,
+        description: str,
+        started: datetime,
+        retries_before: int,
+        result: object | None,
+        error: BaseException | None,
+    ) -> None:
+        """Persist one report event after the asynchronous scope action has settled."""
+        self._automation_report_in_action = False
+        current = self._automation_reporter
+        if current is not None and not current.finalized:
+            ended = datetime.now(timezone.utc)
+            self._automation_report_event_sequence += 1
+            artifacts = _paths_from_result(result)
+            success = error is None
+            status = "success" if success else ("partial" if artifacts else "failed")
+            if status == "partial":
+                self._automation_report_partial_count += 1
+            current.append_event(
+                make_event_record(
+                    sequence=self._automation_report_event_sequence,
+                    description=str(description),
+                    cause=self._automation_operation_cause(str(description)),
+                    status=status,
+                    started_at=started,
+                    ended_at=ended,
+                    retry_count=max(
+                        0,
+                        self._recovery_statistics.retry_attempts - retries_before,
+                    ),
+                    artifact_paths=artifacts,
+                    error=error,
+                    error_text="" if success else str(error or "Operation failed"),
+                )
+            )
+            self._automation_refresh_status()
+
+        if self._automation_reporter is not None and not self._automation_any_active():
+            self._finalize_automation_report("operation_completed")
+
+    def _run_action(
+        self,
+        description,
+        callback,
+        *,
+        on_success=None,
+        on_error=None,
+        retain_session: bool = False,
+    ) -> None:
+        """Wrap reportable async scope actions at completion, not at dispatch return."""
         reporter = self._automation_reporter
         reportable = reporter is not None and any(
             str(description).startswith(prefix) for prefix in _REPORT_OPERATION_PREFIXES
         )
         if not reportable:
-            return super()._run_action(description, callback)
+            super()._run_action(
+                description,
+                callback,
+                on_success=on_success,
+                on_error=on_error,
+                retain_session=retain_session,
+            )
+            return
 
         started = datetime.now(timezone.utc)
         retries_before = self._recovery_statistics.retry_attempts
         self._automation_report_in_action = True
-        result = None
-        caught: BaseException | None = None
-        try:
-            result = super()._run_action(description, callback)
-            return result
-        except BaseException as exc:  # noqa: BLE001 - preserve reporting before re-raise.
-            caught = exc
-            raise
-        finally:
-            ended = datetime.now(timezone.utc)
-            self._automation_report_in_action = False
-            current = self._automation_reporter
-            if current is not None and not current.finalized:
-                self._automation_report_event_sequence += 1
-                artifacts = _paths_from_result(result)
-                success = caught is None and result is not None and not str(
-                    getattr(self, "_last_action", "")
-                ).startswith("Failed:")
-                error_text = "" if success else str(getattr(self, "_last_action", "Operation failed"))
-                status = "success" if success else ("partial" if artifacts else "failed")
-                if status == "partial":
-                    self._automation_report_partial_count += 1
-                current.append_event(
-                    make_event_record(
-                        sequence=self._automation_report_event_sequence,
-                        description=str(description),
-                        cause=self._automation_operation_cause(str(description)),
-                        status=status,
-                        started_at=started,
-                        ended_at=ended,
-                        retry_count=max(0, self._recovery_statistics.retry_attempts - retries_before),
-                        artifact_paths=artifacts,
-                        error=caught,
-                        error_text=error_text,
-                    )
+
+        def completed(value: object) -> None:
+            try:
+                if on_success is not None:
+                    on_success(value)
+            finally:
+                self._append_async_automation_report_event(
+                    description=str(description),
+                    started=started,
+                    retries_before=retries_before,
+                    result=value,
+                    error=None,
                 )
-                self._automation_refresh_status()
-            if self._automation_reporter is not None and not self._automation_any_active():
-                self._finalize_automation_report("operation_completed")
+
+        def failed(exc: BaseException) -> None:
+            try:
+                if on_error is not None:
+                    on_error(exc)
+            finally:
+                self._append_async_automation_report_event(
+                    description=str(description),
+                    started=started,
+                    retries_before=retries_before,
+                    result=None,
+                    error=exc,
+                )
+
+        super()._run_action(
+            description,
+            callback,
+            on_success=completed,
+            on_error=failed,
+            retain_session=retain_session,
+        )
 
     def _report_counters(self) -> dict[str, int]:
         auto = self._automation_controller.statistics
@@ -260,7 +313,7 @@ class QtScopeWindow(AutomationA11ReviewedQtScopeWindow):
         super().start_automation()
         if self._automation_any_active():
             self._automation_report_watchdog.start()
-        else:
+        elif not self._automation_report_in_action:
             self._finalize_automation_report("start_rejected_or_completed")
 
     def run_automation_once(self) -> None:

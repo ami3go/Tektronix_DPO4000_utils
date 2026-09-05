@@ -44,6 +44,18 @@ class QtScopeWindow(LoggerL6QtScopeWindow):
             )
         return super()._logger_config()
 
+    def _continue_mixed_logger_start(self) -> None:
+        """Continue below L7 after asynchronous BUS capability qualification."""
+        previous_starting = getattr(self, "_logger_starting", False)
+        if hasattr(self, "_logger_starting"):
+            self._logger_starting = True
+        try:
+            super(QtScopeWindow, self).start_logger()
+        finally:
+            if hasattr(self, "_logger_starting"):
+                self._logger_starting = previous_starting
+        self._logger_refresh_status()
+
     def start_logger(self) -> None:
         if self._logger_mode() is LoggerMode.MIXED:
             try:
@@ -52,18 +64,30 @@ class QtScopeWindow(LoggerL6QtScopeWindow):
                 self._message("Logger", str(exc), error=True)
                 return
             if config.bus_slots:
-                supported = self._run_action(
-                    "Checking decoded BUS logger capability",
-                    lambda scope: bool(scope.supports_decoded_bus_events()),
-                )
-                if supported is not True:
+                def capability_checked(result: object) -> None:
+                    if result is True:
+                        self._continue_mixed_logger_start()
+                        return
                     self._message(
                         "Logger BUS",
                         "Mixed logging requested BUS events, but decoded BUS extraction is not "
                         "hardware-qualified for this driver/scope.",
                         error=True,
                     )
-                    return
+                    self._logger_refresh_status()
+
+                self._run_action(
+                    "Checking decoded BUS logger capability",
+                    lambda scope: bool(scope.supports_decoded_bus_events()),
+                    on_success=capability_checked,
+                    on_error=lambda exc: self._message(
+                        "Logger BUS",
+                        f"Could not verify decoded BUS capability: {exc}",
+                        error=True,
+                    ),
+                    retain_session=True,
+                )
+                return
         super().start_logger()
 
     def stop_logger(self) -> None:
@@ -104,8 +128,9 @@ class QtScopeWindow(LoggerL6QtScopeWindow):
                 ),
             )
 
-            # Stop may be processed while _run_action is in its nested Qt event loop.
-            # Never append a stale completion after Stop has closed the output session.
+            # Legacy L7 body is retained for intermediate-class compatibility;
+            # the launched v0.7 production window overrides _logger_tick with the
+            # asynchronous completion-safe implementation.
             if cancel.is_set() or self._logger_state is not LoggerState.RUNNING:
                 self._logger_statistics.skipped += 1
                 return

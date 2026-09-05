@@ -5,13 +5,12 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from PySide6.QtCore import QEventLoop, QTimer
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QCheckBox, QDoubleSpinBox, QFormLayout, QLabel, QSpinBox
 
 from ..automation.recovery import RecoveryPolicy, RecoveryStatistics
 from ..errors import is_transport_error
 from .automation_profiles_review_window import QtScopeWindow as AutomationA10ReviewedQtScopeWindow
-from .scope_worker import WorkerResult
 
 _REPLAY_SAFE_PREFIXES = (
     "Automation image #",
@@ -23,7 +22,7 @@ _REPLAY_SAFE_PREFIXES = (
 
 
 class QtScopeWindow(AutomationA10ReviewedQtScopeWindow):
-    """A10 reviewed window extended with bounded A11 reconnect/retry behavior."""
+    """A10 reviewed window extended with bounded asynchronous reconnect/retry behavior."""
 
     def __init__(self, *args, **kwargs) -> None:
         self._recovery_statistics = RecoveryStatistics()
@@ -144,28 +143,8 @@ class QtScopeWindow(AutomationA10ReviewedQtScopeWindow):
         self.automation_reconnect_delay.setValue(policy.retry_delay_s)
         self.automation_reconnect_max_failures.setValue(policy.max_consecutive_failures)
 
-    def _execute_scope_action_once(
-        self,
-        resource: str,
-        timeout_ms: int,
-        callback: Callable[[Any], object],
-    ) -> WorkerResult:
-        keep = getattr(self, "keep_session", None)
-        if keep is not None and keep.isChecked():
-            return self._persistent_session_manager().execute(resource, timeout_ms, callback)
-        return super()._execute_scope_action_once(resource, timeout_ms, callback)
-
-    def _recovery_wait(self, seconds: float) -> None:
-        loop = QEventLoop(self)
-        QTimer.singleShot(max(1, int(round(float(seconds) * 1000.0))), loop.quit)
-        loop.exec()
-
     def _recovery_replay_safe(self, description: str) -> bool:
         return any(str(description).startswith(prefix) for prefix in _REPLAY_SAFE_PREFIXES)
-
-    def _invalidate_transport_session(self) -> None:
-        if getattr(self, "_persistent_scope_session", None) is not None:
-            self._release_persistent_scope_session(log=False)
 
     def _verified_retry_callback(self, callback, expected_idn: str):
         def wrapped(scope):
@@ -178,88 +157,117 @@ class QtScopeWindow(AutomationA10ReviewedQtScopeWindow):
 
         return wrapped
 
-    def _run_action(self, description: str, callback: Callable[[Any], object]) -> object | None:
-        """Run one action with bounded retry for replay-safe transport failures only."""
-        self._operation_active = True
-        self._last_action = description
-        self.statusBar().showMessage(description)
-        self._append_log(description)
-        self._update_scope_control_enabled()
-        self._update_status_strip()
-        keep = getattr(self, "keep_session", None)
-        if keep is not None:
-            keep.setEnabled(False)
+    def _run_action(
+        self,
+        description: str,
+        callback: Callable[[Any], object],
+        *,
+        on_success: Callable[[object], None] | None = None,
+        on_error: Callable[[BaseException], None] | None = None,
+        retain_session: bool = False,
+    ) -> None:
+        """Dispatch one action asynchronously with bounded replay-safe transport recovery.
+
+        Recovery deliberately composes with the production asynchronous scope
+        dispatcher instead of owning a second VISA/session implementation. A failed
+        transport request invalidates the worker-owned session, and a retry therefore
+        reconnects lazily on the same serialized worker thread.
+        """
+        parent_run_action = super(QtScopeWindow, self)._run_action
+
         try:
+            policy = self._selected_recovery_policy()
+        except (AttributeError, RuntimeError):
+            # Automation cards may not have been lazy-built yet. Non-Automation GUI
+            # actions must still use the production dispatcher without depending on
+            # Automation controls being present.
+            parent_run_action(
+                description,
+                callback,
+                on_success=on_success,
+                on_error=on_error,
+                retain_session=retain_session,
+            )
+            return
+
+        replay_safe = self._recovery_replay_safe(description)
+        max_retries = policy.max_retries if policy.enabled and replay_safe else 0
+        expected_idn = str(getattr(self, "_last_idn", "") or "").strip()
+        if expected_idn in {"Not tested", "Retest required"} or expected_idn.startswith("Error:"):
+            expected_idn = ""
+
+        def refresh_statistics() -> None:
             try:
-                resource = self._selected_resource()
-                timeout_ms = self._timeout()
-                policy = self._selected_recovery_policy()
-            except Exception as exc:  # noqa: BLE001 - exact validation failure.
-                return self._finish_non_transport_action_error(description, exc)
+                self._automation_refresh_status()
+            except (AttributeError, RuntimeError):
+                pass
 
-            expected_idn = str(getattr(self, "_last_idn", "") or "").strip()
-            if expected_idn.startswith("Error:"):
-                expected_idn = ""
-            replay_safe = self._recovery_replay_safe(description)
-            last_error: BaseException | None = None
-            total_attempts = 1 + (policy.max_retries if policy.enabled and replay_safe else 0)
-
-            for attempt in range(total_attempts):
-                attempt_callback = (
-                    self._verified_retry_callback(callback, expected_idn) if attempt else callback
-                )
-                result = self._execute_scope_action_once(resource, timeout_ms, attempt_callback)
-                if result.error is None:
-                    if attempt:
-                        self._recovery_statistics.note_reconnect_success()
-                        self._append_log(
-                            f"Automation A11 reconnect successful after {attempt} retry attempt(s)"
-                        )
-                    else:
-                        self._recovery_statistics.note_normal_success()
-                    return self._finish_scope_action_success(description, result.value)
-
-                error = result.error
-                last_error = error
-                if not is_transport_error(error):
-                    return self._finish_non_transport_action_error(description, error)
-
-                self._recovery_statistics.note_transport_failure(error)
-                self._invalidate_transport_session()
-                if not policy.enabled or not replay_safe or attempt >= total_attempts - 1:
-                    break
-
-                retry_number = attempt + 1
-                self._recovery_statistics.note_retry()
-                delay = policy.delay_for_attempt(retry_number)
+        def complete_success(value: object, attempt: int) -> None:
+            if attempt:
+                self._recovery_statistics.note_reconnect_success()
                 self._append_log(
-                    f"Automation A11 transport failure; retry {retry_number}/{policy.max_retries} "
-                    f"after {delay:g} s: {error}"
+                    f"Automation A11 reconnect successful after {attempt} retry attempt(s)"
                 )
-                self.statusBar().showMessage(
-                    f"Recovering scope connection ({retry_number}/{policy.max_retries})"
-                )
-                self._recovery_wait(delay)
+            else:
+                self._recovery_statistics.note_normal_success()
+            refresh_statistics()
+            if on_success is not None:
+                on_success(value)
 
-            assert last_error is not None
-            self._recovery_statistics.note_exhausted(last_error)
-            consecutive = self._recovery_statistics.consecutive_failures
-            result = self._finish_scope_action_error(description, last_error)
-            if (
-                policy.enabled
-                and consecutive >= policy.max_consecutive_failures
-                and self._automation_any_active()
-            ):
-                self._append_log(
-                    f"Automation A11 stopping after {consecutive} consecutive transport failures"
-                )
-                self.stop_automation()
-            return result
-        finally:
-            if keep is not None:
-                keep.setEnabled(True)
-            if getattr(self, "_persistent_session_dirty", False):
-                self._release_persistent_scope_session()
+        def complete_failure(error: BaseException, attempt: int) -> None:
+            if not is_transport_error(error):
+                refresh_statistics()
+                if on_error is not None:
+                    on_error(error)
+                return
+
+            self._recovery_statistics.note_transport_failure(error)
+            if attempt >= max_retries:
+                self._recovery_statistics.note_exhausted(error)
+                consecutive = self._recovery_statistics.consecutive_failures
+                refresh_statistics()
+                if (
+                    policy.enabled
+                    and consecutive >= policy.max_consecutive_failures
+                    and self._automation_any_active()
+                ):
+                    self._append_log(
+                        f"Automation A11 stopping after {consecutive} consecutive transport failures"
+                    )
+                    self.stop_automation()
+                if on_error is not None:
+                    on_error(error)
+                return
+
+            retry_number = attempt + 1
+            self._recovery_statistics.note_retry()
+            delay = policy.delay_for_attempt(retry_number)
+            self._append_log(
+                f"Automation A11 transport failure; retry {retry_number}/{max_retries} "
+                f"after {delay:g} s: {error}"
+            )
+            self.statusBar().showMessage(
+                f"Recovering scope connection ({retry_number}/{max_retries})"
+            )
+            refresh_statistics()
+            QTimer.singleShot(
+                max(1, int(round(delay * 1000.0))),
+                lambda: dispatch(retry_number),
+            )
+
+        def dispatch(attempt: int) -> None:
+            attempt_callback = (
+                self._verified_retry_callback(callback, expected_idn) if attempt else callback
+            )
+            parent_run_action(
+                description,
+                attempt_callback,
+                on_success=lambda value: complete_success(value, attempt),
+                on_error=lambda error: complete_failure(error, attempt),
+                retain_session=retain_session,
+            )
+
+        dispatch(0)
 
 
 __all__ = ["QtScopeWindow"]

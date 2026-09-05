@@ -129,12 +129,13 @@ def test_display_page_builds_display_controls():
         app.processEvents()
 
 
-def test_stable_qt_worker_metadata_is_present():
+def test_stable_qt_worker_metadata_is_nonblocking_and_driver_owned():
     content = Path("dpo4000_utils/gui_qt/stable_window.py").read_text(encoding="utf-8")
     worker = Path("dpo4000_utils/gui_qt/scope_worker.py").read_text(encoding="utf-8")
 
-    assert "QEventLoop" in content
+    assert "QEventLoop" not in content
     assert "start_scope_worker" in content
+    assert "on_success" in content
     assert "_run_snapshot_scope_session" in content
     assert "from ..session import scope_session" in content
     assert "with scope_session(resource, timeout_ms=timeout_ms) as scope:" in content
@@ -142,3 +143,6 @@ def test_stable_qt_worker_metadata_is_present():
     assert "instrument.timeout = timeout_ms" not in content
     assert "class ScopeWorker(QRunnable)" in worker
     assert "QThreadPool.globalInstance().start(worker)" in worker
+    assert "class PersistentScopeSession(QObject)" in worker
+    assert "def submit(" in worker
+    assert "QEventLoop" not in worker

@@ -1,8 +1,8 @@
 """Final DPO4000 Desk file/workflow presentation polish.
 
-This thin final layer keeps the retained-session behavior from
-``preview_actions_window`` while simplifying user-facing labels, separating scope
-setup JSON controls from output naming, and making full-record CSV export explicit.
+This thin final layer keeps retained-session behavior while simplifying user-facing
+labels, separating scope setup JSON controls from output naming, and making
+full-record CSV export explicit.
 """
 
 from __future__ import annotations
@@ -190,13 +190,20 @@ class QtScopeWindow(PreviewQtScopeWindow):
             )
             return str(saved_path), record_length
 
-        result = self._run_action("Saving enabled channel waveforms to CSV", action)
-        if isinstance(result, tuple) and len(result) == 2:
+        def completed(result: object) -> None:
+            if not isinstance(result, tuple) or len(result) != 2:
+                return
             saved_path = Path(str(result[0]))
             point_count = int(result[1])
             self._last_action = f"CSV saved: {saved_path.name} ({point_count} points)"
             self._update_status_strip()
             self.statusBar().showMessage(self._last_action)
+
+        self._run_action(
+            "Saving enabled channel waveforms to CSV",
+            action,
+            on_success=completed,
+        )
 
     def save_settings(self) -> None:
         self._ensure_control_page_built(FILE_PAGE_INDEX)
@@ -204,15 +211,20 @@ class QtScopeWindow(PreviewQtScopeWindow):
         if not self._confirm_or_cancel_overwrite(path):
             return
         path.parent.mkdir(parents=True, exist_ok=True)
-        result = self._run_action(
-            "Saving scope settings",
-            lambda scope: str(scope.save_scope_settings(path, ask_before_overwrite=False)),
-        )
-        if isinstance(result, str):
+
+        def completed(result: object) -> None:
+            if not isinstance(result, str):
+                return
             saved_path = Path(result)
             self._last_action = f"Settings saved: {saved_path.name}"
             self._update_status_strip()
             self.statusBar().showMessage(self._last_action)
+
+        self._run_action(
+            "Saving scope settings",
+            lambda scope: str(scope.save_scope_settings(path, ask_before_overwrite=False)),
+            on_success=completed,
+        )
 
     def restore_settings(self) -> None:
         self._ensure_control_page_built(FILE_PAGE_INDEX)
@@ -227,7 +239,15 @@ class QtScopeWindow(PreviewQtScopeWindow):
 
         path = Path(selected)
         wait_opc = self.restore_wait_opc.isChecked()
-        result = self._run_action(
+
+        def completed(result: object) -> None:
+            if not isinstance(result, dict):
+                return
+            self._last_action = f"Settings restored: {path.name}"
+            self._update_status_strip()
+            self.statusBar().showMessage(self._last_action)
+
+        self._run_action(
             "Restoring scope settings",
             lambda scope: scope.apply_scope_settings(
                 path,
@@ -235,24 +255,24 @@ class QtScopeWindow(PreviewQtScopeWindow):
                 check_error=True,
                 opc_timeout_ms=DEFAULT_RESTORE_TIMEOUT_MS,
             ),
+            on_success=completed,
         )
-        if isinstance(result, dict):
-            self._last_action = f"Settings restored: {path.name}"
-            self._update_status_strip()
-            self.statusBar().showMessage(self._last_action)
 
     def restore_default_scope_setup(self) -> None:
         """Apply the scope factory/default setup through the public driver API."""
-        result = self._run_action(
+
+        def completed(_result: object) -> None:
+            self.refresh_scope_parameters()
+            self._last_action = "Scope default setup restored"
+            self._update_status_strip()
+            self.statusBar().showMessage(self._last_action)
+
+        self._run_action(
             "Restoring scope default setup",
             lambda scope: scope.restore_default_setup(),
+            on_success=completed,
+            retain_session=True,
         )
-        if result is None:
-            return
-        self.refresh_scope_parameters()
-        self._last_action = "Scope default setup restored"
-        self._update_status_strip()
-        self.statusBar().showMessage(self._last_action)
 
 
 __all__ = ["QtScopeWindow"]

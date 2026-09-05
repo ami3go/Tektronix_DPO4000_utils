@@ -1,10 +1,8 @@
 """API-only instrument adapter for the launched DPO4000 Desk application.
 
-The existing Qt inheritance stack remains responsible for widgets, layout,
-preferences, status, and user interaction.  This final launched class replaces
-instrument-facing handlers with calls to the public ``dpo4000_utils`` API so GUI
-code does not own SCPI commands, hardcopy parsing, setup restore, waveform export,
-or raw PyVISA handle access.
+The existing Qt presentation stack remains responsible for widgets, layout,
+preferences, status, and user interaction. Instrument-facing handlers call only
+the public ``dpo4000_utils`` API and consume asynchronous action completions.
 """
 
 from __future__ import annotations
@@ -21,7 +19,6 @@ from ..control import (
     bool_from_scope_response,
     record_length_label,
 )
-from ..session import scope_session
 from .titlebar_tabs_window import QtScopeWindow as UiQtScopeWindow
 
 DEFAULT_RESTORE_TIMEOUT_MS = 60_000
@@ -41,16 +38,12 @@ def _record_length_display(value: object) -> str:
 class QtScopeWindow(UiQtScopeWindow):
     """DPO4000 Desk window using only public driver operations."""
 
-    @staticmethod
-    def _run_snapshot_scope_session(resource: str, timeout_ms: int, callback):
-        """Run one worker callback through the driver-owned session lifecycle."""
-        with scope_session(resource, timeout_ms=timeout_ms) as scope:
-            return callback(scope)
-
     def test_connection(self) -> None:
-        result = self._run_action("Testing scope connection", lambda scope: scope.query_identity())
-        if result is not None:
-            self._message("Scope IDN", str(result))
+        self._run_action(
+            "Testing scope connection",
+            lambda scope: scope.query_identity(),
+            on_success=lambda result: self._message("Scope IDN", str(result)),
+        )
 
     def _capture_image_to(self, path: Path, description: str) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -63,22 +56,23 @@ class QtScopeWindow(UiQtScopeWindow):
                 scope.rearm_trigger_after_image(trigger_channel=trigger_channel)
             return str(saved_path)
 
-        result = self._run_action(description, action)
-        if isinstance(result, str):
-            self._last_image_path = Path(result)
-            self._load_preview(self._last_image_path)
+        def completed(result: object) -> None:
+            if isinstance(result, str):
+                self._last_image_path = Path(result)
+                self._load_preview(self._last_image_path)
+
+        self._run_action(description, action, on_success=completed)
 
     def save_csv(self) -> None:
         path = self._build_output_path("csv")
         if not self._confirm_or_cancel_overwrite(path):
             return
         path.parent.mkdir(parents=True, exist_ok=True)
-        result = self._run_action(
+        self._run_action(
             "Saving enabled channel waveforms to CSV",
             lambda scope: str(scope.save_all_channels_to_single_csv(path)),
+            on_success=lambda result: self._message("CSV saved", str(result)),
         )
-        if result is not None:
-            self._message("CSV saved", str(result))
 
     def restore_settings(self) -> None:
         selected, _filter = QFileDialog.getOpenFileName(
@@ -92,7 +86,15 @@ class QtScopeWindow(UiQtScopeWindow):
 
         path = Path(selected)
         wait_opc = self.restore_wait_opc.isChecked()
-        result = self._run_action(
+
+        def completed(result: object) -> None:
+            if isinstance(result, dict):
+                self._message(
+                    "Settings restored",
+                    f"Instrument: {result.get('instrument', 'Unknown')}",
+                )
+
+        self._run_action(
             "Restoring scope settings JSON",
             lambda scope: scope.apply_scope_settings(
                 path,
@@ -100,9 +102,8 @@ class QtScopeWindow(UiQtScopeWindow):
                 check_error=True,
                 opc_timeout_ms=DEFAULT_RESTORE_TIMEOUT_MS,
             ),
+            on_success=completed,
         )
-        if isinstance(result, dict):
-            self._message("Settings restored", f"Instrument: {result.get('instrument', 'Unknown')}")
 
     def apply_trigger_level(self) -> None:
         channel = self._selected_trigger_channel()
@@ -116,28 +117,39 @@ class QtScopeWindow(UiQtScopeWindow):
             scope.run_acquisition()
             return readback
 
-        result = self._run_action(f"Setting trigger CH{channel} level to {level}", action)
-        if result is not None:
-            self.trigger_readback.setText(str(result))
+        self._run_action(
+            f"Setting trigger CH{channel} level to {level}",
+            action,
+            on_success=lambda result: self.trigger_readback.setText(str(result)),
+        )
 
     # ------------------------------------------------------------------
     # Channel and MATH configuration
     # ------------------------------------------------------------------
     def read_channel_configuration(self) -> None:
         channel = self._selected_config_channel()
-        result = self._run_action(
-            f"Reading CH{channel} configuration",
-            lambda scope: scope.get_channel_configuration(channel),
-        )
-        if isinstance(result, dict):
-            self.channel_config_display.setChecked(bool_from_scope_response(result.get("display", "0")))
+
+        def completed(result: object) -> None:
+            if not isinstance(result, dict):
+                return
+            self.channel_config_display.setChecked(
+                bool_from_scope_response(result.get("display", "0"))
+            )
             self.channel_config_scale.setText(result.get("scale", ""))
             self.channel_config_position.setText(result.get("position", ""))
             self.channel_config_offset.setText(result.get("offset", ""))
             self._set_combo_text(self.channel_config_coupling, result.get("coupling", ""))
             self._set_combo_text(self.channel_config_bandwidth, result.get("bandwidth", ""))
-            self.channel_config_invert.setChecked(bool_from_scope_response(result.get("invert", "0")))
+            self.channel_config_invert.setChecked(
+                bool_from_scope_response(result.get("invert", "0"))
+            )
             self.channel_config_probe_gain.setText(result.get("probe_gain", ""))
+
+        self._run_action(
+            f"Reading CH{channel} configuration",
+            lambda scope: scope.get_channel_configuration(channel),
+            on_success=completed,
+        )
 
     def apply_channel_configuration(self) -> None:
         channel = self._selected_config_channel()
@@ -158,15 +170,21 @@ class QtScopeWindow(UiQtScopeWindow):
         )
 
     def read_math_configuration(self) -> None:
-        result = self._run_action(
-            "Reading MATH configuration",
-            lambda scope: scope.get_math_configuration(),
-        )
-        if isinstance(result, dict):
-            self.math_config_display.setChecked(bool_from_scope_response(result.get("display", "0")))
+        def completed(result: object) -> None:
+            if not isinstance(result, dict):
+                return
+            self.math_config_display.setChecked(
+                bool_from_scope_response(result.get("display", "0"))
+            )
             self.math_config_define.setText(result.get("define", ""))
             self.math_config_scale.setText(result.get("scale", ""))
             self.math_config_position.setText(result.get("position", ""))
+
+        self._run_action(
+            "Reading MATH configuration",
+            lambda scope: scope.get_math_configuration(),
+            on_success=completed,
+        )
 
     def apply_math_configuration(self) -> None:
         config = MathConfig(
@@ -183,21 +201,36 @@ class QtScopeWindow(UiQtScopeWindow):
     # ------------------------------------------------------------------
     # Acquisition configuration
     # ------------------------------------------------------------------
+    def _apply_acquisition_readback(
+        self,
+        result: object,
+        *,
+        fallback_mode: str = "",
+        fallback_average_count: str = "",
+        fallback_record_length: str = "",
+    ) -> None:
+        if not isinstance(result, dict):
+            return
+        self._set_combo_text(self.acquisition_mode, result.get("mode", fallback_mode))
+        average_count = result.get("average_count", fallback_average_count)
+        if average_count:
+            self._set_combo_text(self.acquisition_average_count, average_count)
+        length_label = _record_length_display(
+            result.get("record_length", fallback_record_length)
+        )
+        self._set_combo_text(self.acquisition_record_length, length_label)
+        self._update_average_count_enabled()
+        mode = self.acquisition_mode.currentText().strip() or "Unknown"
+        length = self.acquisition_record_length.currentText().strip() or "Unknown length"
+        self._acquisition_state = f"{mode}, {length} pts"
+        self._update_status_strip()
+
     def read_acquisition_setup(self) -> None:
-        result = self._run_action(
+        self._run_action(
             "Reading acquisition setup",
             lambda scope: scope.get_acquisition_setup(),
+            on_success=self._apply_acquisition_readback,
         )
-        if isinstance(result, dict):
-            self._set_combo_text(self.acquisition_mode, result.get("mode", ""))
-            self._set_combo_text(self.acquisition_average_count, result.get("average_count", ""))
-            length_label = _record_length_display(result.get("record_length", ""))
-            self._set_combo_text(self.acquisition_record_length, length_label)
-            self._update_average_count_enabled()
-            mode = self.acquisition_mode.currentText().strip() or "Unknown"
-            length = self.acquisition_record_length.currentText().strip() or "Unknown length"
-            self._acquisition_state = f"{mode}, {length} pts"
-            self._update_status_strip()
 
     def apply_acquisition_setup(self) -> None:
         mode = self.acquisition_mode.currentText().strip().upper()
@@ -213,32 +246,24 @@ class QtScopeWindow(UiQtScopeWindow):
             scope.configure_acquisition(config)
             return scope.get_acquisition_setup()
 
-        result = self._run_action("Applying acquisition setup", action)
-        if isinstance(result, dict):
-            self._set_combo_text(self.acquisition_mode, result.get("mode", mode))
-            if mode == "AVERAGE":
-                self._set_combo_text(
-                    self.acquisition_average_count,
-                    result.get("average_count", average_count),
-                )
-            length_label = _record_length_display(result.get("record_length", record_length))
-            self._set_combo_text(self.acquisition_record_length, length_label)
-            self._acquisition_state = (
-                f"{self.acquisition_mode.currentText().strip() or 'Unknown'}, "
-                f"{length_label or 'Unknown length'} pts"
-            )
-            self._update_average_count_enabled()
-            self._update_status_strip()
+        self._run_action(
+            "Applying acquisition setup",
+            action,
+            on_success=lambda result: self._apply_acquisition_readback(
+                result,
+                fallback_mode=mode,
+                fallback_average_count=average_count,
+                fallback_record_length=record_length,
+            ),
+        )
 
     # ------------------------------------------------------------------
     # Display configuration
     # ------------------------------------------------------------------
     def read_display_settings(self) -> None:
-        result = self._run_action(
-            "Reading display settings",
-            lambda scope: scope.get_display_settings(),
-        )
-        if isinstance(result, dict):
+        def completed(result: object) -> None:
+            if not isinstance(result, dict):
+                return
             self.display_backlight.setText(result.get("backlight", ""))
             self.display_waveform_intensity.setText(result.get("waveform", ""))
             self.display_graticule_intensity.setText(result.get("graticule", ""))
@@ -247,6 +272,12 @@ class QtScopeWindow(UiQtScopeWindow):
             self.display_message_state.setChecked(
                 bool_from_scope_response(result.get("message_state", "0"))
             )
+
+        self._run_action(
+            "Reading display settings",
+            lambda scope: scope.get_display_settings(),
+            on_success=completed,
+        )
 
     def apply_display_settings(self) -> None:
         config = DisplayConfig(
@@ -263,13 +294,15 @@ class QtScopeWindow(UiQtScopeWindow):
         )
 
     def clear_display_message(self) -> None:
-        result = self._run_action(
-            "Clearing display screen text",
-            lambda scope: scope.clear_display_message(),
-        )
-        if result is not None or self._connection_ok:
+        def completed(_result: object) -> None:
             self.display_message_text.clear()
             self.display_message_state.setChecked(False)
+
+        self._run_action(
+            "Clearing display screen text",
+            lambda scope: scope.clear_display_message(),
+            on_success=completed,
+        )
 
     # ------------------------------------------------------------------
     # Existing measurement management
@@ -286,15 +319,19 @@ class QtScopeWindow(UiQtScopeWindow):
         }
 
     def read_existing_measurements(self) -> None:
-        result = self._run_action(
-            "Reading existing measurement setup",
-            lambda scope: scope.get_all_measurement_setups(),
-        )
-        if isinstance(result, dict):
+        def completed(result: object) -> None:
+            if not isinstance(result, dict):
+                return
             for slot, setup in result.items():
                 values = self._measurement_setup_to_dict(setup)
                 row = self._measurement_row_for_slot(int(slot))
                 self._set_measurement_table_row(row, values)
+
+        self._run_action(
+            "Reading existing measurement setup",
+            lambda scope: scope.get_all_measurement_setups(),
+            on_success=completed,
+        )
 
     def apply_selected_measurement_edit(self) -> None:
         if not self._guard_measurement_edit_mode():
@@ -306,10 +343,17 @@ class QtScopeWindow(UiQtScopeWindow):
             scope.add_measurement(config)
             return scope.get_measurement_setup(slot)
 
-        result = self._run_action(f"Applying edit to MEAS{slot}", action)
-        if result is not None:
+        def completed(result: object) -> None:
+            if result is None:
+                return
             row = self._measurement_row_for_slot(slot)
             self._set_measurement_table_row(row, self._measurement_setup_to_dict(result))
+
+        self._run_action(
+            f"Applying edit to MEAS{slot}",
+            action,
+            on_success=completed,
+        )
 
 
 __all__ = ["QtScopeWindow"]

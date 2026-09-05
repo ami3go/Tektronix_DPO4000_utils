@@ -16,10 +16,7 @@ from ..automation import (
     normalize_measurement_slots,
 )
 from ..gui.config import FileNaming, build_output_path
-from .automation_waveform_window import (
-    TIMED_WAVEFORM_MODE,
-    QtScopeWindow as AutomationA4QtScopeWindow,
-)
+from .automation_waveform_window import QtScopeWindow as AutomationA4QtScopeWindow
 from .automation_window import FILE_PAGE_INDEX
 
 MEASUREMENT_LOGGER_MODE = "Measurement Logger"
