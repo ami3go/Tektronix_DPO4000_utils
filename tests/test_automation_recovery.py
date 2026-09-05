@@ -34,7 +34,7 @@ def test_a11_statistics_reset_only_after_success() -> None:
     assert stats.consecutive_failures == 0
 
 
-def test_a11_gui_uses_shared_action_gateway_and_fail_closed_replay_policy() -> None:
+def test_a11_gui_uses_async_shared_action_gateway_and_fail_closed_replay_policy() -> None:
     root = Path(__file__).resolve().parents[1]
     recovery = (root / "dpo4000_utils" / "gui_qt" / "automation_recovery_window.py").read_text(
         encoding="utf-8"
@@ -42,11 +42,20 @@ def test_a11_gui_uses_shared_action_gateway_and_fail_closed_replay_policy() -> N
     stable = (root / "dpo4000_utils" / "gui_qt" / "stable_window.py").read_text(
         encoding="utf-8"
     )
-    assert "_execute_scope_action_once" in stable
-    assert "super()._execute_scope_action_once" in recovery
+    worker = (root / "dpo4000_utils" / "gui_qt" / "scope_worker.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "def _run_action" in stable
+    assert "on_success" in stable
+    assert "parent_run_action = super(QtScopeWindow, self)._run_action" in recovery
+    assert "QTimer.singleShot" in recovery
+    assert "QEventLoop" not in recovery
     assert "is_transport_error" in recovery
     assert "_REPLAY_SAFE_PREFIXES" in recovery
     assert "Capturing triggered image + CSV" not in recovery.split("_REPLAY_SAFE_PREFIXES", 1)[1].split(")", 1)[0]
     assert "scope.query_identity()" in recovery
     assert ".query(" not in recovery
     assert ".write(" not in recovery
+    assert "PersistentScopeSession" in worker
+    assert "def submit(" in worker
