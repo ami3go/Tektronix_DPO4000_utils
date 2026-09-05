@@ -19,7 +19,7 @@ from .automation_trigger_bundle_window import (
     TRIGGER_IMAGE_CSV_MODE,
     QtScopeWindow as AutomationA3QtScopeWindow,
 )
-from .automation_trigger_window import PERIODIC_IMAGE_MODE, TRIGGER_IMAGE_MODE
+from .automation_trigger_window import TRIGGER_IMAGE_MODE
 from .automation_window import FILE_PAGE_INDEX
 
 TIMED_WAVEFORM_MODE = "Timed Waveform Logging"
