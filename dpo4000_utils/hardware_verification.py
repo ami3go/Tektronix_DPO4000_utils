@@ -14,6 +14,7 @@ from . import hardware_verification_core as _core
 # before this profile is allowed to execute.
 _core.PUBLIC_METHOD_RISK["restore_default_setup"] = _core.VerificationRisk.DISRUPTIVE
 for _name in (
+    "configure_session",
     "get_acquisition_state",
     "get_trigger_state",
     "is_acquiring",
@@ -40,10 +41,15 @@ class HardwareVerifier(_core.HardwareVerifier):
     def _case_control_readbacks(self) -> str:
         detail = super()._case_control_readbacks()
         scope = self._require_scope()
+        scope.configure_session(
+            timeout_ms=getattr(scope, "timeout_ms", None) or 20_000,
+            read_termination=getattr(scope, "read_termination", None) or "\n",
+            write_termination=getattr(scope, "write_termination", None) or "\n",
+        )
         scope.get_acquisition_state()
         scope.is_acquiring()
         scope.get_trigger_state()
-        return detail + " Acquisition/trigger state readbacks passed."
+        return detail + " Session configuration and acquisition/trigger state readbacks passed."
 
     def _case_bus_readbacks(self) -> str:
         scope = self._require_scope()
@@ -68,9 +74,6 @@ class HardwareVerifier(_core.HardwareVerifier):
         if not path.exists():
             scope.save_scope_settings(path, ask_before_overwrite=False)
 
-        # Exercise the same factory/default recall used by the GUI Default button,
-        # then immediately restore the previously captured setup file. The outer
-        # verifier baseline restore remains an additional safety net.
         scope.restore_default_setup()
         scope.apply_scope_settings(
             path,
@@ -83,6 +86,8 @@ class HardwareVerifier(_core.HardwareVerifier):
     def _symbol_status(self, symbol: str, *, method: bool) -> tuple[str, list[str]]:
         if method and symbol == "restore_default_setup":
             return super()._symbol_status("apply_scope_settings", method=True)
+        if method and symbol == "configure_session":
+            return super()._symbol_status("get_acquisition_setup", method=True)
         if method and symbol in {
             "get_acquisition_state",
             "get_trigger_state",
