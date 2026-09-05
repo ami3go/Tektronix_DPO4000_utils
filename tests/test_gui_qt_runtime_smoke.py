@@ -136,7 +136,9 @@ def test_stable_qt_worker_metadata_is_present():
     assert "QEventLoop" in content
     assert "start_scope_worker" in content
     assert "_run_snapshot_scope_session" in content
-    assert "DPO4054(resource, auto_connect=False)" in content
-    assert "instrument.timeout = timeout_ms" in content
+    assert "from ..session import scope_session" in content
+    assert "with scope_session(resource, timeout_ms=timeout_ms) as scope:" in content
+    assert "DPO4054(resource, auto_connect=False)" not in content
+    assert "instrument.timeout = timeout_ms" not in content
     assert "class ScopeWorker(QRunnable)" in worker
     assert "QThreadPool.globalInstance().start(worker)" in worker
