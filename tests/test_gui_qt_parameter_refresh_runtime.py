@@ -28,6 +28,7 @@ def test_full_parameter_refresh_runs_core_reference_bus_stages_in_order(monkeypa
     app = _app()
     window = QtScopeWindow()
     calls: list[str] = []
+    retain_flags: list[bool] = []
     applied: list[dict] = []
     try:
         monkeypatch.setattr(window, "_ensure_scope_parameter_pages_built", lambda: None)
@@ -51,9 +52,19 @@ def test_full_parameter_refresh_runs_core_reference_bus_stages_in_order(monkeypa
             },
         }
 
-        def fake_run_action(description, callback):
+        def fake_run_action(
+            description,
+            callback,
+            *,
+            on_success=None,
+            on_error=None,
+            retain_session=False,
+        ):
+            del callback, on_error
             calls.append(description)
-            return stage_results[description]
+            retain_flags.append(retain_session)
+            if on_success is not None:
+                on_success(stage_results[description])
 
         monkeypatch.setattr(window, "_run_action", fake_run_action)
         window.read_all_parameters_after_connection.setChecked(True)
@@ -64,6 +75,7 @@ def test_full_parameter_refresh_runs_core_reference_bus_stages_in_order(monkeypa
             REFERENCE_PARAMETER_REFRESH_DESCRIPTION,
             BUS_PARAMETER_REFRESH_DESCRIPTION,
         ]
+        assert retain_flags == [True, True, False]
         assert len(applied) == 3
         assert applied[0]["labels"] == {1: "INPUT1"}
         assert applied[0]["references"] == {}
@@ -85,11 +97,22 @@ def test_staged_parameter_refresh_continues_if_optional_bus_stage_fails(monkeypa
         monkeypatch.setattr(window, "_ensure_scope_parameter_pages_built", lambda: None)
         monkeypatch.setattr(window, "_apply_scope_snapshot", lambda snapshot: None)
 
-        def fake_run_action(description, callback):
+        def fake_run_action(
+            description,
+            callback,
+            *,
+            on_success=None,
+            on_error=None,
+            retain_session=False,
+        ):
+            del callback, retain_session
             calls.append(description)
             if description == BUS_PARAMETER_REFRESH_DESCRIPTION:
-                return None
-            return {"errors": {}}
+                if on_error is not None:
+                    on_error(RuntimeError("optional BUS read failed"))
+                return
+            if on_success is not None:
+                on_success({"errors": {}})
 
         monkeypatch.setattr(window, "_run_action", fake_run_action)
         window.refresh_scope_parameters()
