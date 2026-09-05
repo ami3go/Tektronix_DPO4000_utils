@@ -1,60 +1,76 @@
 # PR #15 Follow-up Remediation Plan
 
-Status: **In progress**
+Status: **Milestone A software complete; Milestone B planned**
 Baseline: **v0.6.72 / main after PR #15**
+Milestone A target: **v0.7.0**
 
 This plan closes the work intentionally left outside PR #15. It preserves the repository rule that the persistent-session runtime rewrite and the GUI composition rewrite are separate release milestones.
 
-## Milestone A — v0.7.0: instrument runtime and qualification
+## Milestone A — v0.7.0: instrument runtime and qualification — COMPLETE
 
-### A1. Persistent worker-owned session becomes the production default
-- Use one dedicated worker thread per DPO4000 Desk window.
-- Create, use, reconnect, and close the DPO4054 on that owning thread.
-- Keep transport/session configuration in the driver constructor/API; GUI worker code must not mutate the raw VISA handle.
-- Invalidate and reopen the retained session after resource/transport definition changes or transport loss.
-- Retain an explicit user reconnect action rather than silently creating one session per button press.
+### A1. Persistent worker-owned session becomes the production default — DONE
+- One dedicated worker thread owns the DPO4054 session for the launched DPO4000 Desk window.
+- Driver creation, reuse, reconnect and close occur on the owning worker thread.
+- Runtime transport configuration is exposed through the public driver API rather than raw GUI-owned VISA mutation.
+- Transport/resource changes invalidate the retained session and reopen it cleanly.
+- Session retention is the production default, with explicit reconnect/session controls retained.
 
-### A2. Remove nested Qt event loops
-- Remove `QEventLoop.exec()` waits from scope action dispatch and persistent-session helpers.
-- Submit actions asynchronously and complete them through Qt signals/callbacks.
-- Serialize instrument operations; reject/queue conflicting requests rather than permitting re-entrant scope access.
-- Keep all widget mutation on the GUI thread.
+### A2. Remove nested Qt event loops from production scope dispatch — DONE
+- Scope actions complete through callbacks/signals instead of `QEventLoop.exec()` waits.
+- Instrument operations remain serialized through the worker-owned session.
+- Widget mutation remains on the GUI thread.
+- The v0.7 launch shell also bypasses the legacy Logger health synchronous-return override.
 
-### A3. Safe cancellation and application shutdown
-- Introduce cancellation tokens for cooperative long-running workflows.
-- On window close, stop scheduling new work, request cancellation where supported, close the retained scope on its worker thread, then terminate the worker thread.
-- Never terminate a QThread while VISA code is running.
-- Bound shutdown and record a diagnostic if a backend operation cannot return before its driver timeout.
+### A3. Safe cancellation and application shutdown — DONE
+- Long-running Automation/Logger operations use cooperative cancellation where supported.
+- Window close stops new scheduling, requests cancellation, closes the retained scope on its worker thread and shuts down the worker safely.
+- The Logger disk-writer shutdown uses a bounded wait in the launched v0.7 path and does not run a nested Qt event loop.
+- No QThread is forcibly terminated while VISA work is executing.
 
-### A4. One coherent Core → REF → BUS refresh
-- Execute the staged snapshot readers through one retained, already-connected driver instance.
-- Preserve staged fault isolation and immediate Core-state projection.
-- Do not reconnect between Core, REF and BUS stages.
+### A4. One coherent Core → REF → BUS refresh — DONE
+- Core, REF and BUS refresh stages execute as one ordered asynchronous chain.
+- The same retained driver/session is preserved across the staged snapshot.
+- Core projection and optional-stage fault isolation are retained.
 
-### A5. Release reproducibility
-- Add an exact release constraints file for build/runtime/test tooling.
-- Make release build workflows install from that constraints set.
-- Keep normal library metadata usable by downstream applications while documenting the reproducible release path.
+### A5. Release reproducibility — DONE
+- `constraints-release.txt` pins the release build/runtime/test toolchain.
+- Release workflows install against the constraints set.
+- Release artifacts retain the resolved dependency environment for provenance while normal package metadata remains usable downstream.
 
-### A6. Lint debt cleanup
-- Remove the current per-file F401 allowances where the imports can be safely cleaned.
-- Keep only deliberate compatibility exemptions.
+### A6. Lint debt cleanup — DONE
+- The temporary PR #15 F401 per-file baseline has been removed.
+- All safely removable deferred unused imports were deleted.
+- The deliberate `tektronix_utils.py` compatibility re-export exemption remains.
+- Ruff is green on the Milestone-A head.
 
-### A7. Hardware qualification and soak tooling
-- Keep the existing read-only/reversible/full hardware verifier.
-- Add a repeatable 24 h / 72 h soak runner that records operation counts, reconnects, RSS/resource observations where available, failures, and final pass/fail criteria.
-- Add a manual self-hosted workflow for the soak runner and retain its reports as artifacts.
-- Physical DPO4054 execution remains a bench action; CI must not claim a hardware soak passed without a self-hosted result.
+### A7. Hardware qualification and soak tooling — SOFTWARE COMPLETE
+- Existing read-only/reversible/full hardware verification remains available.
+- A repeatable 24 h / 72 h soak runner records operation/reconnect/failure/resource observations and final criteria.
+- A manual self-hosted DPO4000 soak workflow retains reports as GitHub Actions artifacts.
+- **Bench-only pending item:** the physical DPO4054 24 h / 72 h PASS must be produced on the self-hosted instrument runner; software/CI does not fabricate this result.
 
-### A8. Decoded BUS extraction safety
-- Do not invent undocumented decoder SCPI.
-- Expose a capability contract that clearly reports decoded-event extraction as unavailable until a command path is hardware-qualified.
-- Add a hardware-verification manifest entry so future implementation cannot bypass qualification.
+### A8. Decoded BUS extraction safety — DONE
+- No undocumented decoder SCPI was invented.
+- Decoded-event extraction exposes an explicit unqualified capability contract.
+- Hardware-verification coverage requires future decoded-event support to be deliberately qualified before it can be enabled.
 
-### A9. Documentation
-- Update current-state, architecture, build, verification and release guidance to describe the persistent worker runtime and exact dependency path.
+### A9. Documentation — DONE
+- Current state, architecture, build, hardware-verification and v0.7 release guidance describe the persistent asynchronous runtime and reproducible dependency path.
 
-## Milestone B — v0.8.0: Qt composition architecture
+## Milestone-A acceptance evidence
+
+Automated validation on PR #16 head includes:
+- Ruff: PASS
+- Core Python 3.10: PASS
+- Core Python 3.11: PASS
+- Core Python 3.12: PASS
+- Core Python 3.13: PASS
+- full PySide6 desktop GUI suite: PASS
+- final launch-runtime contract tests: PASS
+
+Additional v0.7 regression coverage enforces the asynchronous production gateway, bounded-writer Logger path, completion-time Automation retention/run-limit hooks, and absence of nested event-loop use in the launched Milestone-A shutdown override.
+
+## Milestone B — v0.8.0: Qt composition architecture — PLANNED
 
 ### B1. Replace historical window inheritance as the production architecture
 - Introduce one launched `QMainWindow` shell.
@@ -69,25 +85,9 @@ This plan closes the work intentionally left outside PR #15. It preserves the re
 - Assert page/controllers depend on the public driver/runtime facade rather than other historical window subclasses.
 
 ### B3. Final documentation cleanup
-- Replace diagrams and text that still describe the historical inheritance chain or short-lived `scope_session()` GUI lifecycle.
+- Replace diagrams and text that still describe the historical inheritance chain.
 - Record the final v0.8.0 composition boundaries and migration notes.
-
-## Acceptance gates
-
-Milestone A is complete when:
-- no production scope action uses a nested `QEventLoop`;
-- normal GUI actions reuse one worker-owned session;
-- Core/REF/BUS refresh uses one connection;
-- close during active work is safe and tested;
-- exact release constraints are used by build workflows;
-- Python 3.10–3.13 and PySide6 CI are green;
-- the hardware verifier/soak workflow is ready for the self-hosted DPO4054 runner.
-
-Milestone B is complete when:
-- the launched GUI no longer depends on the historical multi-window inheritance chain;
-- architecture CI enforces composition and the public-driver boundary;
-- the full automated test matrix remains green.
 
 ## Hardware-only completion note
 
-Code can make hardware qualification reproducible and mandatory, but it cannot truthfully mark the 24/72-hour DPO4054 soak as passed without an actual self-hosted bench run. The final merge/release checklist must link the corresponding hardware workflow artifact.
+Milestone A is software-complete. Physical qualification remains evidence generated by the bench, not by hosted CI. Before declaring the hardware qualification itself complete, run the self-hosted DPO4054 verification/soak workflow and retain the corresponding 24 h / 72 h artifact with the release records.
