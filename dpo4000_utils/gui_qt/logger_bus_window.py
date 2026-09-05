@@ -79,22 +79,53 @@ class QtScopeWindow(LoggerL5QtScopeWindow):
             },
         )
 
+    def _continue_bus_logger_start(self) -> None:
+        """Continue below L6 after asynchronous BUS capability qualification."""
+        previous_starting = getattr(self, "_logger_starting", False)
+        if hasattr(self, "_logger_starting"):
+            self._logger_starting = True
+        try:
+            super(QtScopeWindow, self).start_logger()
+        finally:
+            if hasattr(self, "_logger_starting"):
+                self._logger_starting = previous_starting
+        self._logger_refresh_status()
+
     def start_logger(self) -> None:
         if self._logger_mode() is LoggerMode.BUS:
             if not bool(getattr(self, "_connection_ok", False)):
-                self._message("Logger", "Test the scope connection before starting BUS Logger.", error=True)
-                return
-            supported = self._run_action(
-                "Checking decoded BUS logger capability",
-                lambda scope: bool(scope.supports_decoded_bus_events()),
-            )
-            if supported is not True:
                 self._message(
-                    "Logger BUS",
-                    "Decoded BUS transaction extraction is not hardware-qualified for this driver/scope. BUS configuration remains available, but Logger will not invent an undocumented extraction command.",
+                    "Logger",
+                    "Test the scope connection before starting BUS Logger.",
                     error=True,
                 )
                 return
+
+            def capability_checked(result: object) -> None:
+                if result is True:
+                    self._continue_bus_logger_start()
+                    return
+                self._message(
+                    "Logger BUS",
+                    "Decoded BUS transaction extraction is not hardware-qualified for this "
+                    "driver/scope. BUS configuration remains available, but Logger will not "
+                    "invent an undocumented extraction command.",
+                    error=True,
+                )
+                self._logger_refresh_status()
+
+            self._run_action(
+                "Checking decoded BUS logger capability",
+                lambda scope: bool(scope.supports_decoded_bus_events()),
+                on_success=capability_checked,
+                on_error=lambda exc: self._message(
+                    "Logger BUS",
+                    f"Could not verify decoded BUS capability: {exc}",
+                    error=True,
+                ),
+                retain_session=True,
+            )
+            return
         super().start_logger()
 
     def _logger_refresh_status(self) -> None:
