@@ -1,0 +1,17 @@
+# Reproducible release/build constraints for DPO4000 Utils v0.7.x.
+# Verified against PyPI releases available on 2026-09-05.
+# Library metadata remains intentionally range-based for downstream consumers;
+# release workflows install with this constraints file to freeze the build inputs.
+
+PyVISA==1.16.2
+Pillow==12.3.0
+PySide6==6.11.2
+PySide6_Addons==6.11.2
+PySide6_Essentials==6.11.2
+shiboken6==6.11.2
+pytest==9.1.1
+ruff==0.16.6
+pyinstaller==6.22.2
+setuptools==84.0.0
+wheel==0.47.0
+tomli==2.4.1; python_version < '3.11'
