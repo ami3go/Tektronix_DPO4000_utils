@@ -216,8 +216,14 @@ class QtScopeWindow(BusQtScopeWindow):
         *,
         on_success: Callable[[object], None] | None = None,
         on_error: Callable[[BaseException], None] | None = None,
+        retain_session: bool = False,
     ) -> None:
-        """Queue one serialized persistent-session action and return immediately."""
+        """Queue one serialized persistent-session action and return immediately.
+
+        ``retain_session`` keeps the worker-owned VISA connection open after this
+        request even when the user disabled general session retention. It is used
+        for coherent multi-stage reads such as Core → REF → BUS snapshots.
+        """
         if getattr(self, "_operation_active", False):
             self.statusBar().showMessage(
                 f"Scope busy; finish the current operation before: {description}"
@@ -273,7 +279,9 @@ class QtScopeWindow(BusQtScopeWindow):
                 on_success(value)
 
         def operation_finished(result: WorkerResult) -> None:
-            should_close = self._persistent_session_dirty or not self.keep_session.isChecked()
+            should_close = self._persistent_session_dirty or (
+                not self.keep_session.isChecked() and not retain_session
+            )
             self._persistent_session_dirty = False
             if should_close and not self._close_requested:
                 self._close_retained_scope(
