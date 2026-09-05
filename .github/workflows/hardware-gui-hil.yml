@@ -1,0 +1,90 @@
+name: Automation and Logger GUI HIL
+
+on:
+  workflow_dispatch:
+    inputs:
+      visa_resource:
+        description: "VISA resource for the Tektronix DPO4000-family scope"
+        required: true
+        default: "USB0::0x0699::0x0401::C011280::INSTR"
+      stimulus:
+        description: "Physical CH1 stimulus topology available on the bench"
+        required: true
+        type: choice
+        options:
+          - probe-comp
+          - pico2206b
+          - both
+        default: probe-comp
+      pico_serial:
+        description: "Optional PicoScope 2206B serial number (blank = first compatible unit)"
+        required: false
+        default: ""
+      expected_pico_variant:
+        description: "Expected Pico variant substring"
+        required: false
+        default: "2206B"
+
+jobs:
+  gui-hil:
+    name: Automation + Logger hardware GUI qualification
+    runs-on: [self-hosted, dpo4000]
+    timeout-minutes: 60
+    env:
+      QT_QPA_PLATFORM: offscreen
+      DPO4000_HARDWARE: "1"
+      DPO4000_GUI_HIL: "1"
+      DPO4000_ENABLE_WRITE_TESTS: "1"
+      DPO4000_RESOURCE: ${{ inputs.visa_resource }}
+      DPO4000_PROBE_COMP_HIL: ${{ inputs.stimulus == 'probe-comp' || inputs.stimulus == 'both' }}
+      DPO4000_PICO2206B_HIL: ${{ inputs.stimulus == 'pico2206b' || inputs.stimulus == 'both' }}
+      PICO2206B_SERIAL: ${{ inputs.pico_serial }}
+      PICO2206B_EXPECT_VARIANT: ${{ inputs.expected_pico_variant }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install HIL dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .[dev,hil]
+
+      - name: Show bench dependencies
+        run: |
+          python - <<'PY'
+          import os
+          from dpo4000_utils import list_visa_resources
+
+          print("DPO4000_RESOURCE=", os.environ.get("DPO4000_RESOURCE"))
+          print("DPO4000_PROBE_COMP_HIL=", os.environ.get("DPO4000_PROBE_COMP_HIL"))
+          print("DPO4000_PICO2206B_HIL=", os.environ.get("DPO4000_PICO2206B_HIL"))
+          print("Visible VISA resources:")
+          for resource in list_visa_resources():
+              print("  ", resource)
+
+          if os.environ.get("DPO4000_PICO2206B_HIL", "").lower() == "true":
+              from picosdk.ps2000a import ps2000a
+              print("PicoSDK ps2000a wrapper/native library loaded:", ps2000a)
+          PY
+
+      - name: Run Automation and Logger GUI HIL
+        run: |
+          pytest -ra -q \
+            -m "hardware and gui_hil" \
+            --basetemp hardware_verification_reports/gui-hil/pytest-temp \
+            tests/hardware/test_gui_automation_logger_hil.py
+
+      - name: Upload HIL artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dpo4000-gui-hil-${{ github.run_number }}
+          path: hardware_verification_reports/gui-hil/
+          if-no-files-found: warn
+          retention-days: 90
