@@ -5,9 +5,11 @@ from pathlib import Path
 from dpo4000_utils.control import ACQUISITION_MODES, AVERAGE_COUNTS, RECORD_LENGTH_LABELS
 
 
-def test_qt_runner_uses_final_production_window_above_legacy_chain():
+def test_qt_runner_uses_composed_production_window_over_legacy_feature_surface():
     runner = Path("dpo4000_utils/gui_qt/runner.py").read_text(encoding="utf-8")
     package_init = Path("dpo4000_utils/gui_qt/__init__.py").read_text(encoding="utf-8")
+    composition = Path("dpo4000_utils/gui_qt/composition/window.py").read_text(encoding="utf-8")
+    legacy = Path("dpo4000_utils/gui_qt/composition/legacy_surface.py").read_text(encoding="utf-8")
     production = Path("dpo4000_utils/gui_qt/production_hardening_window.py").read_text(
         encoding="utf-8"
     )
@@ -17,11 +19,15 @@ def test_qt_runner_uses_final_production_window_above_legacy_chain():
     desktop = Path("dpo4000_utils/gui_qt/desktop_window.py").read_text(encoding="utf-8")
     api = Path("dpo4000_utils/gui_qt/api_window.py").read_text(encoding="utf-8")
 
-    final_import = "from .production_hardening_window import QtScopeWindow"
+    final_import = "from .composition.window import QtScopeWindow"
     assert final_import in runner
     assert final_import in package_init
+    assert "class QtScopeWindow(QMainWindow)" in composition
+    assert "LegacyFeatureSurface" in composition
+    assert "MilestoneAFeatureWindow" in legacy
     assert "LoggerReportReviewedQtScopeWindow" in production
     assert "wait_for_fresh_single" in production
+    # Mature feature modules remain compatibility shims, not production ancestors.
     assert "from .preview_actions_window import QtScopeWindow as PreviewQtScopeWindow" in polish
     assert "class QtScopeWindow(PreviewQtScopeWindow)" in polish
     assert "from .bus_window import QtScopeWindow as BusQtScopeWindow" in preview
