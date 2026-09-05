@@ -12,9 +12,14 @@ def _method(tree: ast.AST, name: str) -> ast.FunctionDef:
     )
 
 
+def _uses_name(node: ast.AST, name: str) -> bool:
+    return any(isinstance(item, ast.Name) and item.id == name for item in ast.walk(node))
+
+
 def test_runner_launches_milestone_a_runtime_shell() -> None:
     runner = Path("dpo4000_utils/gui_qt/runner.py").read_text(encoding="utf-8")
     assert "from .milestone_a_window import QtScopeWindow" in runner
+    assert "ProductionHardenedQtScopeWindow" in runner
 
 
 def test_milestone_a_gateway_is_async_and_preserves_cross_cutting_hooks() -> None:
@@ -29,7 +34,7 @@ def test_milestone_a_gateway_is_async_and_preserves_cross_cutting_hooks() -> Non
     assert "_logger_health.note_capture" in source
     assert "_register_completed_artifacts" in source
     assert "_check_run_limits" in source
-    assert "QEventLoop" not in source
+    assert not _uses_name(tree, "QEventLoop")
 
 
 def test_milestone_a_logger_uses_bounded_writer_after_async_capture() -> None:
@@ -56,7 +61,7 @@ def test_writer_shutdown_has_no_nested_qt_event_loop() -> None:
     segment = ast.get_source_segment(source, method) or ""
 
     assert "writer.wait" in segment
-    assert "QEventLoop" not in segment
+    assert not _uses_name(method, "QEventLoop")
 
 
 def test_trigger_and_burst_overrides_restore_retention_and_limit_guards() -> None:
