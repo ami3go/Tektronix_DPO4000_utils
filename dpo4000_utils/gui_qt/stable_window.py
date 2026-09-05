@@ -39,8 +39,15 @@ class QtScopeWindow(MatureQtScopeWindow):
         *,
         on_success: Callable[[object], None] | None = None,
         on_error: Callable[[BaseException], None] | None = None,
+        retain_session: bool = False,
     ) -> None:
-        """Queue one short-lived worker action and return immediately."""
+        """Queue one short-lived worker action and return immediately.
+
+        ``retain_session`` is accepted for API compatibility with the production
+        persistent dispatcher. Short-lived fallback actions necessarily open and
+        close one driver-owned session per request.
+        """
+        del retain_session
         if getattr(self, "_operation_active", False):
             self.statusBar().showMessage(
                 f"Scope busy; finish the current operation before: {description}"
