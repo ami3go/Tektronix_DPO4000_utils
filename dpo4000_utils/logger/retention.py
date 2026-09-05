@@ -1,4 +1,4 @@
-"""Logger L9 retention wrapper around the hardened Automation retention engine."""
+"""Logger retention wrapper around the hardened owner-namespaced retention engine."""
 
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ from ..automation.retention import (
     register_retention_event,
 )
 
+LOGGER_RETENTION_OWNER = "logger"
 LoggerRetentionPolicy = RetentionPolicy
 LoggerRetentionError = RetentionError
 
@@ -30,7 +31,7 @@ class LoggerRetentionStatistics:
 
 
 class LoggerRetentionManager:
-    """Register only closed Logger segment groups and apply safe retention."""
+    """Register only closed Logger segment groups and apply Logger-owned retention."""
 
     def __init__(self, root: str | Path, policy: LoggerRetentionPolicy) -> None:
         self.root = Path(root).expanduser().resolve()
@@ -49,7 +50,6 @@ class LoggerRetentionManager:
 
     @property
     def registered_segments(self) -> tuple[tuple[Path, ...], ...]:
-        """Return every closed segment registered during this run, including later deletions."""
         return tuple(self._registered_segments)
 
     def register_closed_segment(self, paths: Iterable[str | Path]) -> None:
@@ -57,7 +57,12 @@ class LoggerRetentionManager:
         event_id = self._event_id(normalized)
         if event_id in self._seen_events:
             return
-        register_retention_event(self.root, event_id, normalized)
+        register_retention_event(
+            self.root,
+            event_id,
+            normalized,
+            owner=LOGGER_RETENTION_OWNER,
+        )
         self._seen_events.add(event_id)
         self._registered_segments.append(normalized)
         self.statistics.registered_segments += 1
@@ -70,7 +75,11 @@ class LoggerRetentionManager:
             self.register_closed_segment(segment)
 
     def apply(self) -> tuple[RetentionPlan, RetentionApplyResult]:
-        plan = plan_retention(self.root, self.policy)
+        plan = plan_retention(
+            self.root,
+            self.policy,
+            owner=LOGGER_RETENTION_OWNER,
+        )
         self.statistics.last_plan = plan
         if not plan.satisfied:
             detail = "; ".join(plan.diagnostics) or "retention policy cannot be satisfied"
@@ -83,6 +92,7 @@ class LoggerRetentionManager:
 
 
 __all__ = [
+    "LOGGER_RETENTION_OWNER",
     "LoggerRetentionError",
     "LoggerRetentionManager",
     "LoggerRetentionPolicy",

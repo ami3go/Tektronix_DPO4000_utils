@@ -433,7 +433,7 @@ class QtScopeWindow(CompactQtScopeWindow):
         callback()
 
     def test_connection(self) -> None:
-        result = self._run_action("Testing scope connection", lambda scope: scope.scope.query("*IDN?").strip())
+        result = self._run_action("Testing scope connection", lambda scope: scope.query_identity())
         if result is not None:
             self._last_idn = str(result)
             self._connection_ok = True

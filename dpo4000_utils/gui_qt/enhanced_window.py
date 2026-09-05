@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
@@ -25,6 +23,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ..control import ChannelConfig, MathConfig, bool_from_scope_response
 from .main_window import DRAWER_PAGE_TITLES, QtScopeWindow as BaseQtScopeWindow
 
 CHANNEL_CONFIG_FIELDS = (
@@ -38,22 +37,6 @@ CHANNEL_CONFIG_FIELDS = (
     "probe_gain",
 )
 MATH_CONFIG_FIELDS = ("display", "define", "scale", "position")
-CHANNEL_CONFIG_QUERIES = {
-    "display": "SELECT:CH{channel}?",
-    "scale": "CH{channel}:SCALE?",
-    "position": "CH{channel}:POSITION?",
-    "offset": "CH{channel}:OFFSET?",
-    "coupling": "CH{channel}:COUPLING?",
-    "bandwidth": "CH{channel}:BANDWIDTH?",
-    "invert": "CH{channel}:INVERT?",
-    "probe_gain": "CH{channel}:PROBE:GAIN?",
-}
-MATH_CONFIG_QUERIES = {
-    "display": "SELECT:MATH?",
-    "define": "MATH:DEFINE?",
-    "scale": "MATH:VERTICAL:SCALE?",
-    "position": "MATH:VERTICAL:POSITION?",
-}
 DRAWER_NAV_LABELS = {
     "Connection": "Conn",
     "Channels": "Ch",
@@ -516,27 +499,14 @@ class QtScopeWindow(BaseQtScopeWindow):
         return self._prepare_channels_card(card)
 
     # ------------------------------------------------------------------
-    # SCPI channel and math actions
+    # Public-driver channel and math actions
     # ------------------------------------------------------------------
     def _selected_config_channel(self) -> int:
         return int(self.channel_config_channel.currentText())
 
     @staticmethod
     def _bool_from_scope_response(text: str) -> bool:
-        tokens = str(text).strip().upper().split()
-        if not tokens:
-            return False
-        return tokens[-1] not in {"0", "OFF", "FALSE"}
-
-    @staticmethod
-    def _query_optional(instrument: Any, command: str) -> str:
-        try:
-            response = instrument.query(command).strip()
-        except Exception:
-            return ""
-        if "\"" in response:
-            return response.split("\"", 1)[1].rsplit("\"", 1)[0]
-        return response.split()[-1] if response.split() else response
+        return bool_from_scope_response(text)
 
     @staticmethod
     def _set_combo_text(combo: QComboBox, text: str) -> None:
@@ -544,28 +514,16 @@ class QtScopeWindow(BaseQtScopeWindow):
             combo.setCurrentText(text)
 
     @staticmethod
-    def _write_if_text(instrument: Any, command_prefix: str, value: str) -> None:
+    def _optional_text(value: str) -> str | None:
         text = str(value).strip()
-        if text:
-            instrument.write(f"{command_prefix} {text}")
-
-    @staticmethod
-    def _quote_math_expression(expression: str) -> str:
-        return expression.strip().replace('"', "'")
+        return text or None
 
     def read_channel_configuration(self) -> None:
         channel = self._selected_config_channel()
-
-        def action(scope):
-            instrument = getattr(scope, "scope", None)
-            if instrument is None:
-                raise ConnectionError("Oscilloscope is not connected.")
-            return {
-                name: self._query_optional(instrument, query.format(channel=channel))
-                for name, query in CHANNEL_CONFIG_QUERIES.items()
-            }
-
-        result = self._run_action(f"Reading CH{channel} configuration", action)
+        result = self._run_action(
+            f"Reading CH{channel} configuration",
+            lambda scope: scope.get_channel_configuration(channel),
+        )
         if isinstance(result, dict):
             self.channel_config_display.setChecked(self._bool_from_scope_response(result.get("display", "0")))
             self.channel_config_scale.setText(result.get("scale", ""))
@@ -578,39 +536,29 @@ class QtScopeWindow(BaseQtScopeWindow):
 
     def apply_channel_configuration(self) -> None:
         channel = self._selected_config_channel()
-        display = self.channel_config_display.isChecked()
-        invert = self.channel_config_invert.isChecked()
-        scale = self.channel_config_scale.text()
-        position = self.channel_config_position.text()
-        offset = self.channel_config_offset.text()
-        coupling = self.channel_config_coupling.currentText()
-        bandwidth = self.channel_config_bandwidth.currentText()
-        probe_gain = self.channel_config_probe_gain.text()
+        config = ChannelConfig(
+            channel=channel,
+            display=self.channel_config_display.isChecked(),
+            scale=self._optional_text(self.channel_config_scale.text()),
+            position=self._optional_text(self.channel_config_position.text()),
+            offset=self._optional_text(self.channel_config_offset.text()),
+            coupling=self._optional_text(self.channel_config_coupling.currentText()),
+            bandwidth=self._optional_text(self.channel_config_bandwidth.currentText()),
+            invert=self.channel_config_invert.isChecked(),
+            probe_gain=self._optional_text(self.channel_config_probe_gain.text()),
+        )
 
         def action(scope):
-            instrument = getattr(scope, "scope", None)
-            if instrument is None:
-                raise ConnectionError("Oscilloscope is not connected.")
-            instrument.write(f"SELECT:CH{channel} {'ON' if display else 'OFF'}")
-            self._write_if_text(instrument, f"CH{channel}:SCALE", scale)
-            self._write_if_text(instrument, f"CH{channel}:POSITION", position)
-            self._write_if_text(instrument, f"CH{channel}:OFFSET", offset)
-            self._write_if_text(instrument, f"CH{channel}:COUPLING", coupling)
-            self._write_if_text(instrument, f"CH{channel}:BANDWIDTH", bandwidth)
-            instrument.write(f"CH{channel}:INVERT {'ON' if invert else 'OFF'}")
-            self._write_if_text(instrument, f"CH{channel}:PROBE:GAIN", probe_gain)
+            scope.configure_channel(config)
             return f"CH{channel} configuration applied"
 
         self._run_action(f"Applying CH{channel} configuration", action)
 
     def read_math_configuration(self) -> None:
-        def action(scope):
-            instrument = getattr(scope, "scope", None)
-            if instrument is None:
-                raise ConnectionError("Oscilloscope is not connected.")
-            return {name: self._query_optional(instrument, query) for name, query in MATH_CONFIG_QUERIES.items()}
-
-        result = self._run_action("Reading MATH configuration", action)
+        result = self._run_action(
+            "Reading MATH configuration",
+            lambda scope: scope.get_math_configuration(),
+        )
         if isinstance(result, dict):
             self.math_config_display.setChecked(self._bool_from_scope_response(result.get("display", "0")))
             self.math_config_define.setText(result.get("define", ""))
@@ -618,20 +566,15 @@ class QtScopeWindow(BaseQtScopeWindow):
             self.math_config_position.setText(result.get("position", ""))
 
     def apply_math_configuration(self) -> None:
-        display = self.math_config_display.isChecked()
-        expression = self._quote_math_expression(self.math_config_define.text())
-        scale = self.math_config_scale.text()
-        position = self.math_config_position.text()
+        config = MathConfig(
+            display=self.math_config_display.isChecked(),
+            define=self._optional_text(self.math_config_define.text()),
+            scale=self._optional_text(self.math_config_scale.text()),
+            position=self._optional_text(self.math_config_position.text()),
+        )
 
         def action(scope):
-            instrument = getattr(scope, "scope", None)
-            if instrument is None:
-                raise ConnectionError("Oscilloscope is not connected.")
-            if expression:
-                instrument.write(f'MATH:DEFINE "{expression}"')
-            self._write_if_text(instrument, "MATH:VERTICAL:SCALE", scale)
-            self._write_if_text(instrument, "MATH:VERTICAL:POSITION", position)
-            instrument.write(f"SELECT:MATH {'ON' if display else 'OFF'}")
+            scope.configure_math(config)
             return "MATH configuration applied"
 
         self._run_action("Applying MATH configuration", action)
@@ -639,11 +582,9 @@ class QtScopeWindow(BaseQtScopeWindow):
 
 __all__ = [
     "CHANNEL_CONFIG_FIELDS",
-    "CHANNEL_CONFIG_QUERIES",
     "DRAWER_NAV_ICON_SIZE",
     "DRAWER_NAV_LABELS",
     "DRAWER_PAGE_ICON_NAMES",
     "MATH_CONFIG_FIELDS",
-    "MATH_CONFIG_QUERIES",
     "QtScopeWindow",
 ]

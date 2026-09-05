@@ -1,9 +1,9 @@
 """Stable PySide6 window with existing measurement-slot management.
 
-Adds a practical MEAS1..MEAS8 manager to the Measurement page.  The manager can
+Adds a practical MEAS1..MEAS8 manager to the Measurement page. The manager can
 read the currently configured scope measurements, load an existing slot into the
 normal editor, apply edits back to that slot, read its value, or disable/delete
-that slot.  Destructive/edit actions are locked behind an explicit pencil edit
+that slot. Destructive/edit actions are locked behind an explicit pencil edit
 mode to prevent accidental measurement changes.
 """
 
@@ -35,13 +35,6 @@ MEASUREMENT_MANAGEMENT_ACTIONS = {
     "delete_selected_measurement",
     "read_selected_measurement_value",
 }
-MEASUREMENT_SETUP_QUERIES = {
-    "state": "MEASUREMENT:MEAS{slot}:STATE?",
-    "type": "MEASUREMENT:MEAS{slot}:TYPE?",
-    "source1": "MEASUREMENT:MEAS{slot}:SOURCE1?",
-    "source2": "MEASUREMENT:MEAS{slot}:SOURCE2?",
-    "value": "MEASUREMENT:MEAS{slot}:VALUE?",
-}
 MEASUREMENT_TABLE_HEADERS = ("Slot", "State", "Type", "Source 1", "Source 2", "Value")
 MEASUREMENT_MANAGER_BUTTON_MIN_HEIGHT = 38
 MEASUREMENT_MANAGER_BUTTON_MIN_WIDTH = 150
@@ -54,19 +47,16 @@ class QtScopeWindow(DisplayQtScopeWindow):
     """Stable launched Qt window with editable existing measurement management."""
 
     def _build_preview_card(self) -> QGroupBox:
-        """Keep the left preview card untitled so the toolbar and image use the space."""
         card = super()._build_preview_card()
         card.setTitle("")
         return card
 
     def _callback_requires_scope(self, callback) -> bool:
-        """Gate measurement management actions behind the existing IDN safety check."""
         if getattr(callback, "__name__", "") in MEASUREMENT_MANAGEMENT_ACTIONS:
             return True
         return super()._callback_requires_scope(callback)
 
     def _build_measurement_tab(self) -> QWidget:
-        """Add existing MEAS1..MEAS8 management above the normal measurement editor."""
         page = super()._build_measurement_tab()
         layout = page.layout()
         if layout is not None:
@@ -77,10 +67,8 @@ class QtScopeWindow(DisplayQtScopeWindow):
         card = self._card("Existing scope measurements")
         layout = QVBoxLayout(card)
         layout.setSpacing(10)
-
         self._measurement_edit_mode_enabled = False
         layout.addWidget(self._build_measurement_edit_mode_header())
-
         hint = QLabel(
             "Read MEAS1..MEAS8 from the scope, select a row, then load that slot into the "
             "normal Measurement editor below. Turn on pencil Edit mode before applying edits "
@@ -89,7 +77,6 @@ class QtScopeWindow(DisplayQtScopeWindow):
         hint.setObjectName("MutedLabel")
         hint.setWordWrap(True)
         layout.addWidget(hint)
-
         self.existing_measurements = QTableWidget(len(MEASUREMENT_SLOTS), len(MEASUREMENT_TABLE_HEADERS))
         self.existing_measurements.setObjectName("ExistingMeasurementsTable")
         self.existing_measurements.setHorizontalHeaderLabels(MEASUREMENT_TABLE_HEADERS)
@@ -99,74 +86,46 @@ class QtScopeWindow(DisplayQtScopeWindow):
         self.existing_measurements.verticalHeader().setVisible(False)
         self.existing_measurements.setAlternatingRowColors(True)
         self.existing_measurements.setMinimumHeight(210)
-        self.existing_measurements.itemDoubleClicked.connect(
-            lambda _item: self.load_selected_measurement_for_edit()
-        )
+        self.existing_measurements.itemDoubleClicked.connect(lambda _item: self.load_selected_measurement_for_edit())
         layout.addWidget(self.existing_measurements)
         self._reset_existing_measurements_table()
-
         layout.addWidget(self._build_existing_measurements_actions())
         self._set_measurement_edit_mode(False, announce=False)
         return self._prepare_drawer_card(card)
 
     def _build_measurement_edit_mode_header(self) -> QWidget:
-        """Build the top-right guarded edit-mode toggle for destructive actions."""
         header = QWidget()
         header.setObjectName("MeasurementEditModeHeader")
         layout = QHBoxLayout(header)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
-
         self.measurement_edit_mode_state = QLabel(MEASUREMENT_EDIT_MODE_LOCKED_TEXT)
         self.measurement_edit_mode_state.setObjectName("MeasurementEditModeState")
-        self.measurement_edit_mode_state.setToolTip(
-            "Apply edit and Delete selected are disabled until edit mode is enabled."
-        )
+        self.measurement_edit_mode_state.setToolTip("Apply edit and Delete selected are disabled until edit mode is enabled.")
         layout.addWidget(self.measurement_edit_mode_state)
         layout.addStretch(1)
-
         self.measurement_edit_mode_button = QToolButton()
         self.measurement_edit_mode_button.setObjectName("MeasurementEditModeButton")
         self.measurement_edit_mode_button.setText(f"{MEASUREMENT_EDIT_MODE_ICON} Edit")
         self.measurement_edit_mode_button.setCheckable(True)
         self.measurement_edit_mode_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
-        self.measurement_edit_mode_button.setToolTip(
-            "Enable Apply edit and Delete selected for the selected MEAS slot."
-        )
+        self.measurement_edit_mode_button.setToolTip("Enable Apply edit and Delete selected for the selected MEAS slot.")
         self.measurement_edit_mode_button.clicked.connect(self.toggle_measurement_edit_mode)
         layout.addWidget(self.measurement_edit_mode_button, 0, Qt.AlignmentFlag.AlignRight)
         return header
 
     def _build_existing_measurements_actions(self) -> QWidget:
-        """Build large action buttons that remain usable in the narrow right panel."""
         actions = QWidget()
         actions.setObjectName("MeasurementManagerActions")
         grid = QGridLayout(actions)
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setHorizontalSpacing(8)
         grid.setVerticalSpacing(8)
-
-        self.read_existing_measurements_button = self._button(
-            "Read configured",
-            self.read_existing_measurements,
-        )
-        self.load_selected_measurement_button = self._button(
-            "Load selected",
-            self.load_selected_measurement_for_edit,
-        )
-        self.apply_measurement_edit_button = self._accent_button(
-            "Apply edit",
-            self.apply_selected_measurement_edit,
-        )
-        self.read_selected_measurement_value_button = self._button(
-            "Read value",
-            self.read_selected_measurement_value,
-        )
-        self.delete_measurement_button = self._button(
-            "Delete selected",
-            self.delete_selected_measurement,
-        )
-
+        self.read_existing_measurements_button = self._button("Read configured", self.read_existing_measurements)
+        self.load_selected_measurement_button = self._button("Load selected", self.load_selected_measurement_for_edit)
+        self.apply_measurement_edit_button = self._accent_button("Apply edit", self.apply_selected_measurement_edit)
+        self.read_selected_measurement_value_button = self._button("Read value", self.read_selected_measurement_value)
+        self.delete_measurement_button = self._button("Delete selected", self.delete_selected_measurement)
         button_specs = (
             (self.read_existing_measurements_button, 0, 0, 1, 1),
             (self.load_selected_measurement_button, 0, 1, 1, 1),
@@ -182,51 +141,24 @@ class QtScopeWindow(DisplayQtScopeWindow):
         return actions
 
     def toggle_measurement_edit_mode(self, checked: bool) -> None:
-        """Toggle the guarded edit/delete action state from the pencil button."""
         self._set_measurement_edit_mode(bool(checked))
 
     def _set_measurement_edit_mode(self, enabled: bool, *, announce: bool = True) -> None:
-        """Enable or lock edit/delete buttons without changing safe read/load actions."""
         self._measurement_edit_mode_enabled = bool(enabled)
         button = getattr(self, "measurement_edit_mode_button", None)
         if button is not None:
             button.setChecked(self._measurement_edit_mode_enabled)
-            button.setText(
-                f"{MEASUREMENT_EDIT_MODE_ICON} Edit on"
-                if self._measurement_edit_mode_enabled
-                else f"{MEASUREMENT_EDIT_MODE_ICON} Edit"
-            )
-            button.setToolTip(
-                "Lock Apply edit and Delete selected."
-                if self._measurement_edit_mode_enabled
-                else "Enable Apply edit and Delete selected for the selected MEAS slot."
-            )
-
+            button.setText(f"{MEASUREMENT_EDIT_MODE_ICON} Edit on" if self._measurement_edit_mode_enabled else f"{MEASUREMENT_EDIT_MODE_ICON} Edit")
+            button.setToolTip("Lock Apply edit and Delete selected." if self._measurement_edit_mode_enabled else "Enable Apply edit and Delete selected for the selected MEAS slot.")
         state = getattr(self, "measurement_edit_mode_state", None)
         if state is not None:
-            state.setText(
-                MEASUREMENT_EDIT_MODE_ENABLED_TEXT
-                if self._measurement_edit_mode_enabled
-                else MEASUREMENT_EDIT_MODE_LOCKED_TEXT
-            )
-
+            state.setText(MEASUREMENT_EDIT_MODE_ENABLED_TEXT if self._measurement_edit_mode_enabled else MEASUREMENT_EDIT_MODE_LOCKED_TEXT)
         for guarded_button_name in ("apply_measurement_edit_button", "delete_measurement_button"):
             guarded_button = getattr(self, guarded_button_name, None)
             if guarded_button is not None:
                 guarded_button.setEnabled(self._measurement_edit_mode_enabled)
-                guarded_button.setToolTip(
-                    "Enabled by pencil Edit mode."
-                    if self._measurement_edit_mode_enabled
-                    else "Turn on pencil Edit mode first."
-                )
-
         if announce:
-            message = (
-                "Measurement edit mode enabled"
-                if self._measurement_edit_mode_enabled
-                else "Measurement edit mode locked"
-            )
-            self.statusBar().showMessage(message)
+            self.statusBar().showMessage("Measurement edit mode enabled" if self._measurement_edit_mode_enabled else "Measurement edit mode locked")
 
     def _measurement_edit_mode_is_enabled(self) -> bool:
         return bool(getattr(self, "_measurement_edit_mode_enabled", False))
@@ -234,34 +166,15 @@ class QtScopeWindow(DisplayQtScopeWindow):
     def _guard_measurement_edit_mode(self) -> bool:
         if self._measurement_edit_mode_is_enabled():
             return True
-        self.statusBar().showMessage(
-            "Turn on pencil Edit mode before applying edits or deleting measurements"
-        )
+        self.statusBar().showMessage("Turn on pencil Edit mode before applying edits or deleting measurements")
         return False
 
     def _reset_existing_measurements_table(self) -> None:
         for row, slot in enumerate(MEASUREMENT_SLOTS):
-            self._set_measurement_table_row(
-                row,
-                {
-                    "slot": str(slot),
-                    "state": "Unknown",
-                    "type": "",
-                    "source1": "",
-                    "source2": "",
-                    "value": "",
-                },
-            )
+            self._set_measurement_table_row(row, {"slot": str(slot), "state": "Unknown", "type": "", "source1": "", "source2": "", "value": ""})
 
     def _set_measurement_table_row(self, row: int, data: dict[str, Any]) -> None:
-        values = (
-            f"MEAS{data.get('slot', row + 1)}",
-            str(data.get("state", "")),
-            str(data.get("type", "")),
-            str(data.get("source1", "")),
-            str(data.get("source2", "")),
-            str(data.get("value", "")),
-        )
+        values = (f"MEAS{data.get('slot', row + 1)}", str(data.get("state", "")), str(data.get("type", "")), str(data.get("source1", "")), str(data.get("source2", "")), str(data.get("value", "")))
         for column, value in enumerate(values):
             item = QTableWidgetItem(value)
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
@@ -286,21 +199,7 @@ class QtScopeWindow(DisplayQtScopeWindow):
     def _measurement_row_for_slot(self, slot: int) -> int:
         return max(0, min(len(MEASUREMENT_SLOTS) - 1, int(slot) - 1))
 
-    @staticmethod
-    def _normalise_scope_text(text: str) -> str:
-        value = str(text or "").strip()
-        if "\"" in value:
-            return value.split("\"", 1)[1].rsplit("\"", 1)[0]
-        return value.split()[-1] if value.split() else ""
-
-    def _set_measurement_editor(
-        self,
-        *,
-        slot: int,
-        measurement_type: str,
-        source1: str,
-        source2: str,
-    ) -> None:
+    def _set_measurement_editor(self, *, slot: int, measurement_type: str, source1: str, source2: str) -> None:
         self._set_combo_text(self.measurement_slot, str(slot))
         normal_type = measurement_type.strip().upper()
         for group, values in MEASUREMENT_TYPES_BY_GROUP.items():
@@ -313,43 +212,17 @@ class QtScopeWindow(DisplayQtScopeWindow):
         self._set_combo_text(self.measurement_source2, source2.strip().upper())
 
     def _selected_measurement_config_for_slot(self, slot: int) -> MeasurementConfig:
-        return MeasurementConfig(
-            slot=slot,
-            measurement_type=self.measurement_type.currentText(),
-            source1=self.measurement_source1.currentText(),
-            source2=self.measurement_source2.currentText() or None,
-        )
+        return MeasurementConfig(slot=slot, measurement_type=self.measurement_type.currentText(), source1=self.measurement_source1.currentText(), source2=self.measurement_source2.currentText() or None)
+
+    @staticmethod
+    def _measurement_setup_to_dict(setup) -> dict[str, str]:
+        return {"slot": str(setup.slot), "state": str(setup.state), "type": str(setup.measurement_type), "source1": str(setup.source1), "source2": str(setup.source2), "value": str(setup.value)}
 
     def read_existing_measurements(self) -> None:
-        def action(scope) -> dict[int, dict[str, str]]:
-            instrument = getattr(scope, "scope", None)
-            if instrument is None:
-                raise ConnectionError("Oscilloscope is not connected.")
-            result: dict[int, dict[str, str]] = {}
-            for slot in MEASUREMENT_SLOTS:
-                slot_result = {
-                    name: self._query_optional(instrument, query.format(slot=slot))
-                    for name, query in MEASUREMENT_SETUP_QUERIES.items()
-                }
-                result[slot] = {name: self._normalise_scope_text(value) for name, value in slot_result.items()}
-            return result
-
-        result = self._run_action("Reading existing measurement setup", action)
+        result = self._run_action("Reading existing measurement setup", lambda scope: scope.get_all_measurement_setups())
         if isinstance(result, dict):
-            for slot, values in result.items():
-                row = self._measurement_row_for_slot(int(slot))
-                state = "ON" if self._bool_from_scope_response(values.get("state", "0")) else "OFF"
-                self._set_measurement_table_row(
-                    row,
-                    {
-                        "slot": str(slot),
-                        "state": state,
-                        "type": values.get("type", ""),
-                        "source1": values.get("source1", ""),
-                        "source2": values.get("source2", ""),
-                        "value": values.get("value", ""),
-                    },
-                )
+            for slot, setup in result.items():
+                self._set_measurement_table_row(self._measurement_row_for_slot(int(slot)), self._measurement_setup_to_dict(setup))
 
     def load_selected_measurement_for_edit(self) -> None:
         slot = self._selected_existing_measurement_slot()
@@ -358,12 +231,7 @@ class QtScopeWindow(DisplayQtScopeWindow):
         measurement_type = table.item(row, 2).text() if table.item(row, 2) is not None else ""
         source1 = table.item(row, 3).text() if table.item(row, 3) is not None else ""
         source2 = table.item(row, 4).text() if table.item(row, 4) is not None else ""
-        self._set_measurement_editor(
-            slot=slot,
-            measurement_type=measurement_type,
-            source1=source1 or "CH1",
-            source2=source2,
-        )
+        self._set_measurement_editor(slot=slot, measurement_type=measurement_type, source1=source1 or "CH1", source2=source2)
         self.statusBar().showMessage(f"Loaded MEAS{slot} into editor")
 
     def apply_selected_measurement_edit(self) -> None:
@@ -371,43 +239,20 @@ class QtScopeWindow(DisplayQtScopeWindow):
             return
         slot = self._selected_existing_measurement_slot()
         config = self._selected_measurement_config_for_slot(slot)
-
-        def action(scope) -> dict[str, str]:
+        def action(scope):
             scope.add_measurement(config)
-            instrument = getattr(scope, "scope", None)
-            if instrument is None:
-                raise ConnectionError("Oscilloscope is not connected.")
-            return {
-                name: self._normalise_scope_text(self._query_optional(instrument, query.format(slot=slot)))
-                for name, query in MEASUREMENT_SETUP_QUERIES.items()
-            }
-
+            return scope.get_measurement_setup(slot)
         result = self._run_action(f"Applying edit to MEAS{slot}", action)
-        if isinstance(result, dict):
-            row = self._measurement_row_for_slot(slot)
-            self._set_measurement_table_row(
-                row,
-                {
-                    "slot": str(slot),
-                    "state": "ON" if self._bool_from_scope_response(result.get("state", "1")) else "OFF",
-                    "type": result.get("type", config.measurement_type),
-                    "source1": result.get("source1", config.source1),
-                    "source2": result.get("source2", config.source2 or ""),
-                    "value": result.get("value", ""),
-                },
-            )
+        if result is not None:
+            self._set_measurement_table_row(self._measurement_row_for_slot(slot), self._measurement_setup_to_dict(result))
 
     def delete_selected_measurement(self) -> None:
         if not self._guard_measurement_edit_mode():
             return
         slot = self._selected_existing_measurement_slot()
         result = self._run_action(f"Deleting MEAS{slot}", lambda scope: scope.disable_measurement(slot))
-        if result is not None or self._connection_ok:
-            row = self._measurement_row_for_slot(slot)
-            self._set_measurement_table_row(
-                row,
-                {"slot": str(slot), "state": "OFF", "type": "", "source1": "", "source2": "", "value": ""},
-            )
+        if result is not None or getattr(self, "_connection_ok", False):
+            self._set_measurement_table_row(self._measurement_row_for_slot(slot), {"slot": str(slot), "state": "OFF", "type": "", "source1": "", "source2": "", "value": ""})
             if int(self.measurement_slot.currentText()) == slot:
                 self.measurement_value.clear()
 
@@ -425,14 +270,4 @@ class QtScopeWindow(DisplayQtScopeWindow):
             self.existing_measurements.resizeColumnsToContents()
 
 
-__all__ = [
-    "MEASUREMENT_EDIT_MODE_ENABLED_TEXT",
-    "MEASUREMENT_EDIT_MODE_ICON",
-    "MEASUREMENT_EDIT_MODE_LOCKED_TEXT",
-    "MEASUREMENT_MANAGEMENT_ACTIONS",
-    "MEASUREMENT_MANAGER_BUTTON_MIN_HEIGHT",
-    "MEASUREMENT_MANAGER_BUTTON_MIN_WIDTH",
-    "MEASUREMENT_SETUP_QUERIES",
-    "MEASUREMENT_TABLE_HEADERS",
-    "QtScopeWindow",
-]
+__all__ = ["MEASUREMENT_EDIT_MODE_ENABLED_TEXT", "MEASUREMENT_EDIT_MODE_ICON", "MEASUREMENT_EDIT_MODE_LOCKED_TEXT", "MEASUREMENT_MANAGEMENT_ACTIONS", "MEASUREMENT_MANAGER_BUTTON_MIN_HEIGHT", "MEASUREMENT_MANAGER_BUTTON_MIN_WIDTH", "MEASUREMENT_TABLE_HEADERS", "QtScopeWindow"]

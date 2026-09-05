@@ -35,11 +35,14 @@ class BufferPolicy:
 class BufferSnapshot:
     queued_records: int = 0
     queued_bytes: int = 0
+    inflight_records: int = 0
+    inflight_bytes: int = 0
     peak_records: int = 0
     peak_bytes: int = 0
     enqueued_records: int = 0
     written_records: int = 0
     dropped_records: int = 0
+    write_failed_records: int = 0
     overflow_events: int = 0
     consecutive_overflows: int = 0
     bytes_written: int = 0
@@ -55,21 +58,23 @@ class BufferSnapshot:
 
 
 class BoundedRecordBuffer:
-    """FIFO buffer bounded by record count and estimated memory bytes.
+    """FIFO buffer bounded across queued plus writer-inflight records.
 
-    The caller owns synchronization. Keeping the container lock-free internally
-    lets ``LoggerWriterWorker`` use one condition lock for queue state and all
-    runtime statistics, avoiding lock-order inversions during error handling.
+    A record moves into an explicit in-flight reservation before filesystem I/O.
+    Its memory remains charged against the hard bounds until the write succeeds or
+    fails, so persistence failures and forced stops cannot create unaccounted data.
     """
 
     def __init__(self, policy: BufferPolicy) -> None:
         self.policy = policy
         self._items: deque[tuple[LoggerRecord, int]] = deque()
+        self._inflight: tuple[LoggerRecord, int] | None = None
         self._bytes = 0
         self._peak_records = 0
         self._peak_bytes = 0
         self._enqueued = 0
         self._dropped = 0
+        self._write_failed = 0
         self._overflow_events = 0
         self._consecutive_overflows = 0
 
@@ -78,7 +83,25 @@ class BoundedRecordBuffer:
         return len(self._items)
 
     @property
+    def inflight_records(self) -> int:
+        return 1 if self._inflight is not None else 0
+
+    @property
+    def resident_records(self) -> int:
+        return self.queued_records + self.inflight_records
+
+    @property
     def queued_bytes(self) -> int:
+        if self._inflight is None:
+            return self._bytes
+        return self._bytes - self._inflight[1]
+
+    @property
+    def inflight_bytes(self) -> int:
+        return 0 if self._inflight is None else self._inflight[1]
+
+    @property
+    def resident_bytes(self) -> int:
         return self._bytes
 
     @property
@@ -98,6 +121,10 @@ class BoundedRecordBuffer:
         return self._dropped
 
     @property
+    def write_failed_records(self) -> int:
+        return self._write_failed
+
+    @property
     def overflow_events(self) -> int:
         return self._overflow_events
 
@@ -106,15 +133,12 @@ class BoundedRecordBuffer:
         return self._consecutive_overflows
 
     def has_capacity(self) -> bool:
-        return (
-            len(self._items) < self.policy.max_records
-            and self._bytes < self.policy.max_bytes
-        )
+        return self.resident_records < self.policy.max_records and self._bytes < self.policy.max_bytes
 
     def try_put(self, record: LoggerRecord) -> bool:
         size = max(1, int(record.estimated_bytes))
         if (
-            len(self._items) >= self.policy.max_records
+            self.resident_records >= self.policy.max_records
             or self._bytes + size > self.policy.max_bytes
         ):
             self._dropped += 1
@@ -125,21 +149,46 @@ class BoundedRecordBuffer:
         self._bytes += size
         self._enqueued += 1
         self._consecutive_overflows = 0
-        self._peak_records = max(self._peak_records, len(self._items))
+        self._peak_records = max(self._peak_records, self.resident_records)
         self._peak_bytes = max(self._peak_bytes, self._bytes)
         return True
 
-    def pop_left(self) -> LoggerRecord | None:
+    def take_left(self) -> LoggerRecord | None:
+        if self._inflight is not None:
+            raise RuntimeError("A Logger record is already in flight.")
         if not self._items:
             return None
-        record, size = self._items.popleft()
+        self._inflight = self._items.popleft()
+        return self._inflight[0]
+
+    def commit_inflight(self) -> None:
+        if self._inflight is None:
+            raise RuntimeError("No Logger record is in flight.")
+        _record, size = self._inflight
         self._bytes -= size
+        self._inflight = None
+
+    def fail_inflight(self) -> None:
+        if self._inflight is None:
+            return
+        _record, size = self._inflight
+        self._bytes -= size
+        self._inflight = None
+        self._dropped += 1
+        self._write_failed += 1
+
+    def pop_left(self) -> LoggerRecord | None:
+        """Compatibility helper: take then immediately commit one record."""
+        record = self.take_left()
+        if record is not None:
+            self.commit_inflight()
         return record
 
     def discard_all(self) -> int:
         count = len(self._items)
+        removed_bytes = sum(size for _record, size in self._items)
         self._items.clear()
-        self._bytes = 0
+        self._bytes -= removed_bytes
         self._dropped += count
         return count
 
@@ -193,8 +242,6 @@ class LoggerWriterWorker:
     def start(self, *, ready_timeout_s: float = 5.0) -> None:
         self._thread.start()
         if not self._ready.wait(max(0.1, float(ready_timeout_s))):
-            # Revoke future writes before reporting timeout. If output creation
-            # eventually returns, the worker will observe stop_requested and close it.
             self.request_stop(drain=False)
             raise TimeoutError("Logger writer thread did not initialize in time.")
         error = self.error
@@ -231,11 +278,14 @@ class LoggerWriterWorker:
             return BufferSnapshot(
                 queued_records=self._buffer.queued_records,
                 queued_bytes=self._buffer.queued_bytes,
+                inflight_records=self._buffer.inflight_records,
+                inflight_bytes=self._buffer.inflight_bytes,
                 peak_records=self._buffer.peak_records,
                 peak_bytes=self._buffer.peak_bytes,
                 enqueued_records=self._buffer.enqueued_records,
                 written_records=self._written_records,
                 dropped_records=self._buffer.dropped_records,
+                write_failed_records=self._buffer.write_failed_records,
                 overflow_events=self._buffer.overflow_events,
                 consecutive_overflows=self._buffer.consecutive_overflows,
                 bytes_written=self._bytes_written,
@@ -255,11 +305,11 @@ class LoggerWriterWorker:
         self._segment_index = int(getattr(output, "segment_index", 0))
         self._rotation_count = int(getattr(output, "rotation_count", 0))
         self._current_segment_bytes = int(getattr(output, "current_segment_bytes", 0))
-        self._output_paths = tuple(
-            str(path) for path in getattr(output, "current_paths", ())
-        )
+        self._output_paths = tuple(str(path) for path in getattr(output, "current_paths", ()))
 
-    def _set_error_locked(self, exc: BaseException) -> None:
+    def _set_error_locked(self, exc: BaseException, *, fail_inflight: bool = False) -> None:
+        if fail_inflight:
+            self._buffer.fail_inflight()
         if self._error is None:
             self._error = exc
         self._accepting = False
@@ -273,7 +323,7 @@ class LoggerWriterWorker:
             while not self._buffer.queued_records and not self._stop_requested:
                 self._condition.wait(timeout=0.5)
             if self._buffer.queued_records:
-                return self._buffer.pop_left()
+                return self._buffer.take_left()
             return None
 
     def _run(self) -> None:
@@ -297,22 +347,29 @@ class LoggerWriterWorker:
                 started = time.monotonic()
                 try:
                     output.append(record)
-                    if self._after_write is not None:
-                        self._after_write(output)
                 except BaseException as exc:  # noqa: BLE001 - writer must fail closed.
                     with self._condition:
-                        self._set_error_locked(exc)
+                        self._set_error_locked(exc, fail_inflight=True)
                     break
 
                 elapsed = max(0.0, time.monotonic() - started)
                 with self._condition:
+                    self._buffer.commit_inflight()
                     self._written_records += 1
                     self._last_write_s = elapsed
                     self._total_write_s += elapsed
                     self._update_output_snapshot_locked(output)
+
+                if self._after_write is not None:
+                    try:
+                        self._after_write(output)
+                    except BaseException as exc:  # noqa: BLE001 - record itself is already durable.
+                        with self._condition:
+                            self._set_error_locked(exc)
+                        break
         except BaseException as exc:  # noqa: BLE001 - startup failures are reported.
             with self._condition:
-                self._set_error_locked(exc)
+                self._set_error_locked(exc, fail_inflight=True)
             self._ready.set()
         finally:
             if output is not None:
@@ -324,7 +381,7 @@ class LoggerWriterWorker:
                         self._update_output_snapshot_locked(output)
                 except BaseException as exc:  # noqa: BLE001
                     with self._condition:
-                        self._set_error_locked(exc)
+                        self._set_error_locked(exc, fail_inflight=True)
             self._ready.set()
             self._stopped.set()
 

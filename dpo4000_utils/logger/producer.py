@@ -7,7 +7,7 @@ import time
 from datetime import datetime, timezone
 from typing import Any
 
-from ..automation.triggered import trigger_acquisition_complete
+from ..automation.triggered import wait_for_fresh_single
 from ..errors import is_transport_error
 from ..waveform import WaveformRequest
 from .models import LoggerConfig, LoggerMode, LoggerRecord, WaveformSnapshot
@@ -44,25 +44,22 @@ def _event_dict(event: Any) -> dict[str, Any]:
 
 
 def _wait_mixed_single(scope: Any, cancel_event=None, timeout_s: float = 30.0) -> str:
-    scope.single_acquisition()
-    deadline = time.monotonic() + timeout_s
-    trigger_state = "ARMED"
-    while time.monotonic() < deadline:
-        if cancel_event is not None and cancel_event.is_set():
-            scope.stop_acquisition()
-            raise LoggerCaptureCancelled("Mixed Logger acquisition cancelled.")
-        active = bool(scope.get_acquisition_state())
-        trigger_state = str(scope.get_trigger_state())
-        if trigger_acquisition_complete(
-            acquisition_active=active,
-            trigger_state=trigger_state,
-        ):
-            return trigger_state
-        time.sleep(0.1)
-    scope.stop_acquisition()
-    raise TimeoutError(
-        f"Mixed Logger Single acquisition did not complete within {timeout_s:g} s."
+    wait = wait_for_fresh_single(
+        scope,
+        cancel_event,
+        poll_interval_s=0.1,
+        timeout_s=timeout_s,
     )
+    if wait.cancelled:
+        raise LoggerCaptureCancelled("Mixed Logger acquisition cancelled.")
+    if wait.timed_out:
+        raise TimeoutError(
+            f"Mixed Logger Single acquisition did not complete within {timeout_s:g} s "
+            "after observing a fresh active/armed state."
+        )
+    if not wait.completed:
+        raise RuntimeError("Mixed Logger Single acquisition ended without a verified fresh completion.")
+    return wait.trigger_state
 
 
 def capture_logger_record(
@@ -79,7 +76,12 @@ def capture_logger_record(
     }
     if config.mode is LoggerMode.MIXED:
         metadata["trigger_state"] = _wait_mixed_single(scope, cancel_event)
-        metadata["acquisition_policy"] = "single-complete-before-read"
+        metadata["acquisition_policy"] = "fresh-single-complete-before-read"
+
+    # Timestamp at the producer/acquisition boundary, before potentially slow
+    # waveform/BUS transfers and before the record enters the writer queue.
+    captured_monotonic = time.monotonic()
+    captured_utc = datetime.now(timezone.utc).isoformat()
 
     waveforms: list[WaveformSnapshot] = []
     waveform_errors: dict[str, str] = {}
@@ -134,7 +136,8 @@ def capture_logger_record(
 
     return LoggerRecord(
         sequence=int(sequence),
-        captured_utc=datetime.now(timezone.utc).isoformat(),
+        captured_utc=captured_utc,
+        captured_monotonic=captured_monotonic,
         waveforms=tuple(waveforms),
         measurements=measurements,
         measurement_errors=measurement_errors,

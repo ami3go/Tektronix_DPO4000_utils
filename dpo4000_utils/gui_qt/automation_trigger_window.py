@@ -199,7 +199,10 @@ class QtScopeWindow(AutomationA1ReviewedQtScopeWindow):
         if stop is not None:
             stop.setEnabled(trigger_active)
         if mode_combo is not None:
-            mode_combo.setEnabled(not trigger_active and not self._automation_controller.state is AutomationState.RUNNING)
+            mode_combo.setEnabled(
+                not trigger_active
+                and self._automation_controller.state is not AutomationState.RUNNING
+            )
 
     # ------------------------------------------------------------------
     # Mode dispatch

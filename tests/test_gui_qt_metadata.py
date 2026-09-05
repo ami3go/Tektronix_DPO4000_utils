@@ -8,15 +8,16 @@ except ModuleNotFoundError:  # Python 3.10 support.
     import tomli as tomllib
 
 
-def test_pyproject_exposes_pyside6_dependency_and_single_desktop_script():
+def test_pyproject_exposes_pyside6_dependency_and_supported_scripts():
     data = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
 
     optional = data["project"]["optional-dependencies"]
     assert "pyside6" in optional
     assert any(dep.startswith("PySide6") for dep in optional["pyside6"])
-    assert data["project"]["scripts"] == {
-        "dpo4000-desk": "dpo4000_utils.gui_qt.runner:main"
-    }
+
+    scripts = data["project"]["scripts"]
+    assert scripts["dpo4000-desk"] == "dpo4000_utils.gui_qt.runner:main"
+    assert scripts["dpo4000-log"] == "dpo4000_utils.logger.log_cli:main"
 
 
 def test_pyside6_requirements_file_installs_package_extra():

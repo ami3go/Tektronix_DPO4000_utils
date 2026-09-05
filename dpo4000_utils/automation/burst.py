@@ -15,7 +15,7 @@ from .artifacts import (
 )
 from .bundle import CancelSignal
 from .periodic import MAX_PERIODIC_INTERVAL_S
-from .triggered import TriggerImageConfig, trigger_acquisition_complete
+from .triggered import TriggerImageConfig, wait_for_fresh_single
 
 MIN_BURST_DELAY_S = 0.0
 
@@ -29,6 +29,7 @@ class BurstConfig:
     action: ArtifactAction | str = ArtifactAction.IMAGE
     single_acquisition: bool = False
     poll_interval_s: float = 0.5
+    trigger_timeout_s: float = 30.0
 
     def __post_init__(self) -> None:
         if isinstance(self.count, bool):
@@ -54,14 +55,16 @@ class BurstConfig:
         action = normalize_artifact_action(self.action)
         if not isinstance(self.single_acquisition, bool):
             raise ValueError("Burst Single acquisition setting must be boolean.")
-        poll = TriggerImageConfig(
+        trigger_config = TriggerImageConfig(
             poll_interval_s=float(self.poll_interval_s),
             rearm=False,
-        ).poll_interval_s
+            timeout_s=float(self.trigger_timeout_s),
+        )
         object.__setattr__(self, "count", count)
         object.__setattr__(self, "delay_s", delay)
         object.__setattr__(self, "action", action)
-        object.__setattr__(self, "poll_interval_s", poll)
+        object.__setattr__(self, "poll_interval_s", trigger_config.poll_interval_s)
+        object.__setattr__(self, "trigger_timeout_s", trigger_config.timeout_s)
 
 
 @dataclass(frozen=True)
@@ -69,6 +72,8 @@ class BurstEventResult:
     """Result from one A7 burst event."""
 
     cancelled: bool
+    timed_out: bool = False
+    observed_fresh_state: bool = False
     acquisition_active: bool | None = None
     trigger_state: str = ""
     artifacts: ArtifactCaptureResult | None = None
@@ -77,18 +82,24 @@ class BurstEventResult:
     def success(self) -> bool:
         return bool(
             not self.cancelled
+            and not self.timed_out
             and self.artifacts is not None
             and self.artifacts.success
         )
 
 
-def _cancelled_result(
+def _wait_result(
     *,
+    cancelled: bool,
+    timed_out: bool,
+    observed_fresh_state: bool,
     acquisition_active: bool | None,
     trigger_state: str,
 ) -> BurstEventResult:
     return BurstEventResult(
-        cancelled=True,
+        cancelled=cancelled,
+        timed_out=timed_out,
+        observed_fresh_state=observed_fresh_state,
         acquisition_active=acquisition_active,
         trigger_state=trigger_state,
     )
@@ -104,39 +115,33 @@ def run_burst_event(
 ) -> BurstEventResult:
     """Execute one finite-burst event through public driver APIs only.
 
-    When ``single_acquisition`` is enabled, the event arms Single and waits for the
-    completed acquisition before saving artifacts. The caller schedules the next
-    event only after this function returns, so the next event is the re-arm point.
-    Cancellation is honored while waiting for Single; an artifact write already in
-    progress is allowed to finish so Stop cannot corrupt an active file.
+    When ``single_acquisition`` is enabled, the event requires observing a fresh
+    active/armed Single acquisition before accepting ``SAVE`` as completion. The
+    bounded wait prevents a never-triggering scope from blocking the worker
+    indefinitely. Artifact writing starts only after successful completion.
     """
 
     acquisition_active: bool | None = None
     trigger_state = ""
+    observed_fresh = False
     if config.single_acquisition:
-        scope.single_acquisition()
-        acquisition_active = True
-        trigger_state = "ARMED"
-        while True:
-            if cancel.is_set():
-                scope.stop_acquisition()
-                return _cancelled_result(
-                    acquisition_active=acquisition_active,
-                    trigger_state=trigger_state,
-                )
-            acquisition_active = bool(scope.get_acquisition_state())
-            trigger_state = str(scope.get_trigger_state())
-            if trigger_acquisition_complete(
-                acquisition_active=acquisition_active,
-                trigger_state=trigger_state,
-            ):
-                break
-            if cancel.wait(config.poll_interval_s):
-                scope.stop_acquisition()
-                return _cancelled_result(
-                    acquisition_active=acquisition_active,
-                    trigger_state=trigger_state,
-                )
+        wait = wait_for_fresh_single(
+            scope,
+            cancel,
+            poll_interval_s=config.poll_interval_s,
+            timeout_s=config.trigger_timeout_s,
+        )
+        acquisition_active = wait.acquisition_active
+        trigger_state = wait.trigger_state
+        observed_fresh = wait.observed_fresh_state
+        if not wait.completed:
+            return _wait_result(
+                cancelled=wait.cancelled,
+                timed_out=wait.timed_out,
+                observed_fresh_state=wait.observed_fresh_state,
+                acquisition_active=wait.acquisition_active,
+                trigger_state=wait.trigger_state,
+            )
 
     artifacts = capture_artifacts(
         scope,
@@ -146,6 +151,8 @@ def run_burst_event(
     )
     return BurstEventResult(
         cancelled=False,
+        timed_out=False,
+        observed_fresh_state=observed_fresh,
         acquisition_active=acquisition_active,
         trigger_state=trigger_state,
         artifacts=artifacts,

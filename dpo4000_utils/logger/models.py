@@ -117,6 +117,7 @@ class WaveformSnapshot:
 class LoggerRecord:
     sequence: int
     captured_utc: str
+    captured_monotonic: float = 0.0
     waveforms: tuple[WaveformSnapshot, ...] = ()
     measurements: Mapping[int, float | None] = field(default_factory=dict)
     measurement_errors: Mapping[int, str] = field(default_factory=dict)

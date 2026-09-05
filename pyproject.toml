@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dpo4000-utils"
-version = "0.6.58"
+version = "0.6.72"
 description = "Python driver and PySide6 DPO4000 Desk GUI for Tektronix DPO4000/DPO4054 oscilloscopes"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -17,6 +17,7 @@ pyside6 = ["PySide6>=6.7"]
 
 [project.scripts]
 dpo4000-desk = "dpo4000_utils.gui_qt.runner:main"
+dpo4000-log = "dpo4000_utils.logger.log_cli:main"
 
 [tool.setuptools]
 py-modules = ["tektronix_utils"]
@@ -35,3 +36,22 @@ markers = ["hardware: tests that require a connected Tektronix DPO4000-family os
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+
+[tool.ruff.lint]
+# Keep CI focused on release-blocking Python correctness while legacy style debt is
+# cleaned incrementally. Explicit selection also prevents Ruff-version defaults from
+# silently changing the enforced policy.
+select = ["E4", "E7", "E9", "F"]
+
+[tool.ruff.lint.per-file-ignores]
+# Frozen pre-existing unused-import debt. These allowances must shrink as files are
+# cleaned; new F401 violations elsewhere remain CI failures.
+"dpo4000_utils/gui_qt/automation_measurement_window.py" = ["F401"]
+"dpo4000_utils/gui_qt/automation_profiles_window.py" = ["F401"]
+"dpo4000_utils/gui_qt/automation_retention_window.py" = ["F401"]
+"dpo4000_utils/gui_qt/automation_trigger_bundle_window.py" = ["F401"]
+"dpo4000_utils/gui_qt/automation_waveform_window.py" = ["F401"]
+"tests/test_automation_profiles_review.py" = ["F401"]
+"tests/test_logger_l5.py" = ["F401"]
+# Intentional backwards-compatible re-export shim.
+"tektronix_utils.py" = ["F403"]

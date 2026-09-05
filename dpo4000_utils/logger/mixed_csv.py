@@ -4,20 +4,26 @@ from __future__ import annotations
 
 import csv
 import json
-import os
 from pathlib import Path
 
 from .models import LoggerRecord
+from .sync import CsvSyncController, CsvSyncPolicy
 
 
 class MixedCsvStreamWriter:
-    """Store waveform, measurement and BUS content under one acquisition sequence."""
+    """Store waveform, measurement and BUS content under one acquisition sequence.
 
-    def __init__(self, path: str | Path) -> None:
+    Each logical record is framed by ``RECORD_BEGIN`` and ``RECORD_END`` rows.
+    ``RECORD_END`` is emitted only after all child rows were written, so a crash
+    cannot make an incomplete record appear complete during recovery/inspection.
+    """
+
+    def __init__(self, path: str | Path, *, sync_policy: CsvSyncPolicy | None = None) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._handle = self.path.open("x", encoding="utf-8", newline="")
         self._writer = csv.writer(self._handle)
+        self._sync = CsvSyncController(self._handle, self.path, sync_policy)
         self._closed = False
         self.records_written = 0
         self.bytes_written = 0
@@ -25,20 +31,16 @@ class MixedCsvStreamWriter:
             "row_type", "record_sequence", "captured_utc", "source", "index_or_time",
             "value", "status", "details_json",
         ])
-        self._flush()
-
-    def _flush(self) -> None:
-        self._handle.flush()
-        os.fsync(self._handle.fileno())
-        self.bytes_written = self.path.stat().st_size
+        self.bytes_written = self._sync.force()
 
     def append(self, record: LoggerRecord) -> None:
         if self._closed:
             raise RuntimeError("Mixed CSV writer is closed.")
+        metadata_json = json.dumps(dict(record.metadata), sort_keys=True, default=str)
+        final_status = "partial" if record.metadata.get("partial") else "complete"
         self._writer.writerow([
-            "RECORD", record.sequence, record.captured_utc, "", "", "",
-            "partial" if record.metadata.get("partial") else "complete",
-            json.dumps(dict(record.metadata), sort_keys=True, default=str),
+            "RECORD_BEGIN", record.sequence, record.captured_utc, "", "", "",
+            "begin", metadata_json,
         ])
         for slot, value in sorted(record.measurements.items()):
             error = record.measurement_errors.get(slot, "")
@@ -67,15 +69,21 @@ class MixedCsvStreamWriter:
                     "WAVE", record.sequence, record.captured_utc, waveform.source,
                     waveform.time_at(index), engineering, "", str(index),
                 ])
+        self._writer.writerow([
+            "RECORD_END", record.sequence, record.captured_utc, "", "", "",
+            final_status, metadata_json,
+        ])
         self.records_written += 1
-        self._flush()
+        self.bytes_written = self._sync.after_record()
 
     def close(self) -> None:
         if self._closed:
             return
-        self._flush()
-        self._handle.close()
-        self._closed = True
+        try:
+            self.bytes_written = self._sync.close()
+        finally:
+            self._handle.close()
+            self._closed = True
 
 
 __all__ = ["MixedCsvStreamWriter"]

@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from ..errors import is_transport_error
-from .triggered import TriggerImageConfig, trigger_acquisition_complete
+from .triggered import wait_for_fresh_single
 
 
 class CancelSignal(Protocol):
@@ -31,6 +31,8 @@ class TriggerBundleResult:
     cancelled: bool
     acquisition_active: bool
     trigger_state: str
+    timed_out: bool = False
+    observed_fresh_state: bool = False
     image_path: Path | None = None
     csv_path: Path | None = None
     point_count: int = 0
@@ -86,6 +88,7 @@ def _artifact_failure_result(
         cancelled=False,
         acquisition_active=acquisition_active,
         trigger_state=trigger_state,
+        observed_fresh_state=True,
         image_path=image_path,
         csv_path=csv_path,
         point_count=point_count,
@@ -100,93 +103,84 @@ def acquire_trigger_bundle(
     poll_interval_s: float,
     image_path: str | Path,
     csv_path: str | Path,
+    timeout_s: float = 30.0,
 ) -> TriggerBundleResult:
-    """Arm Single, wait for completion, then save image and CSV before any re-arm.
+    """Arm a fresh Single, then save image and CSV before any re-arm.
 
-    All scope-facing calls use the public driver API. PNG and CSV are therefore
-    read while the same completed Single acquisition remains stopped. The caller
-    decides whether to re-arm only after this function returns successfully.
+    Completion is accepted only after the new acquisition was visibly active or
+    armed. A stale pre-existing ``SAVE`` state cannot satisfy the wait. Timeout and
+    cancellation both stop acquisition without writing evidence artifacts.
 
     Non-transport artifact failures are returned as structured partial results so
     a disk/serialization problem does not masquerade as a lost VISA connection.
     Transport failures still propagate to the existing session invalidation path.
     """
 
-    poll = TriggerImageConfig(poll_interval_s=poll_interval_s, rearm=False).poll_interval_s
     requested_image = Path(image_path)
     requested_csv = Path(csv_path)
+    wait = wait_for_fresh_single(
+        scope,
+        cancel,
+        poll_interval_s=poll_interval_s,
+        timeout_s=timeout_s,
+    )
+    if not wait.completed:
+        error = ""
+        if wait.timed_out:
+            error = f"Single acquisition timed out after {timeout_s:g} s."
+        return TriggerBundleResult(
+            completed=False,
+            cancelled=wait.cancelled,
+            timed_out=wait.timed_out,
+            observed_fresh_state=wait.observed_fresh_state,
+            acquisition_active=wait.acquisition_active,
+            trigger_state=wait.trigger_state,
+            error=error,
+        )
 
-    scope.single_acquisition()
-    last_active = True
-    last_trigger_state = "ARMED"
+    try:
+        saved_image = Path(scope.save_image_path(requested_image))
+    except Exception as exc:  # noqa: BLE001 - classify transport vs artifact failure.
+        return _artifact_failure_result(
+            exc=exc,
+            acquisition_active=wait.acquisition_active,
+            trigger_state=wait.trigger_state,
+            image_path=None,
+            csv_path=None,
+            point_count=0,
+            operation="Image save failed",
+        )
 
-    while True:
-        if cancel.is_set():
-            scope.stop_acquisition()
-            return TriggerBundleResult(
-                completed=False,
-                cancelled=True,
-                acquisition_active=last_active,
-                trigger_state=last_trigger_state,
-            )
-
-        last_active = bool(scope.get_acquisition_state())
-        last_trigger_state = str(scope.get_trigger_state())
-        if trigger_acquisition_complete(
-            acquisition_active=last_active,
-            trigger_state=last_trigger_state,
-        ):
-            try:
-                saved_image = Path(scope.save_image_path(requested_image))
-            except Exception as exc:  # noqa: BLE001 - classify transport vs artifact failure.
-                return _artifact_failure_result(
-                    exc=exc,
-                    acquisition_active=last_active,
-                    trigger_state=last_trigger_state,
-                    image_path=None,
-                    csv_path=None,
-                    point_count=0,
-                    operation="Image save failed",
-                )
-
-            point_count = 0
-            try:
-                point_count = int(scope.get_record_length())
-                saved_csv = Path(
-                    scope.save_all_channels_to_single_csv(
-                        requested_csv,
-                        point_count=point_count,
-                    )
-                )
-            except Exception as exc:  # noqa: BLE001 - classify transport vs artifact failure.
-                return _artifact_failure_result(
-                    exc=exc,
-                    acquisition_active=last_active,
-                    trigger_state=last_trigger_state,
-                    image_path=saved_image,
-                    csv_path=None,
-                    point_count=point_count,
-                    operation="CSV save failed",
-                )
-
-            return TriggerBundleResult(
-                completed=True,
-                cancelled=False,
-                acquisition_active=last_active,
-                trigger_state=last_trigger_state,
-                image_path=saved_image,
-                csv_path=saved_csv,
+    point_count = 0
+    try:
+        point_count = int(scope.get_record_length())
+        saved_csv = Path(
+            scope.save_all_channels_to_single_csv(
+                requested_csv,
                 point_count=point_count,
             )
+        )
+    except Exception as exc:  # noqa: BLE001 - classify transport vs artifact failure.
+        return _artifact_failure_result(
+            exc=exc,
+            acquisition_active=wait.acquisition_active,
+            trigger_state=wait.trigger_state,
+            image_path=saved_image,
+            csv_path=None,
+            point_count=point_count,
+            operation="CSV save failed",
+        )
 
-        if cancel.wait(poll):
-            scope.stop_acquisition()
-            return TriggerBundleResult(
-                completed=False,
-                cancelled=True,
-                acquisition_active=last_active,
-                trigger_state=last_trigger_state,
-            )
+    return TriggerBundleResult(
+        completed=True,
+        cancelled=False,
+        acquisition_active=wait.acquisition_active,
+        trigger_state=wait.trigger_state,
+        observed_fresh_state=True,
+        image_path=saved_image,
+        csv_path=saved_csv,
+        point_count=point_count,
+    )
 
 
 __all__ = [
