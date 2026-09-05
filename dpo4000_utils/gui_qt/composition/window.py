@@ -24,9 +24,10 @@ class QtScopeWindow(QMainWindow):
     """Production v0.8 shell with controllers instead of feature-window inheritance.
 
     The mature v0.7 feature surface is embedded as a compatibility widget while
-    its cross-cutting services are routed through explicit composed controllers.
-    Therefore the launched class has a stable, shallow Qt MRO; historical
-    ``QtScopeWindow`` subclasses are no longer ancestors of the production shell.
+    page construction/navigation and cross-cutting services are routed through
+    explicit composed controllers. The launched class therefore has a stable,
+    shallow Qt MRO; historical ``QtScopeWindow`` subclasses are no longer
+    ancestors of the production shell.
     """
 
     def __init__(self, preferences_path: str | Path | None = None) -> None:
@@ -37,8 +38,6 @@ class QtScopeWindow(QMainWindow):
         self._legacy_adapter = adapter
         self._feature_surface = surface
 
-        # Snapshot top-level presentation before converting the mature window to
-        # an embedded widget. The host is now the sole real QMainWindow.
         title = surface.windowTitle()
         size = surface.size()
         style_sheet = surface.styleSheet()
@@ -56,7 +55,10 @@ class QtScopeWindow(QMainWindow):
         # through explicit composition services.
         self.log_controller = LogController(surface._append_log)
         self.scope_controller = ScopeDispatchController(surface._run_action)
-        self.page_controller = PageController(surface._select_drawer_page)
+        self.page_controller = PageController(
+            surface._select_drawer_page,
+            surface._ensure_control_page_built,
+        )
         self.output_controller = OutputPathController(
             surface._configured_output_folder,
             surface._build_output_path,
@@ -75,6 +77,7 @@ class QtScopeWindow(QMainWindow):
 
         surface._append_log = self.log_controller.append
         surface._run_action = self.scope_controller.run_action
+        surface._ensure_control_page_built = self.page_controller.ensure_built
         surface._select_drawer_page = self.page_controller.select
         surface._configured_output_folder = self.output_controller.configured_folder
         surface._build_output_path = self.output_controller.build_path
@@ -89,6 +92,11 @@ class QtScopeWindow(QMainWindow):
     def feature_surface(self):
         """Return the compatibility feature widget for migration/testing only."""
         return self._feature_surface
+
+    @property
+    def pages(self):
+        """Named composed page controllers for Connection through Log."""
+        return self.page_controller.pages
 
     def statusBar(self):  # noqa: N802 - Qt API name.
         """Expose the mature status strip as the shell status bar contract."""
