@@ -1,8 +1,8 @@
-"""Final DPO4000 Desk Preview/Image and optional retained-session semantics.
+"""Final DPO4000 Desk Preview/Image and retained-session semantics.
 
 The user-facing quick actions distinguish transient screen preview from persistent
-image save. Connection options can additionally retain one VISA session between
-operations; when disabled the established open/operate/close lifecycle is used.
+image save. Scope operations are serialized through one worker-owned DPO4054
+session and complete asynchronously on the GUI thread.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QCloseEvent, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
 
 from ..errors import is_transport_error
 from .bus_window import QtScopeWindow as BusQtScopeWindow
-from .scope_worker import PersistentScopeSession
+from .scope_worker import PersistentScopeSession, WorkerResult
 
 
 QUICK_ACTION_TOOLTIPS = {
@@ -42,11 +42,13 @@ QUICK_ACTION_TOOLTIPS = {
 
 
 class QtScopeWindow(BusQtScopeWindow):
-    """Final launched window with Preview/Image and optional persistent VISA session."""
+    """Final launched window with Preview/Image and persistent worker-owned VISA."""
 
     def __init__(self, *args, **kwargs) -> None:
         self._persistent_scope_session: PersistentScopeSession | None = None
         self._persistent_session_dirty = False
+        self._close_requested = False
+        self._scope_shutdown_complete = False
         super().__init__(*args, **kwargs)
         self.keep_session.toggled.connect(self._on_keep_session_toggled)
         self._connect_persistent_session_invalidation_signals()
@@ -76,16 +78,17 @@ class QtScopeWindow(BusQtScopeWindow):
             form = options_card.layout()
 
         self.keep_session = QCheckBox("Keep session")
-        self.keep_session.setChecked(False)
+        self.keep_session.setChecked(True)
         self.keep_session.setToolTip(
-            "Keep one VISA connection open and reuse it across scope operations. "
-            "Disable to open and close a new session for every operation."
+            "Recommended: keep one worker-owned VISA connection open and reuse it "
+            "across scope operations. Disable only when a backend requires reconnecting "
+            "after every operation."
         )
         if isinstance(form, QFormLayout):
             form.addRow(self.keep_session)
             hint = QLabel(
-                "Enabled: reuse one worker-owned VISA session for faster repeated operations "
-                "such as Preview. Disabled: open and close the scope for every operation."
+                "Enabled (recommended): reuse one serialized worker-owned VISA session. "
+                "Disabled: the same worker closes the scope after each completed operation."
             )
             hint.setObjectName("MutedLabel")
             hint.setWordWrap(True)
@@ -95,7 +98,7 @@ class QtScopeWindow(BusQtScopeWindow):
     def _apply_preferences(self, preferences) -> None:
         super()._apply_preferences(preferences)
         if hasattr(self, "keep_session"):
-            self.keep_session.setChecked(bool(getattr(preferences, "keep_session", False)))
+            self.keep_session.setChecked(bool(getattr(preferences, "keep_session", True)))
 
     def _collect_preferences(self):
         preferences = super()._collect_preferences()
@@ -104,31 +107,34 @@ class QtScopeWindow(BusQtScopeWindow):
         return preferences
 
     def _connect_persistent_session_invalidation_signals(self) -> None:
-        """Close a retained session when its selected connection definition changes."""
+        """Close a retained scope when its selected connection definition changes."""
         self.resource.currentTextChanged.connect(self._on_connection_definition_changed)
         self.eth_host.textChanged.connect(self._on_connection_definition_changed)
         self.eth_port.textChanged.connect(self._on_connection_definition_changed)
         self.eth_protocol.currentTextChanged.connect(self._on_connection_definition_changed)
+        self.timeout_ms.textChanged.connect(self._on_connection_definition_changed)
         self.usb_mode.toggled.connect(self._on_connection_definition_changed)
         self.eth_mode.toggled.connect(self._on_connection_definition_changed)
 
     def _on_keep_session_toggled(self, checked: bool) -> None:
         if checked:
             self.statusBar().showMessage(
-                "Keep session enabled; the next scope operation will open and retain VISA"
+                "Keep session enabled; scope operations will reuse one worker-owned VISA session"
             )
             return
-        self._release_persistent_scope_session()
-        self.statusBar().showMessage("Keep session disabled; using one VISA session per operation")
+        self._close_retained_scope(log=True)
+        self.statusBar().showMessage(
+            "Keep session disabled; the worker will close VISA after each operation"
+        )
 
     def _on_connection_definition_changed(self, *_args) -> None:
         manager = self._persistent_scope_session
-        if manager is None or not self.keep_session.isChecked():
+        if manager is None:
             return
         if getattr(self, "_operation_active", False):
             self._persistent_session_dirty = True
             return
-        self._release_persistent_scope_session()
+        self._close_retained_scope(log=False)
         self.statusBar().showMessage(
             "Connection changed; retained session will reopen on the next operation"
         )
@@ -140,23 +146,51 @@ class QtScopeWindow(BusQtScopeWindow):
             self._persistent_scope_session = manager
         return manager
 
+    def _close_retained_scope(
+        self,
+        *,
+        log: bool = True,
+        on_finished: Callable[[WorkerResult], None] | None = None,
+    ) -> None:
+        manager = self._persistent_scope_session
+        self._persistent_session_dirty = False
+        if manager is None or not manager.is_running:
+            if on_finished is not None:
+                on_finished(WorkerResult())
+            return
+
+        def finished(result: WorkerResult) -> None:
+            if result.error is not None:
+                if log:
+                    self._append_log(f"Could not close retained scope session: {result.error}")
+            elif log:
+                self._append_log("Retained scope connection closed")
+            if on_finished is not None:
+                on_finished(result)
+
+        manager.close_scope_async(on_finished=finished)
+
     def _release_persistent_scope_session(self, *, log: bool = True) -> None:
+        """Asynchronously close the scope and stop its owning worker thread."""
         manager = self._persistent_scope_session
         self._persistent_scope_session = None
         self._persistent_session_dirty = False
         if manager is None:
             return
-        result = manager.shutdown()
-        manager.deleteLater()
-        if result.error is not None:
-            if log:
-                self._append_log(f"Could not close retained scope session: {result.error}")
-            return
-        if log:
-            self._append_log("Retained scope session closed")
+        manager.cancel_all()
+
+        def finished(result: WorkerResult) -> None:
+            if result.error is not None:
+                if log:
+                    self._append_log(f"Could not stop retained scope worker: {result.error}")
+            elif log:
+                self._append_log("Retained scope worker stopped")
+            manager.deleteLater()
+
+        manager.shutdown_async(on_finished=finished)
 
     def _finish_non_transport_action_error(self, description: str, exc: BaseException) -> None:
-        """Report validation/protocol errors without visually dropping a kept connection."""
+        """Report validation/protocol errors without visually dropping a live session."""
         error_text = str(exc).strip() or exc.__class__.__name__
         self._operation_active = False
         self._last_action = f"Failed: {description}"
@@ -167,10 +201,28 @@ class QtScopeWindow(BusQtScopeWindow):
         self._message(description, error_text, error=True)
         return None
 
-    def _run_action(self, description: str, callback: Callable[[Any], object]) -> object | None:
-        keep_session = getattr(self, "keep_session", None)
-        if keep_session is None or not keep_session.isChecked():
-            return super()._run_action(description, callback)
+    def _finish_cancelled_action(self, description: str) -> None:
+        self._operation_active = False
+        self._last_action = f"Cancelled: {description}"
+        self.statusBar().showMessage(self._last_action)
+        self._append_log(self._last_action)
+        self._update_scope_control_enabled()
+        self._update_status_strip()
+
+    def _run_action(
+        self,
+        description: str,
+        callback: Callable[[Any], object],
+        *,
+        on_success: Callable[[object], None] | None = None,
+        on_error: Callable[[BaseException], None] | None = None,
+    ) -> None:
+        """Queue one serialized persistent-session action and return immediately."""
+        if getattr(self, "_operation_active", False):
+            self.statusBar().showMessage(
+                f"Scope busy; finish the current operation before: {description}"
+            )
+            return
 
         self._operation_active = True
         self._last_action = description
@@ -185,30 +237,116 @@ class QtScopeWindow(BusQtScopeWindow):
             timeout_ms = self._timeout()
         except Exception as exc:  # noqa: BLE001 - exact GUI validation diagnostic.
             self.keep_session.setEnabled(True)
-            return self._finish_non_transport_action_error(description, exc)
+            self._finish_non_transport_action_error(description, exc)
+            if on_error is not None:
+                on_error(exc)
+            return
 
         manager = self._persistent_session_manager()
-        try:
-            result = manager.execute(resource, timeout_ms, callback)
-        finally:
+
+        def finalize_result(result: WorkerResult) -> None:
             self.keep_session.setEnabled(True)
+            if self._close_requested:
+                self._operation_active = False
+                if result.error is not None:
+                    self._append_log(f"Scope action failed during shutdown: {result.error}")
+                elif result.cancelled:
+                    self._append_log(f"Scope action cancelled during shutdown: {description}")
+                self._update_scope_control_enabled()
+                self._update_status_strip()
+                return
 
-        if self._persistent_session_dirty:
-            self._release_persistent_scope_session()
+            if result.cancelled:
+                self._finish_cancelled_action(description)
+                return
+            if result.error is not None:
+                if is_transport_error(result.error):
+                    self._finish_scope_action_error(description, result.error)
+                else:
+                    self._finish_non_transport_action_error(description, result.error)
+                if on_error is not None:
+                    on_error(result.error)
+                return
 
-        if result.error is not None:
-            if is_transport_error(result.error):
-                return self._finish_scope_action_error(description, result.error)
-            return self._finish_non_transport_action_error(description, result.error)
-        return self._finish_scope_action_success(description, result.value)
+            value = self._finish_scope_action_success(description, result.value)
+            if on_success is not None:
+                on_success(value)
+
+        def operation_finished(result: WorkerResult) -> None:
+            should_close = self._persistent_session_dirty or not self.keep_session.isChecked()
+            self._persistent_session_dirty = False
+            if should_close and not self._close_requested:
+                self._close_retained_scope(
+                    log=False,
+                    on_finished=lambda close_result: self._finish_after_scope_close(
+                        description,
+                        result,
+                        close_result,
+                        finalize_result,
+                    ),
+                )
+                return
+            finalize_result(result)
+
+        try:
+            manager.submit(
+                resource,
+                timeout_ms,
+                callback,
+                on_finished=operation_finished,
+            )
+        except Exception as exc:  # noqa: BLE001 - queue/session setup diagnostic.
+            self.keep_session.setEnabled(True)
+            self._finish_non_transport_action_error(description, exc)
+            if on_error is not None:
+                on_error(exc)
+
+    def _finish_after_scope_close(
+        self,
+        description: str,
+        operation_result: WorkerResult,
+        close_result: WorkerResult,
+        finalize: Callable[[WorkerResult], None],
+    ) -> None:
+        if close_result.error is not None and operation_result.error is None:
+            self._append_log(
+                f"Scope close after '{description}' failed: {close_result.error}"
+            )
+        finalize(operation_result)
 
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802 - Qt API name.
-        if getattr(self, "_operation_active", False) and self._persistent_scope_session is not None:
-            self.statusBar().showMessage("A scope operation is still active; close after it finishes")
-            event.ignore()
+        if self._scope_shutdown_complete:
+            super().closeEvent(event)
             return
-        self._release_persistent_scope_session(log=False)
-        super().closeEvent(event)
+
+        manager = self._persistent_scope_session
+        if manager is None or not manager.is_running:
+            self._scope_shutdown_complete = True
+            super().closeEvent(event)
+            return
+
+        event.ignore()
+        if self._close_requested:
+            return
+
+        self._close_requested = True
+        self._operation_active = True
+        self._update_scope_control_enabled()
+        self._update_status_strip()
+        self.statusBar().showMessage("Closing scope session safely…")
+        self._append_log("Application close requested; cancelling queued scope work")
+        manager.cancel_all()
+
+        def shutdown_finished(result: WorkerResult) -> None:
+            if result.error is not None:
+                self._append_log(f"Scope worker shutdown diagnostic: {result.error}")
+            self._persistent_scope_session = None
+            self._operation_active = False
+            self._scope_shutdown_complete = True
+            manager.deleteLater()
+            QTimer.singleShot(0, self.close)
+
+        manager.shutdown_async(on_finished=shutdown_finished)
 
     # ------------------------------------------------------------------
     # Preview / image actions
@@ -275,11 +413,13 @@ class QtScopeWindow(BusQtScopeWindow):
                 scope.rearm_trigger_after_image(trigger_channel=trigger_channel)
             return png_data
 
-        result = self._run_action("Refreshing scope preview", action)
-        if isinstance(result, (bytes, bytearray, memoryview)):
-            self._last_image_path = None
-            if self._show_preview_png(bytes(result)):
-                self.statusBar().showMessage("Scope preview refreshed (not saved)")
+        def apply_preview(result: object) -> None:
+            if isinstance(result, (bytes, bytearray, memoryview)):
+                self._last_image_path = None
+                if self._show_preview_png(bytes(result)):
+                    self.statusBar().showMessage("Scope preview refreshed (not saved)")
+
+        self._run_action("Refreshing scope preview", action, on_success=apply_preview)
 
     def save_png_image(self) -> None:
         """Save a persistent PNG image using the configured naming/output settings."""
@@ -300,8 +440,9 @@ class QtScopeWindow(BusQtScopeWindow):
                 scope.rearm_trigger_after_image(trigger_channel=trigger_channel)
             return str(saved_path)
 
-        result = self._run_action(description, action)
-        if isinstance(result, str):
+        def apply_saved_image(result: object) -> None:
+            if not isinstance(result, str):
+                return
             saved_path = Path(result)
             self._last_image_path = saved_path
             try:
@@ -310,6 +451,8 @@ class QtScopeWindow(BusQtScopeWindow):
                 self._load_preview(saved_path)
                 return
             self._show_preview_png(png_data)
+
+        self._run_action(description, action, on_success=apply_saved_image)
 
     def copy_preview(self) -> None:
         """Copy the current full-resolution preview, whether transient or file-backed."""
