@@ -3,8 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 
 
-def test_qt_production_window_keeps_polish_preview_bus_desktop_api_chain():
+def test_qt_production_window_composes_mature_feature_chain_as_compatibility_surface():
     runner = Path("dpo4000_utils/gui_qt/runner.py").read_text(encoding="utf-8")
+    window = Path("dpo4000_utils/gui_qt/composition/window.py").read_text(encoding="utf-8")
+    legacy = Path("dpo4000_utils/gui_qt/composition/legacy_surface.py").read_text(encoding="utf-8")
     production = Path("dpo4000_utils/gui_qt/production_hardening_window.py").read_text(
         encoding="utf-8"
     )
@@ -13,7 +15,10 @@ def test_qt_production_window_keeps_polish_preview_bus_desktop_api_chain():
     bus = Path("dpo4000_utils/gui_qt/bus_window.py").read_text(encoding="utf-8")
     desktop = Path("dpo4000_utils/gui_qt/desktop_window.py").read_text(encoding="utf-8")
 
-    assert "from .production_hardening_window import QtScopeWindow" in runner
+    assert "from .composition.window import QtScopeWindow" in runner
+    assert "class QtScopeWindow(QMainWindow)" in window
+    assert "LegacyFeatureSurface" in window
+    assert "MilestoneAFeatureWindow" in legacy
     assert "LoggerReportReviewedQtScopeWindow" in production
     assert "from .preview_actions_window import QtScopeWindow as PreviewQtScopeWindow" in polish
     assert "class QtScopeWindow(PreviewQtScopeWindow)" in polish

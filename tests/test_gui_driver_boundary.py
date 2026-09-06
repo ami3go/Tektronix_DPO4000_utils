@@ -50,20 +50,25 @@ class RawScopeAttributeVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
 
-def test_desktop_entrypoint_uses_production_hardening_window():
+def test_desktop_entrypoint_uses_composition_production_window():
     runner = (ROOT / "dpo4000_utils" / "gui_qt" / "runner.py").read_text(encoding="utf-8")
     package_init = (ROOT / "dpo4000_utils" / "gui_qt" / "__init__.py").read_text(encoding="utf-8")
-    production = (
-        ROOT / "dpo4000_utils" / "gui_qt" / "production_hardening_window.py"
+    window = (
+        ROOT / "dpo4000_utils" / "gui_qt" / "composition" / "window.py"
+    ).read_text(encoding="utf-8")
+    legacy = (
+        ROOT / "dpo4000_utils" / "gui_qt" / "composition" / "legacy_surface.py"
     ).read_text(encoding="utf-8")
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
 
-    final_import = "from .production_hardening_window import QtScopeWindow"
+    final_import = "from .composition.window import QtScopeWindow"
     assert final_import in runner
     assert final_import in package_init
-    assert "LoggerReportReviewedQtScopeWindow" in production
-    assert "wait_for_fresh_single" in production
+    assert "class QtScopeWindow(QMainWindow)" in window
+    assert "MilestoneAFeatureWindow" not in window
+    assert "MilestoneAFeatureWindow" in legacy
     assert 'dpo4000-desk = "dpo4000_utils.gui_qt.runner:main"' in pyproject
+    assert 'version = "0.8.0"' in pyproject
     assert "dpo4000-gui" not in pyproject
 
 

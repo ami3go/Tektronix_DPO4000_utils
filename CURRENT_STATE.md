@@ -1,8 +1,10 @@
 # Current State
 
-As of **v0.7.0**, this repository has one desktop frontend: **DPO4000 Desk**, implemented with PySide6.
+As of **v0.8.0**, this repository has one desktop frontend: **DPO4000 Desk**, implemented with PySide6.
 
 The reusable `dpo4000_utils` driver owns instrument communication and behavior. The launched desktop application uses one serialized, worker-owned DPO4054/VISA session by default and completes instrument operations asynchronously through Qt callbacks. The GUI thread does not wait for scope I/O through nested `QEventLoop` calls.
+
+The v0.8 production entry point launches a **single shallow `QMainWindow`** from `dpo4000_utils.gui_qt.composition.window`. Scope dispatch, lazy page construction/navigation, preferences, logging, output-path handling, window chrome, and shutdown are explicit composed controller dependencies. The mature v0.7 feature implementation is isolated behind one compatibility adapter and is no longer part of the launched window's inheritance hierarchy. This keeps all existing features available while allowing legacy `*_window.py` shims to be retired incrementally without changing the production shell contract.
 
 Current desktop capabilities include:
 
@@ -30,4 +32,4 @@ Release builds use `constraints-release.txt` and publish the resolved Python dep
 
 The former Tk frontend, its console entry point, archived Tk snapshots, and Tk-specific tests have been removed.
 
-The historical PySide6 window-inheritance implementation remains behind the launched UI in v0.7.0. Its replacement with a composed shell/pages/controllers architecture is the separate v0.8.0 milestone.
+The legacy PySide6 inheritance modules remain compatibility implementation shims in v0.8. They are not the production launch class and architecture CI prevents them from returning to the production MRO.

@@ -16,10 +16,13 @@ def _uses_name(node: ast.AST, name: str) -> bool:
     return any(isinstance(item, ast.Name) and item.id == name for item in ast.walk(node))
 
 
-def test_runner_launches_milestone_a_runtime_shell() -> None:
+def test_runner_launches_composition_shell_with_milestone_a_behind_adapter() -> None:
     runner = Path("dpo4000_utils/gui_qt/runner.py").read_text(encoding="utf-8")
-    assert "from .milestone_a_window import QtScopeWindow" in runner
-    assert "ProductionHardenedQtScopeWindow" in runner
+    legacy = Path("dpo4000_utils/gui_qt/composition/legacy_surface.py").read_text(
+        encoding="utf-8"
+    )
+    assert "from .composition.window import QtScopeWindow" in runner
+    assert "from ..milestone_a_window import QtScopeWindow as MilestoneAFeatureWindow" in legacy
 
 
 def test_milestone_a_gateway_is_async_and_preserves_cross_cutting_hooks() -> None:
