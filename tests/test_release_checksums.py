@@ -1,11 +1,20 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 from pathlib import Path
 
 import pytest
 
-from scripts.generate_release_checksums import generate_manifest, manifest_lines, release_files
+_SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "generate_release_checksums.py"
+_SPEC = importlib.util.spec_from_file_location("generate_release_checksums", _SCRIPT)
+assert _SPEC is not None and _SPEC.loader is not None
+_MODULE = importlib.util.module_from_spec(_SPEC)
+_SPEC.loader.exec_module(_MODULE)
+
+generate_manifest = _MODULE.generate_manifest
+manifest_lines = _MODULE.manifest_lines
+release_files = _MODULE.release_files
 
 
 def _digest(data: bytes) -> str:
