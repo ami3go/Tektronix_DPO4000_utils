@@ -1,24 +1,40 @@
 # Build DPO4000 Desk executables
 
-The current application package target is the DPO4000 Desk desktop GUI:
+The desktop package target is:
 
 ```text
 dpo4000-desk
 ```
 
-DPO4000 Desk uses a frameless desktop window so the page buttons sit in the same row as the window title. The build scripts use PyInstaller and should be run on the same operating system as the artifact you want to distribute:
+DPO4000 Desk is packaged with PyInstaller. Build Windows artifacts on Windows and Linux artifacts on Linux; these scripts do not cross-compile PyInstaller applications.
 
-- build Windows application-folder artifacts on Windows
-- build Linux artifacts on Linux
-- build Linux `.deb`, AppImage, and Flatpak bundle artifacts on Linux
+The generated application includes Python and collected Python packages, but **does not replace the system VISA runtime** required for real oscilloscope communication.
 
-PyInstaller cross-compilation is not supported by these scripts.
+## Reproducible v0.7 release environment
 
-The generated executable includes Python and collected Python packages, but it does **not** replace the system VISA runtime required to communicate with the oscilloscope.
+Normal project dependency metadata remains range-based for downstream users. Official release builds additionally use:
+
+```text
+constraints-release.txt
+```
+
+which pins the tested release/build/runtime toolchain. The GitHub release workflow installs through this file and stores the resolved `pip freeze` output with each platform artifact. This gives every shipped binary an auditable dependency environment.
+
+For a local release-equivalent environment:
+
+```bash
+python -m pip install -c constraints-release.txt -e '.[build,pyside6]'
+```
+
+For development/testing:
+
+```bash
+python -m pip install -c constraints-release.txt -e '.[dev,pyside6]'
+```
 
 ## Recommended output mode
 
-The default mode is `onedir` because it starts faster and is easier to debug than `onefile`.
+`onedir` is the normal Windows release mode because it starts faster and is easier to diagnose than a single self-extracting executable.
 
 Default application name:
 
@@ -26,23 +42,14 @@ Default application name:
 DPO4000Desk
 ```
 
-Default outputs:
+Typical outputs:
 
 ```text
 Windows: dist\DPO4000Desk\DPO4000Desk.exe
 Linux:   dist/DPO4000Desk/DPO4000Desk
 ```
 
-Optional one-file outputs:
-
-```text
-Windows: dist\DPO4000Desk.exe
-Linux:   dist/DPO4000Desk
-```
-
 ## Windows build
-
-From PowerShell or `cmd.exe` in the repository root:
 
 ```bat
 scripts\build_windows_exe.bat
@@ -54,17 +61,10 @@ Compatibility alias:
 scripts\build_exe.bat
 ```
 
-One-file build for local testing:
+One-file local build:
 
 ```powershell
 $env:BUILD_MODE="onefile"
-scripts\build_windows_exe.bat
-```
-
-Custom app name:
-
-```powershell
-$env:APP_NAME="DPO4000DeskLab"
 scripts\build_windows_exe.bat
 ```
 
@@ -74,96 +74,50 @@ Console/debug build:
 python scripts\build_app.py --mode onedir --console
 ```
 
-The GitHub release workflow uses `onedir` and compresses the result as:
+The release workflow compresses the Windows application folder as `DPO4000Desk-windows.zip`.
 
-```text
-DPO4000Desk-windows.zip
-```
+## Linux executable and packages
 
-After extracting the ZIP, run `DPO4000Desk.exe` from the extracted folder.
-
-## Linux executable
-
-From a shell in the repository root:
+Build executable:
 
 ```bash
 chmod +x scripts/build_linux_executable.sh
 ./scripts/build_linux_executable.sh
 ```
 
-One-file build:
+One-file executable:
 
 ```bash
 BUILD_MODE=onefile scripts/build_linux_executable.sh
 ```
 
-Custom app name:
-
-```bash
-APP_NAME=DPO4000DeskLab scripts/build_linux_executable.sh
-```
-
-Console/debug build:
-
-```bash
-python scripts/build_app.py --mode onedir --console
-```
-
-## Linux `.deb`, AppImage, and Flatpak bundle
-
-The Linux packaging helper consumes the one-file Linux binary at `dist/DPO4000Desk`:
+Package `.deb`, AppImage and Flatpak artifacts:
 
 ```bash
 BUILD_MODE=onefile scripts/build_linux_executable.sh
 bash scripts/package_linux_release.sh
 ```
 
-Expected local outputs:
+Expected release assets include:
 
 ```text
 release-assets/DPO4000Desk-linux
-release-assets/dpo4000-desk_0.2.0_amd64.deb
+release-assets/dpo4000-desk_0.7.0_amd64.deb
 release-assets/DPO4000Desk-x86_64.AppImage
 release-assets/DPO4000Desk.flatpak
 ```
 
-The `.deb` package installs:
-
-```text
-/usr/bin/dpo4000-desk
-/usr/share/applications/io.github.ami3go.DPO4000Desk.desktop
-/usr/share/icons/hicolor/256x256/apps/io.github.ami3go.DPO4000Desk.png
-/usr/share/metainfo/io.github.ami3go.DPO4000Desk.metainfo.xml
-```
-
-For local package builds, install the packaging tools first:
-
-```bash
-sudo apt-get install -y dpkg-dev desktop-file-utils flatpak flatpak-builder wget
-```
-
-For Flatpak bundle creation, add Flathub and install the runtime used by CI:
-
-```bash
-sudo flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-sudo flatpak install -y flathub org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08
-```
-
-To create only the raw Linux binary, `.deb`, and AppImage:
-
-```bash
-BUILD_FLATPAK=0 bash scripts/package_linux_release.sh
-```
+Linux packaging prerequisites used by CI include `dpkg-dev`, `desktop-file-utils`, `flatpak`, `flatpak-builder`, and the Freedesktop 24.08 runtime/SDK.
 
 ## Shared build helper
 
-Both platform wrappers call:
+Platform wrappers ultimately use:
 
 ```bash
 python scripts/build_app.py --mode onedir --app-name DPO4000Desk
 ```
 
-Useful options:
+Useful switches:
 
 ```text
 --mode onedir|onefile
@@ -172,56 +126,38 @@ Useful options:
 --skip-install
 ```
 
-`--skip-install` is useful when the virtual environment already has the project and build dependencies installed.
+`--skip-install` is appropriate only when the current environment was already prepared with the required constrained dependencies.
 
-The helper creates a small generated PyInstaller entry file under `build/pyinstaller_entry/` so package-relative imports behave like the installed `dpo4000-desk` console script.
+## GitHub release workflow
 
-## GitHub release assets
-
-The workflow `.github/workflows/build-gui-executables.yml` builds DPO4000 Desk assets for release:
-
-```text
-DPO4000Desk-windows.zip
-DPO4000Desk-linux
-dpo4000-desk_0.2.0_amd64.deb
-DPO4000Desk-x86_64.AppImage
-DPO4000Desk.flatpak
-```
-
-Create/update the `v0.2.0` release manually from GitHub Actions:
+`.github/workflows/build-gui-executables.yml` builds the Windows and Linux assets. For v0.7.0, run it manually with:
 
 ```text
 Actions -> Build DPO4000 Desk Executables -> Run workflow
-release_tag: v0.2.0
+release_tag: v0.7.0
 prerelease: false
 ```
 
-Or publish by pushing the tag:
+or push the corresponding tag after the release commit is on `main`:
 
 ```bash
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.7.0
+git push origin v0.7.0
 ```
 
-The release body is sourced from `docs/releases/v0.2.0.md`.
+The release body is sourced from `docs/releases/v0.7.0.md`.
 
 ## Required runtime outside the executable
 
-Real scope access still requires a VISA backend/runtime on the target PC, for example:
+Real scope access still requires an installed VISA backend/runtime such as NI-VISA, TekVISA, Keysight VISA, or another PyVISA-compatible backend. USB targets additionally need the corresponding USB/VISA driver; Ethernet targets need network reachability to the oscilloscope.
 
-- NI-VISA
-- TekVISA
-- Keysight VISA
-- a configured PyVISA backend suitable for your connection method
+## Pre-release checks
 
-For USB instruments, install the relevant USB/VISA driver. For Ethernet/VXI-11 or raw socket access, make sure the target PC can reach the oscilloscope IP address.
-
-## Smoke checks
-
-Before packaging, test from source:
+Run normal tests and lint:
 
 ```bash
-dpo4000-desk
+python -m pytest -q
+ruff check dpo4000_utils tests scripts tektronix_utils.py
 ```
 
 Run packaging metadata tests:
@@ -230,6 +166,4 @@ Run packaging metadata tests:
 python -m pytest -q tests/test_build_scripts_metadata.py
 ```
 
-Hardware is not required for packaging. VISA runtime is needed only when the generated app is used with a real oscilloscope.
-
-The frameless title bar should be checked on target desktops: drag, double-click maximize, close/minimize/maximize controls, and resize behavior.
+Hardware is not required to create packages, but packaged-app communication must still be verified on a target PC with a VISA stack. Hardware API/soak qualification is documented separately in `docs/hardware-verification.md`.

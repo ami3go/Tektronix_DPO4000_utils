@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QLabel, QLineEdit, QWidget
+from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QLineEdit, QWidget
 
 from ..automation.profiles import AutomationProfile, load_automation_profile, save_automation_profile
 from .automation_retention_review_window import QtScopeWindow as AutomationA9ReviewedQtScopeWindow
@@ -151,7 +151,6 @@ class QtScopeWindow(AutomationA9ReviewedQtScopeWindow):
         if not isinstance(widgets, dict) or not isinstance(file_config, dict) or not isinstance(slots, dict):
             raise ValueError("Automation profile sections must be JSON objects.")
 
-        # Apply the mode first so mode-specific visibility/validation hooks run consistently.
         self.automation_mode_combo.setCurrentIndex(index)
         for name, value in widgets.items():
             if name not in _PROFILE_WIDGET_NAMES:
@@ -176,7 +175,6 @@ class QtScopeWindow(AutomationA9ReviewedQtScopeWindow):
                 raise ValueError(f"File profile field is unavailable in this build: {name}")
             _apply_widget_value(widget, value)
 
-        # Destructive retention is never enabled merely by loading a profile.
         if hasattr(self, "automation_retention_auto"):
             self.automation_retention_auto.setChecked(False)
             self.automation_retention_auto.setEnabled(False)

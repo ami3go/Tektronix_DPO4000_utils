@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Optional release tag to create/update, for example v0.5.0. Leave empty for artifact-only build."
+        description: "Optional release tag to create/update, for example v0.7.0. Leave empty for artifact-only build."
         required: false
         default: ""
       prerelease:
@@ -30,6 +30,7 @@ env:
   BUILD_MODE: onefile
   PYTHON_VERSION: "3.12"
   FLATPAK_RUNTIME_VERSION: "24.08"
+  RELEASE_CONSTRAINTS: constraints-release.txt
 
 jobs:
   prepare:
@@ -81,11 +82,12 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Install Python build dependencies
+      - name: Install pinned Python build dependencies
         shell: pwsh
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e ".[build,pyside6]"
+          python -m pip install "pip==26.2.1"
+          python -m pip install -c $env:RELEASE_CONSTRAINTS -e ".[build,pyside6]"
+          python -m pip freeze | Sort-Object | Set-Content release-python-environment.txt
 
       - name: Check resolved build command
         shell: cmd
@@ -107,13 +109,16 @@ jobs:
             Get-ChildItem -Recurse dist | Format-Table -AutoSize
             throw "Expected Windows executable missing: dist\DPO4000Desk\DPO4000Desk.exe"
           }
+          Copy-Item release-python-environment.txt release-assets\release-python-environment-windows.txt
           Compress-Archive -Path dist\DPO4000Desk\* -DestinationPath release-assets\DPO4000Desk-windows.zip -Force
 
       - name: Upload Windows ZIP
         uses: actions/upload-artifact@v4
         with:
           name: DPO4000Desk-windows
-          path: release-assets/DPO4000Desk-windows.zip
+          path: |
+            release-assets/DPO4000Desk-windows.zip
+            release-assets/release-python-environment-windows.txt
           if-no-files-found: error
 
   build-linux:
@@ -147,10 +152,11 @@ jobs:
             libxkbcommon-x11-0 \
             wget
 
-      - name: Install Python build dependencies
+      - name: Install pinned Python build dependencies
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e ".[build,pyside6]"
+          python -m pip install "pip==26.2.1"
+          python -m pip install -c "${RELEASE_CONSTRAINTS}" -e ".[build,pyside6]"
+          python -m pip freeze | sort > release-python-environment.txt
 
       - name: Install Flatpak runtime
         run: |
@@ -173,6 +179,9 @@ jobs:
           REQUIRE_FLATPAK: "1"
         run: bash scripts/package_linux_release.sh
 
+      - name: Preserve resolved Python environment
+        run: cp release-python-environment.txt release-assets/release-python-environment-linux.txt
+
       - name: Upload Linux release assets
         uses: actions/upload-artifact@v4
         with:
@@ -182,6 +191,7 @@ jobs:
             release-assets/dpo4000-desk_*_amd64.deb
             release-assets/DPO4000Desk-x86_64.AppImage
             release-assets/DPO4000Desk.flatpak
+            release-assets/release-python-environment-linux.txt
           if-no-files-found: error
 
   release:
@@ -212,7 +222,9 @@ jobs:
           prerelease: ${{ github.event.inputs.prerelease == 'true' }}
           files: |
             release-assets/DPO4000Desk-windows/DPO4000Desk-windows.zip
+            release-assets/DPO4000Desk-windows/release-python-environment-windows.txt
             release-assets/DPO4000Desk-linux-packages/DPO4000Desk-linux
             release-assets/DPO4000Desk-linux-packages/dpo4000-desk_*_amd64.deb
             release-assets/DPO4000Desk-linux-packages/DPO4000Desk-x86_64.AppImage
             release-assets/DPO4000Desk-linux-packages/DPO4000Desk.flatpak
+            release-assets/DPO4000Desk-linux-packages/release-python-environment-linux.txt

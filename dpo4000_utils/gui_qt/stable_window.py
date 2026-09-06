@@ -1,9 +1,8 @@
 """Stable launched PySide6 window for the DPO4000 GUI.
 
-This module is the public launch foundation for the desktop application. It keeps
-the mature top-menu/collapsible-card UI and exposes one worker-backed scope-action
-gateway so later reliability layers can retry the same serialized operation path
-without adding another VISA implementation.
+This module is the public launch foundation for the desktop application. Scope
+operations execute on a worker and complete through Qt callbacks; the GUI thread
+never enters a nested event loop while waiting for instrument I/O.
 """
 
 from __future__ import annotations
@@ -11,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from PySide6.QtCore import QEventLoop
+from PySide6.QtCore import Slot
 
 from ..instrument import DPO4000Scope
 from ..session import scope_session
@@ -31,36 +30,30 @@ from .scope_worker import WorkerResult, start_scope_worker
 
 
 class QtScopeWindow(MatureQtScopeWindow):
-    """Stable launched Qt window with worker-threaded scope actions."""
+    """Stable launched Qt window with asynchronous worker-thread scope actions."""
 
-    def _execute_scope_action_once(
+    def _run_action(
         self,
-        resource: str,
-        timeout_ms: int,
+        description: str,
         callback: Callable[[Any], object],
-    ) -> WorkerResult:
-        """Execute one action attempt through the established short-lived worker path."""
-        worker = start_scope_worker(
-            lambda: self._run_snapshot_scope_session(resource, timeout_ms, callback)
-        )
-        loop = QEventLoop(self)
-        box: dict[str, WorkerResult | None] = {"result": None}
+        *,
+        on_success: Callable[[object], None] | None = None,
+        on_error: Callable[[BaseException], None] | None = None,
+        retain_session: bool = False,
+    ) -> None:
+        """Queue one short-lived worker action and return immediately.
 
-        def on_finished(result: object) -> None:
-            box["result"] = result if isinstance(result, WorkerResult) else WorkerResult(value=result)
-            loop.quit()
+        ``retain_session`` is accepted for API compatibility with the production
+        persistent dispatcher. Short-lived fallback actions necessarily open and
+        close one driver-owned session per request.
+        """
+        del retain_session
+        if getattr(self, "_operation_active", False):
+            self.statusBar().showMessage(
+                f"Scope busy; finish the current operation before: {description}"
+            )
+            return
 
-        worker.signals.finished.connect(on_finished)
-        self._active_scope_worker = worker
-        loop.exec()
-        self._active_scope_worker = None
-        result = box["result"]
-        if result is None:
-            return WorkerResult(error=RuntimeError("Scope worker finished without result."))
-        return result
-
-    def _run_action(self, description: str, callback: Callable[[Any], object]) -> object | None:
-        """Run a scope action through the shared worker gateway and preserve return values."""
         self._operation_active = True
         self._last_action = description
         self.statusBar().showMessage(description)
@@ -72,12 +65,41 @@ class QtScopeWindow(MatureQtScopeWindow):
             resource = self._selected_resource()
             timeout_ms = self._timeout()
         except Exception as exc:  # noqa: BLE001 - show exact GUI validation failure.
-            return self._finish_scope_action_error(description, exc)
+            self._finish_scope_action_error(description, exc)
+            if on_error is not None:
+                on_error(exc)
+            return
 
-        result = self._execute_scope_action_once(resource, timeout_ms, callback)
-        if result.error is not None:
-            return self._finish_scope_action_error(description, result.error)
-        return self._finish_scope_action_success(description, result.value)
+        self._active_scope_action_context = (description, on_success, on_error)
+        worker = start_scope_worker(
+            lambda: self._run_snapshot_scope_session(resource, timeout_ms, callback)
+        )
+        self._active_scope_worker = worker
+        worker.signals.finished.connect(self._on_scope_worker_finished)
+
+    @Slot(object)
+    def _on_scope_worker_finished(self, result: object) -> None:
+        """Complete a worker action on the GUI thread."""
+        worker_result = result if isinstance(result, WorkerResult) else WorkerResult(value=result)
+        context = getattr(self, "_active_scope_action_context", None)
+        self._active_scope_worker = None
+        self._active_scope_action_context = None
+        if not isinstance(context, tuple) or len(context) != 3:
+            self._operation_active = False
+            self._update_scope_control_enabled()
+            self._update_status_strip()
+            return
+
+        description, on_success, on_error = context
+        if worker_result.error is not None:
+            self._finish_scope_action_error(description, worker_result.error)
+            if on_error is not None:
+                on_error(worker_result.error)
+            return
+
+        value = self._finish_scope_action_success(description, worker_result.value)
+        if on_success is not None:
+            on_success(value)
 
     @staticmethod
     def _run_snapshot_scope_session(

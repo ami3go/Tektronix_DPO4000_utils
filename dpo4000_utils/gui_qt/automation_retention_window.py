@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -17,13 +16,10 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from ..automation import AutomationState
 from ..automation.retention import (
-    RetentionError,
     RetentionPlan,
     RetentionPolicy,
     apply_retention_plan,
-    load_retention_index,
     plan_retention,
     register_retention_event,
 )

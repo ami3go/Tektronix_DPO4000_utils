@@ -27,7 +27,7 @@ class GuiPreferences:
     ethernet_protocol: str = "VXI-11 / INSTR"
     timeout_ms: str = "20000"
     read_all_parameters_after_connection: bool = True
-    keep_session: bool = False
+    keep_session: bool = True
     output_folder: str = "scope_gui_output"
     png_prefix: str = "scope_"
     png_base: str = "screen"

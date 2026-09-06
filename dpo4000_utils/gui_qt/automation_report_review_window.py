@@ -6,14 +6,14 @@ from .automation_report_window import QtScopeWindow as AutomationA12QtScopeWindo
 
 
 class QtScopeWindow(AutomationA12QtScopeWindow):
-    """A12 window that defers synchronous Run-once summary until counters settle."""
+    """A12 window that never finalizes a Run-once report while I/O is still pending."""
 
     def __init__(self, *args, **kwargs) -> None:
         self._automation_report_run_once_dispatch = False
         super().__init__(*args, **kwargs)
 
     def _finalize_automation_report(self, stop_reason: str) -> None:
-        if self._automation_report_run_once_dispatch:
+        if self._automation_report_run_once_dispatch or self._automation_report_in_action:
             return
         super()._finalize_automation_report(stop_reason)
 
@@ -27,7 +27,7 @@ class QtScopeWindow(AutomationA12QtScopeWindow):
             watchdog = self._automation_report_watchdog
             if watchdog is not None:
                 watchdog.start()
-        else:
+        elif not self._automation_report_in_action:
             self._finalize_automation_report("run_once_complete")
 
 

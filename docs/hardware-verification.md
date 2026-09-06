@@ -1,75 +1,64 @@
 # Full real-hardware API verification
 
-DPO4000 Utils v0.6.2 includes a bench qualification runner that exercises the public driver API against a connected Tektronix DPO4000-family oscilloscope and produces a permanent verification report.
+DPO4000 Utils **v0.7.0** includes two complementary bench qualification paths for a connected Tektronix DPO4000-family oscilloscope:
 
-The verifier is separate from normal unit tests. Unit tests continue to validate parsers, validation rules, command builders, GUI behavior, and error handling without hardware. The bench verifier answers a different question:
+1. the public-API verifier (`scripts/run_hardware_verification.py`), and
+2. the long-duration read-only soak runner (`scripts/run_hardware_soak.py`).
 
-> Does the public `DPO4000Scope` / `DPO4054` API actually operate correctly against this physical oscilloscope, VISA stack, firmware, and installed option set?
+These are intentionally separate from normal unit/GUI CI. Hosted CI verifies parsers, state machines, public-driver boundaries, Python 3.10–3.13 compatibility and PySide6 behavior without claiming access to physical hardware.
 
-## Verification profiles
-
-The runner has three profiles.
+## Public API verification profiles
 
 | Profile | Purpose | Instrument changes |
 | --- | --- | --- |
 | `read-only` | Qualification without intentional setup changes | Queries, waveform reads, hardcopy capture, settings save |
-| `reversible` | Exercise normal configuration setters | Adds temporary configuration writes and restores the captured startup setup afterward |
-| `full` | Exercise disruptive acquisition/trigger/settings paths | Adds run/stop/single/force-trigger, settings restore, measurement clearing, and other disruptive calls; startup setup is restored afterward |
+| `reversible` | Exercise normal configuration setters | Temporary configuration writes; startup setup restored afterward |
+| `full` | Exercise disruptive acquisition/trigger/settings paths | Run/stop/single/force-trigger, restore/default and other disruptive calls; startup setup restored afterward |
 
-The runner captures the initial setup with `*LRN?` / `SET?` compatibility handling before write-capable cases. If a write case fails midway, restoration is still attempted in the final cleanup path.
+The verifier captures the initial setup before write-capable cases and attempts restoration in final cleanup even after a failure.
 
-### Reference-memory overwrite is separately guarded
+### Reference-memory overwrite remains separately guarded
 
-`save_waveform_to_reference()` changes the contents of a REF memory. A scope setup string cannot be assumed to restore the original waveform samples.
-
-Therefore even the `full` profile reports this method as **SKIP** unless you additionally pass:
-
-```text
---allow-reference-overwrite
-```
-
-and deliberately select a disposable destination with:
-
-```text
---reference-destination 4
-```
-
-Do not enable this option unless the selected REF waveform may be overwritten.
+`save_waveform_to_reference()` changes REF waveform samples and cannot be assumed reversible through a setup string. Full qualification therefore leaves it **SKIP** unless both `--allow-reference-overwrite` and an explicit disposable `--reference-destination` are supplied.
 
 ## Installation on the bench PC
 
-The PC must have:
+Requirements:
 
 - Python 3.10 or newer;
-- the repository checkout;
+- this repository checkout;
 - PyVISA;
-- a working VISA runtime/backend such as NI-VISA, TekVISA, or Keysight VISA;
-- USB or LAN access to the oscilloscope.
+- NI-VISA, TekVISA, Keysight VISA or another working VISA backend;
+- USB/LAN access to the oscilloscope.
 
-Install the development environment:
+For the normal developer environment:
 
 ```bash
 python -m pip install -e .[dev]
 ```
 
-Confirm that the VISA resource is visible if needed:
+For a release-reproducible environment use the checked-in constraints:
+
+```bash
+python -m pip install -c constraints-release.txt -e .[dev,pyside6]
+```
+
+Confirm resource discovery if needed:
 
 ```python
 from dpo4000_utils import list_visa_resources
 print(list_visa_resources())
 ```
 
-## Recommended qualification sequence
+## Recommended API qualification sequence
 
-Use the actual resource shown by your VISA installation. For the development DPO4054 it may look like:
+Example resource:
 
 ```text
 USB0::0x0699::0x0401::C011280::INSTR
 ```
 
-### 1. Read-only qualification
-
-Linux/macOS shell:
+Start read-only:
 
 ```bash
 python scripts/run_hardware_verification.py \
@@ -79,21 +68,7 @@ python scripts/run_hardware_verification.py \
   --waveform-points 1000
 ```
 
-PowerShell:
-
-```powershell
-python scripts/run_hardware_verification.py `
-  --resource 'USB0::0x0699::0x0401::C011280::INSTR' `
-  --profile read-only `
-  --test-channel 1 `
-  --waveform-points 1000
-```
-
-This is the safest first run. It verifies discovery/session behavior, identity, channel/measurement/trigger/acquisition/display readbacks, BUS/REF capabilities, binary waveform acquisition, hardcopy capture, and settings save.
-
-### 2. Reversible write qualification
-
-After the read-only run is clean:
+Then reversible:
 
 ```bash
 python scripts/run_hardware_verification.py \
@@ -103,22 +78,7 @@ python scripts/run_hardware_verification.py \
   --waveform-points 1000
 ```
 
-This additionally exercises reversible public setters/configurators for:
-
-- channel label/configuration;
-- measurements;
-- MATH;
-- horizontal position;
-- acquisition configuration;
-- edge trigger;
-- display/message;
-- REF display configuration;
-- BUS common configuration when BUS capability is present;
-- legacy waveform CSV methods.
-
-The original scope setup is reapplied at the end even if a write-capable case fails.
-
-### 3. Full disruptive qualification
+Finally, only when disruptive behavior is acceptable:
 
 ```bash
 python scripts/run_hardware_verification.py \
@@ -128,107 +88,75 @@ python scripts/run_hardware_verification.py \
   --waveform-points 1000
 ```
 
-This adds methods that intentionally alter acquisition/trigger execution state or restore a setup file. The startup setup is reapplied after the run.
-
-Without REF-overwrite authorization, the report intentionally leaves `save_waveform_to_reference()` as **SKIP** and the command exits with code `2` to indicate that destructive API coverage is incomplete.
-
-To qualify that final method using a disposable REF4:
+To qualify a disposable REF4 as well:
 
 ```bash
 python scripts/run_hardware_verification.py \
   --resource 'USB0::0x0699::0x0401::C011280::INSTR' \
   --profile full \
-  --test-channel 1 \
-  --waveform-points 1000 \
   --allow-reference-overwrite \
   --reference-destination 4
 ```
 
-## Waveform record-length matrix
+## v0.7 session and decoded-BUS coverage
 
-For Phase-4 waveform qualification, repeat a read-only or reversible run with increasing transfer sizes:
+The reflection manifest includes the public `configure_session()` API and the decoded-BUS capability methods. Adding another public hardware method without a verification classification is a normal-CI failure.
 
-```bash
+Decoded BUS configuration and decoded transaction extraction are distinct capabilities. The stock v0.7 driver reports decoded transaction extraction as **unsupported/unqualified** with a reason through `get_decoded_bus_capability()`. `read_decoded_bus_events()` is therefore a legitimate hardware-verification **SKIP** until a programmer-manual command path is verified on the project DPO4054. No undocumented decoder command is inferred from BUS display/configuration support.
+
+## Waveform transfer matrix
+
+Repeat read-only/reversible verification with increasing transfer sizes as appropriate for the bench setup:
+
+```text
 --waveform-points 1000
 --waveform-points 10000
 --waveform-points 100000
 --waveform-points <largest practical configured record length>
 ```
 
-The structured waveform test caps its point count to the current scope record length. The legacy CSV evidence path uses a small temporary record length by default to avoid creating unnecessarily large report artifacts; control it with:
+## 24/72-hour soak qualification
+
+v0.7 adds `scripts/run_hardware_soak.py` for long-duration read-only stability qualification. It records operation counts, failures/reconnect observations and process/resource information where available, and writes a machine-readable report suitable for retention as a CI artifact.
+
+Use the manual self-hosted workflow:
 
 ```text
---artifact-record-length 1000
+.github/workflows/hardware-soak.yml
 ```
 
-## Generated evidence
+on a runner labelled for DPO4000 bench access. Select the requested duration/profile in the workflow inputs. A typical direct invocation is also supported; see the script's `--help` for the exact current arguments.
 
-Unless `--output-dir` is supplied, each run creates:
+**Important:** availability of the workflow/tooling is not a hardware PASS. A release may claim 24 h or 72 h qualification only when the corresponding self-hosted run against the physical DPO4054 has completed successfully and its report artifact is retained/reviewed.
+
+## Generated verifier evidence
+
+By default API verification creates a timestamped directory under:
 
 ```text
-hardware_verification_reports/<UTC timestamp>/
+hardware_verification_reports/
 ```
 
-Typical contents are:
+Typical evidence includes Markdown/HTML/JSON verification reports, setup snapshots, hardcopy images and CSV waveform artifacts. Reports record package/platform/VISA information, identity, selected safety profile, per-case PASS/FAIL/SKIP and the status of every public hardware symbol.
 
-```text
-verification_report.md
-verification_report.html
-verification_report.json
-scope_setup_before.json
-scope_setup_after_restore.json
-scope_settings_driver_save.json
-scope_screen.png
-CH1_legacy.csv
-all_channels_legacy_CH1.csv
-...
-all_channels_combined.csv
-```
+## Result semantics
 
-The reports record:
+- **PASS** — an enabled hardware case exercised the symbol successfully.
+- **FAIL** — an enabled case failed.
+- **SKIP** — deliberately not executed because of profile/safety/capability.
+- **UNVERIFIED** — no verification case covers the public symbol; this is a verifier defect.
 
-- package version;
-- Python/platform information;
-- VISA resource;
-- `*IDN?` response;
-- selected safety profile;
-- PASS / FAIL / SKIP for each verification case;
-- duration and diagnostic detail;
-- every public driver method and its verification status;
-- exported package functions and their verification status.
-
-## Self-auditing API coverage
-
-The verification implementation reflects `DPO4000Scope` at runtime and compares it with a checked-in hardware-verification manifest.
-
-Normal CI contains a test requiring an exact match. If a future release adds a public hardware method or exported package function, CI fails until that symbol is deliberately classified and assigned a verification policy/case. This prevents an outdated verifier from claiming full API coverage.
-
-A method can have these report states:
-
-- **PASS**: at least one enabled hardware case exercised it successfully;
-- **FAIL**: an enabled case covering it failed;
-- **SKIP**: its case was deliberately not run because of profile or unavailable hardware capability;
-- **UNVERIFIED**: no verification case covers it. This is considered a verifier defect and produces a failing exit code.
-
-BUS/REF option-dependent functionality can legitimately be SKIP when the connected instrument does not expose that capability. The report preserves that distinction instead of calling the driver broken.
-
-## Exit codes
+Exit codes for the API verifier remain:
 
 | Code | Meaning |
 | ---: | --- |
-| `0` | Enabled verification completed without failures; no public symbol is unverified |
-| `1` | One or more cases failed, or the public API manifest contains an unverified symbol |
-| `2` | `full` profile completed, but destructive REF waveform storage was not qualified because overwrite was not explicitly authorized |
+| `0` | Enabled verification completed without failures and no public symbol is unverified |
+| `1` | A case failed or the public API manifest has an unverified symbol |
+| `2` | Full profile completed but destructive REF storage was not explicitly qualified |
 
 ## GitHub Actions on a bench runner
 
-`.github/workflows/hardware-api-tests.yml` can run the same verifier manually on a self-hosted bench PC labelled:
+- `.github/workflows/hardware-api-tests.yml` runs API qualification manually.
+- `.github/workflows/hardware-soak.yml` runs long-duration soak qualification manually.
 
-```text
-self-hosted
-dpo4000
-```
-
-The workflow accepts profile, test channel, waveform-point count, and REF-overwrite settings. It uploads the complete `hardware_verification_reports/` directory as a GitHub Actions artifact even when verification fails, so the diagnostic report is retained.
-
-GitHub-hosted runners cannot perform this qualification because they cannot access the physical USB/LAN instrument or your VISA runtime.
+Both require a self-hosted machine with the physical scope/VISA stack. GitHub-hosted runners cannot establish this evidence.

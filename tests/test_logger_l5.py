@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import csv
-from datetime import datetime, timezone
+from datetime import datetime
 
 from dpo4000_utils.logger.measurement_csv import MeasurementCsvStreamWriter
 from dpo4000_utils.logger.models import LoggerConfig, LoggerMode, LoggerRecord

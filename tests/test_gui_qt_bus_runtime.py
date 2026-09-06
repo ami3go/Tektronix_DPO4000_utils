@@ -44,24 +44,38 @@ def test_connection_checkbox_controls_automatic_parameter_refresh(monkeypatch):
     app = _app()
     window = QtScopeWindow()
     actions: list[str] = []
+    retains: list[bool] = []
     try:
         monkeypatch.setattr(window, "_ensure_scope_parameter_pages_built", lambda: None)
         monkeypatch.setattr(window, "_apply_scope_snapshot", lambda snapshot: None)
 
-        def fake_run_action(description, callback):
+        def fake_run_action(
+            description,
+            callback,
+            *,
+            on_success=None,
+            on_error=None,
+            retain_session=False,
+        ):
             actions.append(description)
+            retains.append(bool(retain_session))
             if description == CONNECTION_TEST_DESCRIPTION:
-                return "TEKTRONIX,DPO4054,C000001,CF:91.1"
-            return {"errors": {}}
+                result = "TEKTRONIX,DPO4054,C000001,CF:91.1"
+            else:
+                result = {"errors": {}}
+            if on_success is not None:
+                on_success(result)
 
         monkeypatch.setattr(window, "_run_action", fake_run_action)
 
         window.read_all_parameters_after_connection.setChecked(False)
         window.test_connection()
         assert actions == [CONNECTION_TEST_DESCRIPTION]
+        assert retains == [True]
         assert "parameter read skipped" in window.statusBar().currentMessage()
 
         actions.clear()
+        retains.clear()
         window.read_all_parameters_after_connection.setChecked(True)
         window.test_connection()
         assert actions == [
@@ -70,6 +84,9 @@ def test_connection_checkbox_controls_automatic_parameter_refresh(monkeypatch):
             REFERENCE_PARAMETER_REFRESH_DESCRIPTION,
             BUS_PARAMETER_REFRESH_DESCRIPTION,
         ]
+        # IDN/Core/REF deliberately retain one coherent connection; BUS is the
+        # final stage and may honor a user's per-operation close preference.
+        assert retains == [True, True, True, False]
     finally:
         window.close()
         window.deleteLater()

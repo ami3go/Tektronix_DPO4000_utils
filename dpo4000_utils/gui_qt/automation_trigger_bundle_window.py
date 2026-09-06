@@ -25,7 +25,7 @@ from ..automation import (
 )
 from ..gui.config import FileNaming, build_output_path
 from .automation_trigger_review_window import QtScopeWindow as AutomationA2ReviewedQtScopeWindow
-from .automation_trigger_window import PERIODIC_IMAGE_MODE, TRIGGER_IMAGE_MODE
+from .automation_trigger_window import TRIGGER_IMAGE_MODE
 from .automation_window import FILE_PAGE_INDEX
 
 TRIGGER_IMAGE_CSV_MODE = "Image + CSV on Trigger"

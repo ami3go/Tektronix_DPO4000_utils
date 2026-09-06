@@ -167,6 +167,43 @@ class ConnectionMixin:
         if write_termination is not None:
             self.scope.write_termination = write_termination
 
+    def configure_session(
+        self,
+        *,
+        timeout_ms: int | None = None,
+        read_termination: str | None = None,
+        write_termination: str | None = None,
+    ) -> dict[str, Any]:
+        """Update driver-owned VISA session policy and apply it to a live connection.
+
+        This is the public boundary for frontends that retain a connection and need
+        to update timeout/termination policy without reaching through ``scope.scope``.
+        ``None`` keeps the backend/default value untouched for that attribute.
+        """
+        if timeout_ms is not None:
+            timeout_value = int(timeout_ms)
+            if timeout_value <= 0:
+                raise ValueError("timeout_ms must be a positive integer")
+            self.timeout_ms = timeout_value
+        if read_termination is not None:
+            self.read_termination = str(read_termination)
+        if write_termination is not None:
+            self.write_termination = str(write_termination)
+
+        if self.scope is not None:
+            try:
+                self._apply_session_configuration()
+            except DPOError:
+                raise
+            except Exception as exc:
+                raise transport_exception(exc, "Applying VISA session configuration") from exc
+
+        return {
+            "timeout_ms": getattr(self, "timeout_ms", None),
+            "read_termination": getattr(self, "read_termination", None),
+            "write_termination": getattr(self, "write_termination", None),
+        }
+
     def connect(self):
         """Connect to the oscilloscope. Safe to call multiple times."""
         if self.scope is not None:

@@ -29,7 +29,7 @@ def test_load_preferences_missing_file_returns_defaults(tmp_path):
     loaded = load_preferences(tmp_path / "missing.json")
 
     assert loaded == GuiPreferences()
-    assert loaded.keep_session is False
+    assert loaded.keep_session is True
 
 
 def test_load_preferences_invalid_json_returns_defaults(tmp_path):
@@ -50,7 +50,7 @@ def test_partial_preferences_keep_defaults(tmp_path):
     assert loaded.connection_mode == "ethernet"
     assert loaded.timeout_ms == GuiPreferences().timeout_ms
     assert loaded.read_all_parameters_after_connection is True
-    assert loaded.keep_session is False
+    assert loaded.keep_session is True
     assert loaded.png_prefix == GuiPreferences().png_prefix
 
 

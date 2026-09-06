@@ -20,20 +20,24 @@ def test_qt_production_window_keeps_polish_preview_bus_desktop_api_chain():
     assert "from .bus_window import QtScopeWindow as BusQtScopeWindow" in preview
     assert "class QtScopeWindow(BusQtScopeWindow)" in preview
     assert "class QtScopeWindow(DesktopQtScopeWindow)" in bus
-    assert "from .desktop_window import QtScopeWindow as DesktopQtScopeWindow" in bus
+    assert "QtScopeWindow as DesktopQtScopeWindow" in bus
     assert "class QtScopeWindow(ApiQtScopeWindow)" in desktop
     assert "refresh_scope_parameters" in desktop
 
 
-def test_qt_stable_window_runs_scope_actions_on_worker_thread():
+def test_qt_stable_window_runs_scope_actions_asynchronously_on_worker_thread():
     content = Path("dpo4000_utils/gui_qt/stable_window.py").read_text(encoding="utf-8")
     worker = Path("dpo4000_utils/gui_qt/scope_worker.py").read_text(encoding="utf-8")
 
     assert "def _run_action" in content
     assert "start_scope_worker" in content
-    assert "QEventLoop" in content
+    assert "on_success" in content
+    assert "QEventLoop" not in content
     assert "class ScopeWorker(QRunnable)" in worker
     assert "QThreadPool.globalInstance().start(worker)" in worker
+    assert "class PersistentScopeSession(QObject)" in worker
+    assert "def submit(" in worker
+    assert "QEventLoop" not in worker
 
 
 def test_qt_collapsible_sections_use_lightweight_clickable_header():

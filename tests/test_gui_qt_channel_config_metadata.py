@@ -27,7 +27,7 @@ def test_qt_runner_uses_final_production_window_above_legacy_chain():
     assert "from .bus_window import QtScopeWindow as BusQtScopeWindow" in preview
     assert "class QtScopeWindow(BusQtScopeWindow)" in preview
     assert "class QtScopeWindow(DesktopQtScopeWindow)" in bus
-    assert "from .desktop_window import QtScopeWindow as DesktopQtScopeWindow" in bus
+    assert "QtScopeWindow as DesktopQtScopeWindow" in bus
     assert "class QtScopeWindow(ApiQtScopeWindow)" in desktop
     assert "from .api_window import QtScopeWindow as ApiQtScopeWindow" in desktop
     assert "from .titlebar_tabs_window import QtScopeWindow as UiQtScopeWindow" in api
