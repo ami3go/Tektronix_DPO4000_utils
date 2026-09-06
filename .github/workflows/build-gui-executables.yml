@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Optional release tag to create/update, for example v0.7.0. Leave empty for artifact-only build."
+        description: "Optional release tag to create/update, for example v0.8.0. Leave empty for artifact-only build."
         required: false
         default: ""
       prerelease:
@@ -14,6 +14,15 @@ on:
         required: false
         default: false
         type: boolean
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/build-gui-executables.yml"
+      - "constraints-release.txt"
+      - "dpo4000_utils/**"
+      - "pyproject.toml"
+      - "scripts/build_*"
+      - "scripts/package_linux_release.sh"
   push:
     tags:
       - "v*"
@@ -49,6 +58,8 @@ jobs:
         run: |
           if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
             tag="$INPUT_RELEASE_TAG"
+          elif [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            tag=""
           elif [[ "$GITHUB_REF" == refs/tags/* ]]; then
             tag="$GITHUB_REF_NAME"
           else
@@ -100,6 +111,21 @@ jobs:
         env:
           BUILD_SKIP_INSTALL: "1"
         run: scripts\build_windows_exe.bat
+
+      - name: Smoke-test packaged Windows executable
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          $exe = (Resolve-Path "dist\DPO4000Desk\DPO4000Desk.exe").Path
+          $process = Start-Process -FilePath $exe -ArgumentList "--startup-check" -PassThru
+          if (-not $process.WaitForExit(15000)) {
+            $process.Kill()
+            throw "Packaged Windows startup check timed out."
+          }
+          if ($process.ExitCode -ne 0) {
+            throw "Packaged Windows startup check failed with exit code $($process.ExitCode)."
+          }
 
       - name: Package Windows ZIP asset
         shell: pwsh
@@ -178,6 +204,32 @@ jobs:
           RELEASE_VERSION: ${{ needs.prepare.outputs.release_tag }}
           REQUIRE_FLATPAK: "1"
         run: bash scripts/package_linux_release.sh
+
+      - name: Smoke-test packaged Linux binary
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: timeout 20s ./release-assets/DPO4000Desk-linux --startup-check
+
+      - name: Smoke-test AppImage payload
+        env:
+          QT_QPA_PLATFORM: offscreen
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: timeout 30s ./release-assets/DPO4000Desk-x86_64.AppImage --startup-check
+
+      - name: Smoke-test Debian package payload
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          rm -rf build/deb-smoke
+          mkdir -p build/deb-smoke
+          dpkg-deb -x release-assets/dpo4000-desk_*_amd64.deb build/deb-smoke
+          timeout 20s build/deb-smoke/usr/bin/dpo4000-desk --startup-check
+
+      - name: Smoke-test Flatpak bundle
+        run: |
+          flatpak install -y --user ./release-assets/DPO4000Desk.flatpak
+          timeout 30s flatpak run --user --env=QT_QPA_PLATFORM=offscreen io.github.ami3go.DPO4000Desk --startup-check
+          flatpak uninstall -y --user io.github.ami3go.DPO4000Desk
 
       - name: Preserve resolved Python environment
         run: cp release-python-environment.txt release-assets/release-python-environment-linux.txt
