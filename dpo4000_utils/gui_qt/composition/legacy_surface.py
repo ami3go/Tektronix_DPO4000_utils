@@ -22,6 +22,29 @@ class ComposedFeatureSurface(MilestoneAFeatureWindow):
         """Use the native composed Connection page in the production surface."""
         return build_connection_page(self)
 
+    def _build_logger_tab(self):
+        """Build the legacy Logger page atomically from the composition boundary.
+
+        Several historical Logger source-card builders call ``_logger_mode_changed``
+        while the page is only partially assembled. That method cascades into the
+        most-derived status refresh, whose older layers assume that later health and
+        acquisition widgets already exist. Suppress those intermediate refreshes and
+        issue exactly one refresh once every Logger card has been created.
+        """
+        self._composition_building_logger_tab = True
+        try:
+            page = super()._build_logger_tab()
+        finally:
+            self._composition_building_logger_tab = False
+        self._logger_refresh_status()
+        return page
+
+    def _logger_refresh_status(self) -> None:
+        """Defer legacy Logger status projection until its page is fully built."""
+        if getattr(self, "_composition_building_logger_tab", False):
+            return
+        super()._logger_refresh_status()
+
 
 class LegacyFeatureSurface:
     """Own the mature feature widget used during the incremental migration boundary."""
