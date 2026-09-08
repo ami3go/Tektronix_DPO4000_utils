@@ -22,6 +22,7 @@ on:
       - "dpo4000_utils/**"
       - "pyproject.toml"
       - "scripts/build_*"
+      - "scripts/generate_release_checksums.py"
       - "scripts/package_linux_release.sh"
   push:
     tags:
@@ -32,7 +33,7 @@ on:
       - "docs/releases/v*.md"
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   APP_NAME: DPO4000Desk
@@ -246,14 +247,17 @@ jobs:
             release-assets/release-python-environment-linux.txt
           if-no-files-found: error
 
-  release:
-    name: GitHub Release
+  integrity:
+    name: Release integrity
     needs:
       - prepare
       - build-windows
       - build-linux
     runs-on: ubuntu-latest
-    if: needs.prepare.outputs.release_tag != ''
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
 
     steps:
       - name: Check out repository
@@ -263,6 +267,76 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: release-assets
+
+      - name: Create integrity output directory
+        run: mkdir -p release-assets/DPO4000Desk-integrity
+
+      - name: Generate SPDX SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: release-assets
+          format: spdx-json
+          output-file: release-assets/DPO4000Desk-integrity/DPO4000Desk.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Generate SHA-256 manifest
+        run: python scripts/generate_release_checksums.py release-assets --output release-assets/DPO4000Desk-integrity/SHA256SUMS
+
+      - name: Verify SHA-256 manifest
+        working-directory: release-assets
+        run: sha256sum --check DPO4000Desk-integrity/SHA256SUMS
+
+      - name: Attest release artifact provenance
+        if: needs.prepare.outputs.release_tag != ''
+        uses: actions/attest@v4
+        with:
+          subject-path: |
+            release-assets/DPO4000Desk-windows/*
+            release-assets/DPO4000Desk-linux-packages/*
+
+      - name: Attest release SBOM
+        if: needs.prepare.outputs.release_tag != ''
+        uses: actions/attest@v4
+        with:
+          subject-path: |
+            release-assets/DPO4000Desk-windows/*
+            release-assets/DPO4000Desk-linux-packages/*
+          sbom-path: release-assets/DPO4000Desk-integrity/DPO4000Desk.spdx.json
+
+      - name: Upload release integrity metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: DPO4000Desk-integrity
+          path: |
+            release-assets/DPO4000Desk-integrity/DPO4000Desk.spdx.json
+            release-assets/DPO4000Desk-integrity/SHA256SUMS
+          if-no-files-found: error
+
+  release:
+    name: GitHub Release
+    needs:
+      - prepare
+      - build-windows
+      - build-linux
+      - integrity
+    runs-on: ubuntu-latest
+    if: needs.prepare.outputs.release_tag != ''
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Download release assets
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+
+      - name: Re-verify release checksums before publication
+        working-directory: release-assets
+        run: sha256sum --check DPO4000Desk-integrity/SHA256SUMS
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
@@ -280,3 +354,5 @@ jobs:
             release-assets/DPO4000Desk-linux-packages/DPO4000Desk-x86_64.AppImage
             release-assets/DPO4000Desk-linux-packages/DPO4000Desk.flatpak
             release-assets/DPO4000Desk-linux-packages/release-python-environment-linux.txt
+            release-assets/DPO4000Desk-integrity/DPO4000Desk.spdx.json
+            release-assets/DPO4000Desk-integrity/SHA256SUMS
