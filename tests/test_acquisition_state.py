@@ -45,18 +45,23 @@ def test_normalize_trigger_state_documented_values() -> None:
         normalize_trigger_state("UNKNOWN")
 
 
+def test_normalize_trigger_state_accepts_dpo4054_trig_abbreviation() -> None:
+    assert normalize_trigger_state("TRIG") == "TRIGGER"
+    assert normalize_trigger_state(":TRIGGER:STATE TRIG") == "TRIGGER"
+
+
 def test_driver_exposes_acquisition_and_trigger_state_queries() -> None:
     instrument = FakeInstrument(
         {
             ACQUISITION_STATE_QUERY: ":ACQUIRE:STATE 0",
-            TRIGGER_STATE_QUERY: ":TRIGGER:STATE SAVE",
+            TRIGGER_STATE_QUERY: ":TRIGGER:STATE TRIG",
         }
     )
     driver = StateDriver(instrument)
 
     assert driver.get_acquisition_state() is False
     assert driver.is_acquiring() is False
-    assert driver.get_trigger_state() == "SAVE"
+    assert driver.get_trigger_state() == "TRIGGER"
     assert instrument.queries == [
         ACQUISITION_STATE_QUERY,
         ACQUISITION_STATE_QUERY,
