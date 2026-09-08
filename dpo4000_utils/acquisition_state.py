@@ -15,6 +15,7 @@ from .io_policy import required_query
 ACQUISITION_STATE_QUERY = "ACQUIRE:STATE?"
 TRIGGER_STATE_QUERY = "TRIGGER:STATE?"
 TRIGGER_STATES = ("ARMED", "AUTO", "READY", "SAVE", "TRIGGER")
+_TRIGGER_STATE_ALIASES = {"TRIG": "TRIGGER"}
 
 
 def normalize_acquisition_state(response: Any) -> bool:
@@ -28,8 +29,9 @@ def normalize_acquisition_state(response: Any) -> bool:
 
 
 def normalize_trigger_state(response: Any) -> str:
-    """Normalize the documented TRIGGER:STATE? state token."""
+    """Normalize TRIGGER:STATE? tokens, including DPO4054 abbreviated responses."""
     token = normalize_scope_response_text(response).strip().upper()
+    token = _TRIGGER_STATE_ALIASES.get(token, token)
     if token not in TRIGGER_STATES:
         raise ValueError(
             f"Unexpected TRIGGER:STATE response {response!r}; expected one of {TRIGGER_STATES}."
