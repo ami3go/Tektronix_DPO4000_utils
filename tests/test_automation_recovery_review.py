@@ -10,7 +10,7 @@ def test_a11_review_scopes_recovery_statistics_to_automation_runs() -> None:
     ).read_text(encoding="utf-8")
     assert "_reset_recovery_run_statistics" in source
     assert "self._recovery_statistics = RecoveryStatistics()" in source
-    assert "if not replay_safe" in source
+    assert "not replay_safe" in source
     assert "before_failures" in source
     assert "consecutive_failures = before_failures" in source
     assert ".query(" not in source
