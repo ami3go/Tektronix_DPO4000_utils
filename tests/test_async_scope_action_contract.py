@@ -59,6 +59,28 @@ def test_final_production_state_machines_never_assign_run_action_result() -> Non
                 )
 
 
+def test_every_window_run_action_override_accepts_async_gateway_keywords() -> None:
+    root = Path("dpo4000_utils/gui_qt")
+    required = {"on_success", "on_error", "retain_session"}
+    violations: list[str] = []
+
+    for path in sorted(root.rglob("*_window.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if node.name != "_run_action":
+                continue
+            keyword_only = {argument.arg for argument in node.args.kwonlyargs}
+            missing = sorted(required - keyword_only)
+            if missing:
+                violations.append(
+                    f"{path.as_posix()}:{node.lineno}: missing {', '.join(missing)}"
+                )
+
+    assert violations == [], "stale synchronous _run_action wrappers:\n" + "\n".join(violations)
+
+
 def test_a11_review_layer_preserves_async_gateway_keywords() -> None:
     path = Path("dpo4000_utils/gui_qt/automation_recovery_review_window.py")
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
