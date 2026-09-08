@@ -38,7 +38,7 @@ def test_runner_and_package_export_only_composed_production_window() -> None:
 def test_only_legacy_surface_adapter_may_import_historical_window_stack() -> None:
     allowed = COMPOSITION / "legacy_surface.py"
     violations: list[str] = []
-    for path in COMPOSITION.glob("*.py"):
+    for path in COMPOSITION.rglob("*.py"):
         if path == allowed:
             continue
         source = path.read_text(encoding="utf-8")
@@ -48,12 +48,26 @@ def test_only_legacy_surface_adapter_may_import_historical_window_stack() -> Non
                 continue
             module = node.module or ""
             if module.endswith("_window") or "milestone_a_window" in module:
-                violations.append(f"{path.name}:{node.lineno}:{module}")
+                relative = path.relative_to(COMPOSITION)
+                violations.append(f"{relative}:{node.lineno}:{module}")
     assert violations == []
 
     legacy = allowed.read_text(encoding="utf-8")
     assert "milestone_a_window" in legacy
     assert "MilestoneAFeatureWindow" in legacy
+
+
+def test_connection_page_is_owned_by_composition_adapter() -> None:
+    legacy = (COMPOSITION / "legacy_surface.py").read_text(encoding="utf-8")
+    connection = (COMPOSITION / "pages" / "connection.py").read_text(encoding="utf-8")
+
+    assert "class ComposedFeatureSurface(MilestoneAFeatureWindow)" in legacy
+    assert "return build_connection_page(self)" in legacy
+    assert "def build_connection_page" in connection
+    assert "Keep session" in connection
+    assert "Resource changed" in connection
+    assert "milestone_a_window" not in connection
+    assert "_window import" not in connection
 
 
 def test_composition_services_have_explicit_cross_cutting_dependencies() -> None:
@@ -115,13 +129,14 @@ def test_composition_layer_has_no_raw_visa_or_scpi_ownership() -> None:
         "CURVE?",
     )
     violations: list[str] = []
-    for path in COMPOSITION.glob("*.py"):
-        if path.name == "legacy_surface.py":
+    for path in COMPOSITION.rglob("*.py"):
+        if path == COMPOSITION / "legacy_surface.py":
             continue
         source = path.read_text(encoding="utf-8")
         for token in forbidden:
             if token in source:
-                violations.append(f"{path.name}: {token}")
+                relative = path.relative_to(COMPOSITION)
+                violations.append(f"{relative}: {token}")
     assert violations == []
 
 
