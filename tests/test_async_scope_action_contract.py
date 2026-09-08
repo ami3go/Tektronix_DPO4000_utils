@@ -59,6 +59,27 @@ def test_final_production_state_machines_never_assign_run_action_result() -> Non
                 )
 
 
+def test_a11_review_layer_preserves_async_gateway_keywords() -> None:
+    path = Path("dpo4000_utils/gui_qt/automation_recovery_review_window.py")
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    method = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "_run_action"
+    )
+    keyword_only = {argument.arg for argument in method.args.kwonlyargs}
+    assert {"on_success", "on_error", "retain_session"} <= keyword_only
+
+    forwarded = [
+        node
+        for node in ast.walk(method)
+        if isinstance(node, ast.Call) and _call_name(node) == "_run_action"
+    ]
+    assert forwarded
+    keyword_names = {keyword.arg for keyword in forwarded[-1].keywords}
+    assert {"on_success", "on_error", "retain_session"} <= keyword_names
+
+
 def test_bus_capability_startup_checks_are_callback_based() -> None:
     for filename in ("logger_bus_window.py", "logger_mixed_window.py"):
         path = Path("dpo4000_utils/gui_qt") / filename
