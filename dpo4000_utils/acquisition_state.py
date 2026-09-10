@@ -13,6 +13,7 @@ from .control import normalize_scope_response_text
 from .io_policy import required_query
 
 ACQUISITION_STATE_QUERY = "ACQUIRE:STATE?"
+BUSY_QUERY = "BUSY?"
 TRIGGER_STATE_QUERY = "TRIGGER:STATE?"
 TRIGGER_STATES = ("ARMED", "AUTO", "READY", "SAVE", "TRIGGER")
 _TRIGGER_STATE_ALIASES = {
@@ -30,6 +31,16 @@ def normalize_acquisition_state(response: Any) -> bool:
     if token in {"0", "OFF", "STOP"}:
         return False
     raise ValueError(f"Unexpected ACQUIRE:STATE response: {response!r}.")
+
+
+def normalize_busy_state(response: Any) -> bool:
+    """Normalize BUSY? to True while an extended oscilloscope operation is active."""
+    token = normalize_scope_response_text(response).strip().upper()
+    if token in {"1", "ON", "BUSY"}:
+        return True
+    if token in {"0", "OFF", "IDLE"}:
+        return False
+    raise ValueError(f"Unexpected BUSY response: {response!r}.")
 
 
 def normalize_trigger_state(response: Any) -> str:
@@ -59,6 +70,15 @@ class AcquisitionStateMixin:
         """Alias for :meth:`get_acquisition_state` with predicate semantics."""
         return self.get_acquisition_state()
 
+    def is_busy(self) -> bool:
+        """Return True while BUSY? reports an extended operation in progress."""
+        response = required_query(
+            self.ensure_connected(),
+            BUSY_QUERY,
+            operation="Reading oscilloscope busy state",
+        )
+        return normalize_busy_state(response)
+
     def get_trigger_state(self) -> str:
         """Return ARMED/AUTO/READY/SAVE/TRIGGER from TRIGGER:STATE?."""
         response = required_query(
@@ -71,9 +91,11 @@ class AcquisitionStateMixin:
 
 __all__ = [
     "ACQUISITION_STATE_QUERY",
+    "BUSY_QUERY",
     "TRIGGER_STATE_QUERY",
     "TRIGGER_STATES",
     "AcquisitionStateMixin",
     "normalize_acquisition_state",
+    "normalize_busy_state",
     "normalize_trigger_state",
 ]
