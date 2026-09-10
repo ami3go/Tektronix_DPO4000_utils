@@ -11,6 +11,7 @@ from dpo4000_utils.hardcopy import (
 
 
 PNG = b"\x89PNG\r\n\x1a\nDATAIEND\xaeB`\x82"
+STREAMING_PNG = b"\x89PNG\r\n\x1a\n\x00\x00\x00\x00IEND\xaeB`\x82"
 
 
 class FakeInstrument:
@@ -33,6 +34,33 @@ class FakeInstrument:
 
     def read_raw(self) -> bytes:
         return self.payload
+
+
+class ExactReadInstrument(FakeInstrument):
+    """Model a backend where open-ended read_raw would wait for EOM forever."""
+
+    def __init__(self, stream: bytes, *, hardcopy_format: str = "BMP"):
+        super().__init__(b"", hardcopy_format=hardcopy_format)
+        self.stream = stream
+        self.offset = 0
+        self.read_requests: list[int] = []
+        self.read_raw_called = False
+
+    def read_bytes(self, count: int, *, break_on_termchar: bool = False) -> bytes:
+        assert break_on_termchar is False
+        self.read_requests.append(count)
+        end = self.offset + count
+        if end > len(self.stream):
+            raise AssertionError(
+                f"Reader requested bytes past supplied stream: {self.offset}+{count}"
+            )
+        data = self.stream[self.offset:end]
+        self.offset = end
+        return data
+
+    def read_raw(self) -> bytes:
+        self.read_raw_called = True
+        raise AssertionError("open-ended read_raw must not be used when read_bytes exists")
 
 
 def test_strip_ieee_block_header():
@@ -75,6 +103,31 @@ def test_capture_screen_png_validates_and_restores_session_and_scope_format():
     assert inst.timeout == 1000
     assert inst.read_termination == "\n"
     assert inst.write_termination is None
+
+
+def test_capture_uses_exact_png_chunk_reads_and_stops_at_iend():
+    trailing = b"bytes-that-must-not-be-read"
+    inst = ExactReadInstrument(STREAMING_PNG + trailing)
+
+    assert capture_screen_png(inst, command_delay_s=0) == STREAMING_PNG
+
+    assert inst.read_raw_called is False
+    assert inst.offset == len(STREAMING_PNG)
+    assert sum(inst.read_requests) == len(STREAMING_PNG)
+    assert inst.stream[inst.offset:] == trailing
+
+
+def test_capture_uses_ieee_definite_length_without_waiting_for_eom():
+    length_text = str(len(STREAMING_PNG)).encode("ascii")
+    header = b"#" + str(len(length_text)).encode("ascii") + length_text
+    trailing = b"bytes-after-ieee-block"
+    inst = ExactReadInstrument(header + STREAMING_PNG + trailing)
+
+    assert capture_screen_png(inst, command_delay_s=0) == STREAMING_PNG
+
+    assert inst.read_raw_called is False
+    assert inst.offset == len(header) + len(STREAMING_PNG)
+    assert inst.stream[inst.offset:] == trailing
 
 
 def test_capture_failure_still_restores_hardcopy_format_and_session_attributes():

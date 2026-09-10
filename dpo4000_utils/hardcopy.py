@@ -21,6 +21,8 @@ logger = logging.getLogger(__name__)
 
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 PNG_IEND = b"IEND\xaeB`\x82"
+_MAX_HARDCOPY_BYTES = 64 * 1024 * 1024
+_MAX_HARDCOPY_PREFIX_BYTES = 4096
 
 
 class HardcopyCaptureError(DPOImageCaptureError):
@@ -121,6 +123,110 @@ def _read_hardcopy_format(instrument: Any) -> str:
         return ""
 
 
+def _read_exact_bytes(instrument: Any, count: int) -> bytes:
+    """Read exactly *count* bytes without waiting for a VISA message-end marker."""
+    if count < 0:
+        raise HardcopyCaptureError("Negative hardcopy byte count is invalid.")
+    if count == 0:
+        return b""
+
+    read_bytes = getattr(instrument, "read_bytes", None)
+    if not callable(read_bytes):
+        raise AttributeError("Instrument does not expose read_bytes().")
+
+    data = bytes(read_bytes(count, break_on_termchar=False))
+    if len(data) != count:
+        raise HardcopyCaptureError(
+            f"Short hardcopy read: expected {count} bytes, received {len(data)}."
+        )
+    return data
+
+
+def _read_png_chunks(instrument: Any, prefix: bytes = b"") -> bytes:
+    """Read one PNG by its chunk lengths and stop immediately after IEND."""
+    buffered = bytearray(prefix)
+
+    if not buffered:
+        buffered.extend(_read_exact_bytes(instrument, 1))
+
+    if buffered[:1] != b"#" and len(buffered) < len(PNG_SIGNATURE):
+        buffered.extend(
+            _read_exact_bytes(instrument, len(PNG_SIGNATURE) - len(buffered))
+        )
+
+    while PNG_SIGNATURE not in buffered:
+        if len(buffered) >= _MAX_HARDCOPY_PREFIX_BYTES:
+            raise HardcopyCaptureError(
+                "No PNG signature found within the hardcopy response prefix. "
+                f"First bytes: {hardcopy_response_prefix(buffered)!r}."
+            )
+        buffered.extend(_read_exact_bytes(instrument, 1))
+
+    start = buffered.find(PNG_SIGNATURE)
+    png = bytearray(buffered[start:])
+    if len(png) != len(PNG_SIGNATURE):
+        # Prefix scanning reads only through the signature. Keep this guard so a
+        # future caller cannot accidentally feed unparsed PNG payload bytes here.
+        raise HardcopyCaptureError("Unexpected buffered bytes after PNG signature.")
+
+    while True:
+        header = _read_exact_bytes(instrument, 8)
+        chunk_length = int.from_bytes(header[:4], byteorder="big", signed=False)
+        chunk_type = header[4:8]
+        if chunk_length > _MAX_HARDCOPY_BYTES:
+            raise HardcopyCaptureError(
+                f"Unreasonable PNG chunk length {chunk_length} for {chunk_type!r}."
+            )
+
+        tail = _read_exact_bytes(instrument, chunk_length + 4)
+        png.extend(header)
+        png.extend(tail)
+        if len(png) > _MAX_HARDCOPY_BYTES:
+            raise HardcopyCaptureError(
+                f"Hardcopy PNG exceeded {_MAX_HARDCOPY_BYTES} bytes."
+            )
+        if chunk_type == b"IEND":
+            return bytes(png)
+
+
+def _read_hardcopy_payload(instrument: Any) -> bytes:
+    """Read hardcopy bytes without depending on a prompt VISA EOM indication.
+
+    PyVISA ``read_raw()`` waits for the backend to report end-of-message. Some
+    DPO4054/VXI-11 combinations return a complete PNG but do not terminate the
+    message promptly, making a valid capture take the full VISA timeout. When
+    ``read_bytes()`` is available, use explicit framing instead: consume a
+    definite-length IEEE block exactly, or parse the PNG chunk lengths until
+    IEND. Lightweight/non-PyVISA fakes retain the legacy ``read_raw()`` path.
+    """
+    read_bytes = getattr(instrument, "read_bytes", None)
+    if not callable(read_bytes):
+        return bytes(instrument.read_raw())
+
+    first = _read_exact_bytes(instrument, 1)
+    if first != b"#":
+        return _read_png_chunks(instrument, first)
+
+    digit = _read_exact_bytes(instrument, 1)
+    if digit in b"123456789":
+        digit_count = int(digit)
+        length_text = _read_exact_bytes(instrument, digit_count)
+        if not length_text.isdigit():
+            raise HardcopyCaptureError(
+                f"Malformed IEEE hardcopy length field: {length_text!r}."
+            )
+        data_length = int(length_text)
+        if data_length <= 0 or data_length > _MAX_HARDCOPY_BYTES:
+            raise HardcopyCaptureError(
+                f"Invalid IEEE hardcopy payload length: {data_length}."
+            )
+        return _read_exact_bytes(instrument, data_length)
+
+    # ``#0`` is an indefinite block. Malformed framing is handled the same way:
+    # scan forward to the PNG signature, then let PNG chunk lengths define EOM.
+    return _read_png_chunks(instrument, first + digit)
+
+
 def capture_screen_png(
     instrument: Any,
     *,
@@ -133,6 +239,10 @@ def capture_screen_png(
     path this does not issue ``*CLS``, does not alter HEADER/VERBOSE, and does not
     modify SAVE:IMAGE settings. The previous HARDCOPY:FORMAT is restored when it
     can be read back. VISA timeout/termination settings are restored exactly.
+
+    On PyVISA-like sessions, hardcopy reads are length-driven and stop as soon as
+    the complete PNG has been received. This avoids waiting for an unreliable
+    VXI-11 message-end indication after the PNG IEND chunk.
     """
     if instrument is None:
         from .errors import DPONotConnectedError
@@ -163,8 +273,15 @@ def capture_screen_png(
                 if command_delay_s:
                     time.sleep(command_delay_s)
                 instrument.write("HARDCOPY START")
-                payload = instrument.read_raw()
-                return require_png_bytes(payload)
+                transfer_started = time.perf_counter()
+                payload = _read_hardcopy_payload(instrument)
+                png = require_png_bytes(payload)
+                logger.debug(
+                    "Hardcopy transfer completed in %.3fs (%d PNG bytes)",
+                    time.perf_counter() - transfer_started,
+                    len(png),
+                )
+                return png
             except DPOError:
                 raise
             except Exception as exc:
