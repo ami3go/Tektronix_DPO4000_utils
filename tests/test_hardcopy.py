@@ -15,18 +15,18 @@ STREAMING_PNG = b"\x89PNG\r\n\x1a\n\x00\x00\x00\x00IEND\xaeB`\x82"
 
 
 class FakeInstrument:
-    def __init__(self, payload: bytes, *, hardcopy_format: str = "BMP"):
+    def __init__(self, payload: bytes, *, image_format: str = "BMP"):
         self.payload = payload
         self.commands = []
         self.timeout = 1000
         self.read_termination = "\n"
         self.write_termination = None
-        self.hardcopy_format = hardcopy_format
+        self.image_format = image_format
 
     def query(self, command: str) -> str:
         self.commands.append(("query", command))
-        if command == "HARDCOPY:FORMAT?":
-            return self.hardcopy_format
+        if command == "SAVE:IMAGE:FILEFORMAT?":
+            return self.image_format
         raise AssertionError(command)
 
     def write(self, command: str) -> None:
@@ -39,8 +39,8 @@ class FakeInstrument:
 class ExactReadInstrument(FakeInstrument):
     """Model a backend where open-ended read_raw would wait for EOM forever."""
 
-    def __init__(self, stream: bytes, *, hardcopy_format: str = "BMP"):
-        super().__init__(b"", hardcopy_format=hardcopy_format)
+    def __init__(self, stream: bytes, *, image_format: str = "BMP"):
+        super().__init__(b"", image_format=image_format)
         self.stream = stream
         self.offset = 0
         self.read_requests: list[int] = []
@@ -85,21 +85,22 @@ def test_require_png_bytes_raises_with_diagnostic_prefix():
         require_png_bytes(b"not a png response")
 
 
-def test_capture_screen_png_validates_and_restores_session_and_scope_format():
-    inst = FakeInstrument(b"prefix" + PNG + b"trailing", hardcopy_format="BMP")
+def test_capture_screen_png_uses_documented_image_format_and_restores_session():
+    inst = FakeInstrument(b"prefix" + PNG + b"trailing", image_format="BMP")
 
     assert capture_screen_png(inst, command_delay_s=0) == PNG
 
+    assert inst.commands[0] == ("query", "SAVE:IMAGE:FILEFORMAT?")
     writes = [command for kind, command in inst.commands if kind == "write"]
     assert writes == [
-        "HARDCOPY:FORMAT PNG",
+        "SAVE:IMAGE:FILEFORMAT PNG",
         "HARDCOPY START",
-        "HARDCOPY:FORMAT BMP",
+        "SAVE:IMAGE:FILEFORMAT BMP",
     ]
+    assert all("HARDCOPY:FORMAT" not in command for _, command in inst.commands)
     assert "*CLS" not in writes
     assert all(not command.startswith("HEADER") for command in writes)
     assert all(not command.startswith("VERBOSE") for command in writes)
-    assert all(not command.startswith("SAVE:IMAGE") for command in writes)
     assert inst.timeout == 1000
     assert inst.read_termination == "\n"
     assert inst.write_termination is None
@@ -130,14 +131,14 @@ def test_capture_uses_ieee_definite_length_without_waiting_for_eom():
     assert inst.stream[inst.offset:] == trailing
 
 
-def test_capture_failure_still_restores_hardcopy_format_and_session_attributes():
-    inst = FakeInstrument(b"not png", hardcopy_format="BMP")
+def test_capture_failure_still_restores_image_format_and_session_attributes():
+    inst = FakeInstrument(b"not png", image_format="BMP")
 
     with pytest.raises(HardcopyCaptureError):
         capture_screen_png(inst, command_delay_s=0)
 
     writes = [command for kind, command in inst.commands if kind == "write"]
-    assert writes[-1] == "HARDCOPY:FORMAT BMP"
+    assert writes[-1] == "SAVE:IMAGE:FILEFORMAT BMP"
     assert inst.timeout == 1000
     assert inst.read_termination == "\n"
     assert inst.write_termination is None
