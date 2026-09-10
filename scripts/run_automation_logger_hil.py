@@ -10,21 +10,44 @@ from dpo4000_utils.bench_hil import AutomationLoggerHilRunner, HilConfig
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--resource", required=True, help="VISA resource, e.g. TCPIP0::192.168.0.5::INSTR")
-    parser.add_argument("--channel", type=int, default=1, help="Probe Comp input channel (default: 1)")
-    parser.add_argument("--suite", choices=("all", "automation", "logger"), default="all")
+    parser.add_argument(
+        "--resource",
+        required=True,
+        help="VISA resource, e.g. TCPIP0::192.168.0.5::INSTR",
+    )
+    parser.add_argument(
+        "--channel",
+        type=int,
+        default=1,
+        help="Probe Comp input channel (default: 1)",
+    )
+    parser.add_argument(
+        "--suite",
+        choices=("all", "automation", "logger"),
+        default="all",
+    )
     parser.add_argument("--timeout-ms", type=int, default=60_000)
     parser.add_argument("--trigger-timeout-s", type=float, default=10.0)
     parser.add_argument("--waveform-points", type=int, default=1_000)
     parser.add_argument("--expected-frequency-hz", type=float, default=1_000.0)
-    parser.add_argument("--frequency-tolerance", type=float, default=0.35,
-                        help="Fractional Probe Comp frequency tolerance (default: 0.35 = +/-35%%)")
+    parser.add_argument(
+        "--frequency-tolerance",
+        type=float,
+        default=0.35,
+        help="Fractional Probe Comp frequency tolerance (default: 0.35 = +/-35%%)",
+    )
     parser.add_argument("--min-vpp", type=float, default=0.5)
     parser.add_argument("--max-vpp", type=float, default=5.0)
-    parser.add_argument("--skip-hardcopy", action="store_true",
-                        help="Skip image-producing cases A1-A3; useful for faster Logger-only diagnosis")
-    parser.add_argument("--output-dir", type=Path,
-                        default=Path("hardware_verification_reports") / "automation_logger_hil")
+    parser.add_argument(
+        "--skip-hardcopy",
+        action="store_true",
+        help="Skip image-producing cases A1-A3; useful for faster Logger-only diagnosis",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path("hardware_verification_reports") / "automation_logger_hil",
+    )
     return parser.parse_args()
 
 
@@ -32,7 +55,7 @@ def main() -> int:
     args = parse_args()
     config = HilConfig(
         resource=args.resource,
-        output_dir=args.output_dir,
+        output_dir=args.output_dir.expanduser().resolve(),
         channel=args.channel,
         timeout_ms=args.timeout_ms,
         trigger_timeout_s=args.trigger_timeout_s,
