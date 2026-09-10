@@ -18,6 +18,7 @@ for _name in (
     "get_acquisition_state",
     "get_trigger_state",
     "is_acquiring",
+    "is_busy",
     "get_decoded_bus_capability",
     "supports_decoded_bus_events",
     "read_decoded_bus_events",
@@ -49,7 +50,8 @@ class HardwareVerifier(_core.HardwareVerifier):
         scope.get_acquisition_state()
         scope.is_acquiring()
         scope.get_trigger_state()
-        return detail + " Session configuration and acquisition/trigger state readbacks passed."
+        scope.is_busy()
+        return detail + " Session configuration and acquisition/trigger/BUSY readbacks passed."
 
     def _case_bus_readbacks(self) -> str:
         scope = self._require_scope()
@@ -92,6 +94,7 @@ class HardwareVerifier(_core.HardwareVerifier):
             "get_acquisition_state",
             "get_trigger_state",
             "is_acquiring",
+            "is_busy",
         }:
             return super()._symbol_status("get_acquisition_setup", method=True)
         if method and symbol in {

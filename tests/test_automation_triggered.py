@@ -41,6 +41,21 @@ class _StateScope:
         self.calls.append("stop")
 
 
+class _BusyStateScope(_StateScope):
+    def __init__(
+        self,
+        active: list[bool],
+        trigger: list[str],
+        busy: list[bool],
+    ) -> None:
+        super().__init__(active, trigger)
+        self.busy = list(busy)
+
+    def is_busy(self) -> bool:
+        self.calls.append("busy")
+        return self.busy.pop(0) if len(self.busy) > 1 else self.busy[0]
+
+
 def _clock(monkeypatch):
     values = iter([0.0, 0.0, 0.6, 1.1, 1.2])
     monkeypatch.setattr(triggered.time, "monotonic", lambda: next(values, 1.2))
@@ -84,6 +99,52 @@ def test_fresh_single_requires_changed_active_or_armed_state_before_save() -> No
     assert scope.calls == ["acq", "trigger", "single", "acq", "trigger", "acq", "trigger"]
 
 
+def test_busy_query_accepts_single_that_finishes_before_first_state_poll() -> None:
+    scope = _BusyStateScope(
+        active=[False, False],
+        trigger=["SAVE", "SAVE"],
+        busy=[False],
+    )
+    result = wait_for_fresh_single(
+        scope,
+        _NeverCancel(),
+        poll_interval_s=0.1,
+        timeout_s=1.0,
+    )
+    assert result.completed is True
+    assert result.observed_fresh_state is True
+    assert result.timed_out is False
+    assert scope.calls == ["acq", "trigger", "single", "busy", "acq", "trigger"]
+
+
+def test_busy_query_waits_until_single_sequence_completes() -> None:
+    scope = _BusyStateScope(
+        active=[False, True, False],
+        trigger=["SAVE", "ARMED", "SAVE"],
+        busy=[True, False],
+    )
+    result = wait_for_fresh_single(
+        scope,
+        _NeverCancel(),
+        poll_interval_s=0.1,
+        timeout_s=1.0,
+    )
+    assert result.completed is True
+    assert result.observed_fresh_state is True
+    assert result.timed_out is False
+    assert scope.calls == [
+        "acq",
+        "trigger",
+        "single",
+        "busy",
+        "acq",
+        "trigger",
+        "busy",
+        "acq",
+        "trigger",
+    ]
+
+
 def test_stale_save_never_counts_as_new_single(monkeypatch) -> None:
     scope = _StateScope(active=[False], trigger=["SAVE"])
     _clock(monkeypatch)
@@ -123,7 +184,6 @@ def test_trigger_controller_cycle_and_rearm_state() -> None:
     assert token is not None
     assert controller.begin_cycle() is None
     assert controller.statistics.skipped == 1
-
     assert controller.finish_cycle(token, success=True)
     assert controller.statistics.succeeded == 1
     assert controller.state is AutomationState.RUNNING

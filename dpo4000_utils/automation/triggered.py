@@ -181,12 +181,14 @@ def wait_for_fresh_single(
     poll_interval_s: float = 0.5,
     timeout_s: float = 30.0,
 ) -> TriggerWaitResult:
-    """Arm Single and wait for a *fresh* completed acquisition.
+    """Arm Single and wait for a fresh completed acquisition.
 
-    The helper samples the pre-arm state, then requires observing a changed
-    active/armed state after ``single_acquisition()`` before ``SAVE`` can count as
-    completion. A stale pre-existing ``SAVE`` or ``READY`` state is therefore not
-    sufficient. Timeout and cancellation both stop acquisition before returning.
+    DPO4000-family drivers expose ``BUSY?`` through ``is_busy()``. Tektronix
+    documents BUSY? specifically for synchronizing single-sequence acquisition,
+    so that path is preferred: even when a fast trigger completes before the
+    first state poll, BUSY?=0 plus stopped/SAVE proves the commanded operation is
+    complete. Backends without ``is_busy()`` retain the older state-transition
+    guard so a stale pre-existing SAVE cannot count as a new acquisition.
     """
 
     config = TriggerImageConfig(
@@ -199,6 +201,8 @@ def wait_for_fresh_single(
 
     baseline_active = bool(scope.get_acquisition_state())
     baseline_trigger = str(scope.get_trigger_state())
+    busy_query = getattr(scope, "is_busy", None)
+    use_busy = callable(busy_query)
     scope.single_acquisition()
 
     started = time.monotonic()
@@ -219,27 +223,44 @@ def wait_for_fresh_single(
                 elapsed_s=max(0.0, time.monotonic() - started),
             )
 
+        busy = bool(busy_query()) if use_busy else None
         last_active = bool(scope.get_acquisition_state())
         last_trigger_state = str(scope.get_trigger_state())
-        if _fresh_state_observed(
-            baseline_active=baseline_active,
-            baseline_trigger_state=baseline_trigger,
-            acquisition_active=last_active,
-            trigger_state=last_trigger_state,
-        ):
-            observed_fresh = True
 
-        if observed_fresh and trigger_acquisition_complete(
-            acquisition_active=last_active,
-            trigger_state=last_trigger_state,
-        ):
-            return TriggerWaitResult(
-                completed=True,
-                observed_fresh_state=True,
+        if use_busy:
+            if busy:
+                observed_fresh = True
+            if not busy and trigger_acquisition_complete(
                 acquisition_active=last_active,
                 trigger_state=last_trigger_state,
-                elapsed_s=max(0.0, time.monotonic() - started),
-            )
+            ):
+                return TriggerWaitResult(
+                    completed=True,
+                    observed_fresh_state=True,
+                    acquisition_active=last_active,
+                    trigger_state=last_trigger_state,
+                    elapsed_s=max(0.0, time.monotonic() - started),
+                )
+        else:
+            if _fresh_state_observed(
+                baseline_active=baseline_active,
+                baseline_trigger_state=baseline_trigger,
+                acquisition_active=last_active,
+                trigger_state=last_trigger_state,
+            ):
+                observed_fresh = True
+
+            if observed_fresh and trigger_acquisition_complete(
+                acquisition_active=last_active,
+                trigger_state=last_trigger_state,
+            ):
+                return TriggerWaitResult(
+                    completed=True,
+                    observed_fresh_state=True,
+                    acquisition_active=last_active,
+                    trigger_state=last_trigger_state,
+                    elapsed_s=max(0.0, time.monotonic() - started),
+                )
 
         now = time.monotonic()
         if now >= deadline:
@@ -266,18 +287,3 @@ def wait_for_fresh_single(
             )
         if cancel is None:
             time.sleep(wait_s)
-
-
-__all__ = [
-    "FRESH_TRIGGER_STATES",
-    "MAX_TRIGGER_POLL_INTERVAL_S",
-    "MAX_TRIGGER_TIMEOUT_S",
-    "MIN_TRIGGER_POLL_INTERVAL_S",
-    "MIN_TRIGGER_TIMEOUT_S",
-    "TriggerCancelSignal",
-    "TriggerImageConfig",
-    "TriggerImageController",
-    "TriggerWaitResult",
-    "trigger_acquisition_complete",
-    "wait_for_fresh_single",
-]

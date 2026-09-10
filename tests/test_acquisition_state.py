@@ -4,9 +4,11 @@ import pytest
 
 from dpo4000_utils.acquisition_state import (
     ACQUISITION_STATE_QUERY,
+    BUSY_QUERY,
     TRIGGER_STATE_QUERY,
     AcquisitionStateMixin,
     normalize_acquisition_state,
+    normalize_busy_state,
     normalize_trigger_state,
 )
 
@@ -38,6 +40,15 @@ def test_normalize_acquisition_state() -> None:
         normalize_acquisition_state("MAYBE")
 
 
+def test_normalize_busy_state() -> None:
+    for value in ("1", "ON", "BUSY", ":BUSY 1"):
+        assert normalize_busy_state(value) is True
+    for value in ("0", "OFF", "IDLE", ":BUSY 0"):
+        assert normalize_busy_state(value) is False
+    with pytest.raises(ValueError):
+        normalize_busy_state("MAYBE")
+
+
 def test_normalize_trigger_state_documented_values() -> None:
     for state in ("ARMED", "AUTO", "READY", "SAVE", "TRIGGER"):
         assert normalize_trigger_state(f":TRIGGER:STATE {state}") == state
@@ -45,20 +56,36 @@ def test_normalize_trigger_state_documented_values() -> None:
         normalize_trigger_state("UNKNOWN")
 
 
-def test_driver_exposes_acquisition_and_trigger_state_queries() -> None:
+def test_normalize_trigger_state_accepts_dpo4054_abbreviations() -> None:
+    cases = {
+        "ARM": "ARMED",
+        ":TRIGGER:STATE ARM": "ARMED",
+        "SAV": "SAVE",
+        ":TRIGGER:STATE SAV": "SAVE",
+        "TRIG": "TRIGGER",
+        ":TRIGGER:STATE TRIG": "TRIGGER",
+    }
+    for response, expected in cases.items():
+        assert normalize_trigger_state(response) == expected
+
+
+def test_driver_exposes_acquisition_busy_and_trigger_state_queries() -> None:
     instrument = FakeInstrument(
         {
             ACQUISITION_STATE_QUERY: ":ACQUIRE:STATE 0",
-            TRIGGER_STATE_QUERY: ":TRIGGER:STATE SAVE",
+            BUSY_QUERY: ":BUSY 0",
+            TRIGGER_STATE_QUERY: ":TRIGGER:STATE SAV",
         }
     )
     driver = StateDriver(instrument)
 
     assert driver.get_acquisition_state() is False
     assert driver.is_acquiring() is False
+    assert driver.is_busy() is False
     assert driver.get_trigger_state() == "SAVE"
     assert instrument.queries == [
         ACQUISITION_STATE_QUERY,
         ACQUISITION_STATE_QUERY,
+        BUSY_QUERY,
         TRIGGER_STATE_QUERY,
     ]
