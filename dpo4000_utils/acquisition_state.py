@@ -1,7 +1,7 @@
 """Public acquisition/trigger-state readback for DPO4000-family scopes.
 
 The commands in this module are documented by the Tektronix MSO4000/DPO4000
-Programmer Manual.  Keeping them in the reusable driver lets Automation wait for
+Programmer Manual. Keeping them in the reusable driver lets Automation wait for
 single acquisitions without embedding SCPI in Qt code.
 """
 
@@ -15,7 +15,10 @@ from .io_policy import required_query
 ACQUISITION_STATE_QUERY = "ACQUIRE:STATE?"
 TRIGGER_STATE_QUERY = "TRIGGER:STATE?"
 TRIGGER_STATES = ("ARMED", "AUTO", "READY", "SAVE", "TRIGGER")
-_TRIGGER_STATE_ALIASES = {"TRIG": "TRIGGER"}
+_TRIGGER_STATE_ALIASES = {
+    "SAV": "SAVE",
+    "TRIG": "TRIGGER",
+}
 
 
 def normalize_acquisition_state(response: Any) -> bool:
@@ -29,7 +32,7 @@ def normalize_acquisition_state(response: Any) -> bool:
 
 
 def normalize_trigger_state(response: Any) -> str:
-    """Normalize TRIGGER:STATE? tokens, including DPO4054 abbreviated responses."""
+    """Normalize TRIGGER:STATE? tokens, including DPO4054 abbreviations."""
     token = normalize_scope_response_text(response).strip().upper()
     token = _TRIGGER_STATE_ALIASES.get(token, token)
     if token not in TRIGGER_STATES:
