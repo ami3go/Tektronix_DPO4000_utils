@@ -47,6 +47,8 @@ def test_normalize_trigger_state_documented_values() -> None:
 
 def test_normalize_trigger_state_accepts_dpo4054_abbreviations() -> None:
     cases = {
+        "ARM": "ARMED",
+        ":TRIGGER:STATE ARM": "ARMED",
         "SAV": "SAVE",
         ":TRIGGER:STATE SAV": "SAVE",
         "TRIG": "TRIGGER",
