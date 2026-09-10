@@ -30,11 +30,43 @@ def test_hil_config_rejects_invalid_channel_and_suite(tmp_path: Path) -> None:
         HilConfig(resource="x", output_dir=tmp_path, suite="unknown")
 
 
-def test_case_results_are_independent_and_failures_keep_tracebacks(tmp_path: Path) -> None:
+def test_hil_config_resolves_relative_output_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    config = HilConfig(
+        resource="TCPIP0::192.0.2.1::INSTR",
+        output_dir=Path("relative-reports"),
+        hardcopy=False,
+    )
+    runner = AutomationLoggerHilRunner(config)
+
+    assert config.output_dir.is_absolute()
+    assert runner.root.is_absolute()
+    artifact = runner.artifact_root / "report.txt"
+    artifact.write_text("ok", encoding="utf-8")
+    info = runner._file(artifact.resolve())
+    assert info["path"] == str(Path("artifacts") / "report.txt")
+
+
+def test_case_results_are_independent_and_failures_keep_tracebacks(
+    tmp_path: Path,
+) -> None:
     runner = _runner(tmp_path)
     runner._case("pass", "Pass", "test", lambda: "worked")
-    runner._case("skip", "Skip", "test", lambda: (_ for _ in ()).throw(HilSkip("not applicable")))
-    runner._case("fail", "Fail", "test", lambda: (_ for _ in ()).throw(RuntimeError("boom")))
+    runner._case(
+        "skip",
+        "Skip",
+        "test",
+        lambda: (_ for _ in ()).throw(HilSkip("not applicable")),
+    )
+    runner._case(
+        "fail",
+        "Fail",
+        "test",
+        lambda: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
 
     assert [result.status for result in runner.results] == ["PASS", "SKIP", "FAIL"]
     failed = runner.results[-1]
@@ -43,7 +75,9 @@ def test_case_results_are_independent_and_failures_keep_tracebacks(tmp_path: Pat
     assert "RuntimeError: boom" in traceback_path.read_text(encoding="utf-8")
 
 
-def test_report_and_zip_are_uploadable_and_zip_does_not_contain_itself(tmp_path: Path) -> None:
+def test_report_and_zip_are_uploadable_and_zip_does_not_contain_itself(
+    tmp_path: Path,
+) -> None:
     runner = _runner(tmp_path)
     runner.idn = "TEKTRONIX,DPO4054,TEST,FW"
     runner._case("pass", "Pass", "test", lambda: "worked")
