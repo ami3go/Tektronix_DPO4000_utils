@@ -33,8 +33,9 @@ def test_discovery_includes_all_named_regression_files_and_stress_suites() -> No
 def test_software_command_uses_current_python_and_discovered_tests() -> None:
     command = MODULE.build_software_command()
     assert command[1:4] == ["-m", "pytest", "-q"]
-    assert "tests/test_regression_metrics.py" in command
-    assert "tests/test_hardware_regression.py" in command
+    test_paths = {Path(item) for item in command[4:]}
+    assert Path("tests") / "test_regression_metrics.py" in test_paths
+    assert Path("tests") / "test_hardware_regression.py" in test_paths
 
 
 def _args(mode: str) -> argparse.Namespace:
