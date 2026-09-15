@@ -23,7 +23,7 @@ def parse_args() -> argparse.Namespace:
     mode.add_argument(
         "--create-baseline",
         action="store_true",
-        help="Run repeated Probe-Comp HIL and write/replace the baseline JSON.",
+        help="Run repeated Probe-Comp HIL and write a new baseline JSON.",
     )
     mode.add_argument(
         "--compare-baseline",
@@ -68,6 +68,11 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=None,
         help="Baseline JSON path. Default: <output-dir>/r0_hardware_baseline.json",
+    )
+    parser.add_argument(
+        "--force-baseline",
+        action="store_true",
+        help="Allow --create-baseline to replace an existing reviewed baseline.",
     )
     parser.add_argument(
         "--relative-limit",
@@ -122,6 +127,13 @@ def main() -> int:
     args = parse_args()
     options = _options(args)
     if args.create_baseline:
+        if options.baseline_path.exists() and not args.force_baseline:
+            raise SystemExit(
+                "Baseline already exists: "
+                f"{options.baseline_path}\n"
+                "Refusing to overwrite a reviewed baseline. "
+                "Use --force-baseline only when intentionally replacing it."
+            )
         create_hardware_baseline(options)
         return 0
     if not options.baseline_path.is_file():
