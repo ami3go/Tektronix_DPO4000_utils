@@ -31,6 +31,7 @@ from .control import (
     MeasurementConfig,
     bool_from_scope_response,
 )
+from .errors import DPOWaveformError
 from .hardcopy import PNG_SIGNATURE
 from .instrument import DPO4000Scope, DPO4054
 from .reference import ReferenceConfig
@@ -600,6 +601,26 @@ class HardwareVerifier:
         )
         return f"BUS{slot} configure path passed using current common settings."
 
+    def _wait_for_acquisition_complete(self, scope: DPO4000Scope) -> None:
+        """Block until ACQUIRE:STATE reports idle after a single acquisition.
+
+        HORIZONTAL:RECORDLENGTH changes are not reflected by DATA:STOP/
+        WFMOUTPRE:NR_PT until a new acquisition actually completes at the new
+        record length. Forcing and waiting for one here avoids a race where a
+        waveform transfer immediately after set_record_length() reads a stale
+        DATA:STOP clamped to the previous record length.
+        """
+        scope.single_acquisition()
+        deadline = time.monotonic() + max(1.0, self.config.timeout_ms / 1000)
+        while time.monotonic() < deadline:
+            if not scope.is_acquiring():
+                return
+            time.sleep(0.05)
+        raise DPOWaveformError(
+            "Scope did not finish a single acquisition at the new record length "
+            f"within {self.config.timeout_ms} ms."
+        )
+
     def _case_legacy_csv(self) -> str:
         scope = self._require_scope()
         original_record = scope.get_record_length()
@@ -607,6 +628,7 @@ class HardwareVerifier:
         try:
             if target != original_record:
                 scope.set_record_length(target)
+                self._wait_for_acquisition_complete(scope)
             current_display = scope.get_channel_configuration(
                 self.config.test_channel
             ).get("display", "0")

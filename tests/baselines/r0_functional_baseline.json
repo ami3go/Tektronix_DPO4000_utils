@@ -1,0 +1,231 @@
+{
+  "acquisition": {
+    "average_count": "16",
+    "mode": "HIRES",
+    "record_length": "10000000"
+  },
+  "buses": {
+    "1": {
+      "display_format": "HEX",
+      "display_type": "BUS",
+      "label": "CAN",
+      "position": "0.0E+0",
+      "protocol": {
+        "bit_rate": "500000",
+        "probe": "CANH",
+        "sample_point": "50",
+        "source": "CH1"
+      },
+      "state": "0",
+      "type": "CAN"
+    },
+    "2": {
+      "display_format": "HEX",
+      "display_type": "BUS",
+      "label": "CAN",
+      "position": "0.0E+0",
+      "protocol": {
+        "bit_rate": "500000",
+        "probe": "CANH",
+        "sample_point": "50",
+        "source": "CH1"
+      },
+      "state": "0",
+      "type": "CAN"
+    }
+  },
+  "captured_at": "2026-09-15T09:15:59.318859+00:00",
+  "channels": {
+    "1": {
+      "bandwidth": "20.0000E+6",
+      "coupling": "DC",
+      "display": "1",
+      "invert": "0",
+      "offset": "0.0E+0",
+      "position": "-1.0000",
+      "probe_gain": "100.0000E-3",
+      "scale": "1.0000"
+    },
+    "2": {
+      "bandwidth": "20.0000E+6",
+      "coupling": "DC",
+      "display": "0",
+      "invert": "0",
+      "offset": "0.0E+0",
+      "position": "-660.0000E-3",
+      "probe_gain": "100.0000E-3",
+      "scale": "50.0000"
+    },
+    "3": {
+      "bandwidth": "20.0000E+6",
+      "coupling": "DC",
+      "display": "0",
+      "invert": "0",
+      "offset": "0.0E+0",
+      "position": "-360.0000E-3",
+      "probe_gain": "100.0000E-3",
+      "scale": "50.0000"
+    },
+    "4": {
+      "bandwidth": "20.0000E+6",
+      "coupling": "DC",
+      "display": "0",
+      "invert": "0",
+      "offset": "0.0E+0",
+      "position": "0.0E+0",
+      "probe_gain": "100.0000E-3",
+      "scale": "50.0000"
+    }
+  },
+  "commit_sha": "d255e3a679ef28e037d35d1ef7685577eb293eb0",
+  "connection": {
+    "idn": "TEKTRONIX,DPO4054,C011280,CF:91.1CT FV:v2.68 DPO4AUTO:V1.00"
+  },
+  "display": {
+    "backlight": "HIGH",
+    "graticule": "75",
+    "message_state": "0",
+    "message_text": "",
+    "persistence": "0.0E+0",
+    "waveform": "100"
+  },
+  "firmware": "v2.68",
+  "horizontal": {
+    "position": 50.0,
+    "record_length": 10000000
+  },
+  "idn": "TEKTRONIX,DPO4054,C011280,CF:91.1CT FV:v2.68 DPO4AUTO:V1.00",
+  "math": {
+    "define": "CH1+CH2",
+    "display": "1",
+    "position": "0.0E+0",
+    "scale": "100.0000E-3"
+  },
+  "measurements": {
+    "1": {
+      "measurement_type": "FREQ",
+      "slot": 1,
+      "source1": "CH1",
+      "source2": "CH2",
+      "state": "ON",
+      "value": "9.9100E+37"
+    },
+    "2": {
+      "measurement_type": "PK2P",
+      "slot": 2,
+      "source1": "CH1",
+      "source2": "CH2",
+      "state": "ON",
+      "value": "-1.9025"
+    },
+    "3": {
+      "measurement_type": "MAX",
+      "slot": 3,
+      "source1": "CH3",
+      "source2": "CH2",
+      "state": "ON",
+      "value": "18.0000"
+    },
+    "4": {
+      "measurement_type": "MAX",
+      "slot": 4,
+      "source1": "CH4",
+      "source2": "CH2",
+      "state": "ON",
+      "value": "0.0E+0"
+    },
+    "5": {
+      "measurement_type": "PERI",
+      "slot": 5,
+      "source1": "CH1",
+      "source2": "CH2",
+      "state": "OFF",
+      "value": "9.9100E+37"
+    },
+    "6": {
+      "measurement_type": "PERI",
+      "slot": 6,
+      "source1": "CH1",
+      "source2": "CH2",
+      "state": "OFF",
+      "value": "9.9100E+37"
+    },
+    "7": {
+      "measurement_type": "PERI",
+      "slot": 7,
+      "source1": "CH1",
+      "source2": "CH2",
+      "state": "OFF",
+      "value": "9.9100E+37"
+    },
+    "8": {
+      "measurement_type": "PERI",
+      "slot": 8,
+      "source1": "CH1",
+      "source2": "CH2",
+      "state": "OFF",
+      "value": "9.9100E+37"
+    }
+  },
+  "package_version": "0.8.0",
+  "platform": "Linux-7.2.0-070200-generic-x86_64-with-glibc2.43",
+  "python": "3.14.6",
+  "references": {
+    "1": {
+      "date": "",
+      "display": "0",
+      "horizontal_delay": "0.0E+0",
+      "horizontal_scale": "4.0000E-6",
+      "label": "",
+      "time": "",
+      "vertical_position": "0.0E+0",
+      "vertical_scale": "100.0000E-3"
+    },
+    "2": {
+      "date": "",
+      "display": "0",
+      "horizontal_delay": "0.0E+0",
+      "horizontal_scale": "4.0000E-6",
+      "label": "",
+      "time": "",
+      "vertical_position": "0.0E+0",
+      "vertical_scale": "100.0000E-3"
+    },
+    "3": {
+      "date": "",
+      "display": "0",
+      "horizontal_delay": "0.0E+0",
+      "horizontal_scale": "4.0000E-6",
+      "label": "",
+      "time": "",
+      "vertical_position": "0.0E+0",
+      "vertical_scale": "100.0000E-3"
+    },
+    "4": {
+      "date": "",
+      "display": "0",
+      "horizontal_delay": "0.0E+0",
+      "horizontal_scale": "4.0000E-6",
+      "label": "",
+      "time": "",
+      "vertical_position": "0.0E+0",
+      "vertical_scale": "100.0000E-3"
+    }
+  },
+  "resource": "TCPIP0::192.168.0.5::INSTR",
+  "schema_version": 1,
+  "setup_round_trip": {
+    "instrument_matches": true,
+    "restored": true
+  },
+  "trigger": {
+    "edge": {
+      "coupling": "DC",
+      "level": "1.0000",
+      "mode": "NORM",
+      "slope": "RIS",
+      "source": "CH1"
+    },
+    "level": 1.0
+  }
+}

@@ -27,6 +27,7 @@ hardware_verification_reports/
 *.xlsx
 *.xlsb
 *.json
+!tests/baselines/*.json
 
 # OS/editor
 .DS_Store

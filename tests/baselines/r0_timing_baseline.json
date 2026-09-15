@@ -1,0 +1,119 @@
+{
+  "captured_at": "2026-09-15T09:20:56.176729+00:00",
+  "commit_sha": "d255e3a679ef28e037d35d1ef7685577eb293eb0",
+  "firmware": "v2.68",
+  "idn": "TEKTRONIX,DPO4054,C011280,CF:91.1CT FV:v2.68 DPO4AUTO:V1.00",
+  "operations": {
+    "channel_apply": {
+      "max": 0.06925441100611351,
+      "min": 0.05439136100176256,
+      "p50": 0.06160824400285492,
+      "p95": 0.06752510101068765,
+      "p99": 0.06925441100611351,
+      "sample_count": 20
+    },
+    "connection": {
+      "max": 0.023434099988662638,
+      "min": 0.008812797997961752,
+      "p50": 0.02157650100707542,
+      "p95": 0.023434099988662638,
+      "p99": 0.023434099988662638,
+      "sample_count": 5
+    },
+    "csv_export": {
+      "max": 37.226098528990406,
+      "min": 34.55590327399841,
+      "p50": 36.21933291500318,
+      "p95": 37.226098528990406,
+      "p99": 37.226098528990406,
+      "sample_count": 5
+    },
+    "measurement_refresh": {
+      "max": 0.17576898900733795,
+      "min": 0.12284764100331813,
+      "p50": 0.1341970939974999,
+      "p95": 0.14294253899424803,
+      "p99": 0.17576898900733795,
+      "sample_count": 20
+    },
+    "not_yet_covered": [
+      "worker dispatch / GUI callback latency (needs a fake-clock + Qt heartbeat harness)",
+      "core/full parameter refresh latency",
+      "logger enqueue/write/drain throughput",
+      "cancel/reconnect/shutdown latency",
+      "GUI responsiveness under load (regression-test-plan.md section 7)",
+      "concurrency/backpressure regression (section 8)",
+      "scheduler drift/jitter regression (section 6)",
+      "soak/long-duration stability (section 12)"
+    ],
+    "png_capture": {
+      "max": 1.0786706750077428,
+      "min": 1.0358573749981588,
+      "p50": 1.0488185959984548,
+      "p95": 1.0786706750077428,
+      "p99": 1.0786706750077428,
+      "sample_count": 5
+    },
+    "single_acquisition": {
+      "max": 0.6918693079933291,
+      "min": 0.5780554710072465,
+      "p50": 0.6410115275066346,
+      "p95": 0.689774848986417,
+      "p99": 0.6918693079933291,
+      "sample_count": 20
+    },
+    "waveform_acquisition": {
+      "1000": {
+        "max": 0.6320776310021756,
+        "min": 0.4705712060094811,
+        "p50": 0.4762562614923809,
+        "p95": 0.4810610650019953,
+        "p99": 0.6320776310021756,
+        "sample_count": 20,
+        "samples_per_second": 2099.709926891949
+      },
+      "10000": {
+        "max": 0.5730484399973648,
+        "min": 0.4812000350066228,
+        "p50": 0.4865133644925663,
+        "p95": 0.520352435996756,
+        "p99": 0.5730484399973648,
+        "sample_count": 20,
+        "samples_per_second": 20554.419939583786
+      },
+      "100000": {
+        "max": 0.7764689960022224,
+        "min": 0.5727947880077409,
+        "p50": 0.6307755730085773,
+        "p95": 0.7764689960022224,
+        "p99": 0.7764689960022224,
+        "sample_count": 5,
+        "samples_per_second": 158534.99133302708
+      },
+      "1000000": {
+        "max": 1.5198608610080555,
+        "min": 1.467016673006583,
+        "p50": 1.4934387670073193,
+        "p95": 1.5198608610080555,
+        "p99": 1.5198608610080555,
+        "sample_count": 2,
+        "samples_per_second": 669595.5817484809
+      },
+      "10000000": {
+        "max": 9.664894487999845,
+        "min": 9.56055015900347,
+        "p50": 9.612722323501657,
+        "p95": 9.664894487999845,
+        "p99": 9.664894487999845,
+        "sample_count": 2,
+        "samples_per_second": 1040288.0332402308
+      }
+    }
+  },
+  "package_version": "0.8.0",
+  "platform": "Linux-7.2.0-070200-generic-x86_64-with-glibc2.43",
+  "python": "3.14.6",
+  "resource": "TCPIP0::192.168.0.5::INSTR",
+  "schema_version": 1,
+  "transport": "TCPIP0"
+}
