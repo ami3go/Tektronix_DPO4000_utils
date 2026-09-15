@@ -8,9 +8,9 @@ import re
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Mapping, Sequence
 
-from .bench_hil import AutomationLoggerHilRunner, FAIL, HilConfig, PASS, SKIP
+from .bench_hil import AutomationLoggerHilRunner, FAIL, HilConfig, PASS
 from .regression import PerformanceGate, TimingSummary, linear_slope, summarize_timings
 
 HARDWARE_BASELINE_SCHEMA_VERSION = 1
