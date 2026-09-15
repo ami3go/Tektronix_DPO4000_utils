@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import sys
 from pathlib import Path
 
 
@@ -10,6 +11,7 @@ SCRIPT = ROOT / "scripts" / "run_regression_batch.py"
 SPEC = importlib.util.spec_from_file_location("run_regression_batch", SCRIPT)
 assert SPEC is not None and SPEC.loader is not None
 MODULE = importlib.util.module_from_spec(SPEC)
+sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
 
 
