@@ -471,8 +471,16 @@ def read_waveform(scope: Any, request: WaveformRequest) -> WaveformData:
             f"Scope adjusted DATA:STOP from requested {requested_stop} to {stop}; request exceeds the available waveform."
         )
 
-    expected_count = stop - start + 1
     preamble = _read_preamble(scope)
+    if requested_stop is None:
+        # DATA:STOP clamps to the scope's maximum acquisition memory depth, not
+        # to the currently configured/acquired record length, so its echo is
+        # not a reliable "full waveform" bound whenever the record length is
+        # below that maximum. WFMOUTPRE:NR_PT reflects the real transferred
+        # sample count; use it to resolve the actual outgoing range instead.
+        stop = start + preamble.record_point_count - 1
+
+    expected_count = stop - start + 1
     _validate_preamble(
         preamble,
         request_encoding=encoding,
