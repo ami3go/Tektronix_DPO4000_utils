@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "indexed_resources": {
+    "channels": [1, 2, 3, 4],
+    "measurement_slots": [1, 2, 3, 4, 5, 6, 7, 8],
+    "bus_slots": [1, 2, 3, 4],
+    "reference_slots": [1, 2, 3, 4]
+  },
+  "normalized_enums": {
+    "acquisition_modes": ["SAMPLE", "PEAKDETECT", "HIRES", "AVERAGE", "ENVELOPE"],
+    "trigger_states": ["ARMED", "AUTO", "READY", "SAVE", "TRIGGER"],
+    "record_length_labels": ["1k", "10k", "100k", "1M", "10M"],
+    "logger_modes": ["Waveform records", "Measurements", "BUS decoded events", "Mixed record"],
+    "logger_output_formats": ["CSV", "Binary DPO4LOG", "CSV + Binary"]
+  },
+  "automation_contract": {
+    "periodic_interval_min_s": 1.0,
+    "periodic_interval_max_s": 604800.0,
+    "default_recovery": {
+      "enabled": true,
+      "max_retries": 2,
+      "retry_delay_s": 1.0,
+      "max_consecutive_failures": 5
+    }
+  },
+  "command_contracts": {
+    "channel_2": [
+      "SELECT:CH2 ON",
+      "CH2:SCALE 0.5",
+      "CH2:POSITION 1",
+      "CH2:OFFSET 0.1",
+      "CH2:COUPLING AC",
+      "CH2:BANDWIDTH 2e+07",
+      "CH2:PROBE:GAIN 10",
+      "CH2:INVERT OFF"
+    ],
+    "measurement_1_frequency": [
+      "MEASUREMENT:MEAS1:TYPE FREQUENCY",
+      "MEASUREMENT:MEAS1:SOURCE1 CH1",
+      "MEASUREMENT:MEAS1:STATE ON"
+    ],
+    "edge_trigger_ch1": [
+      "TRIGGER:A:TYPE EDGE",
+      "TRIGGER:A:EDGE:SOURCE CH1",
+      "TRIGGER:A:EDGE:SLOPE RISE",
+      "TRIGGER:A:EDGE:COUPLING DC",
+      "TRIGGER:A:MODE AUTO",
+      "TRIGGER:A:LEVEL:CH1 1.25"
+    ],
+    "average_10k": [
+      "ACQUIRE:MODE AVERAGE",
+      "ACQUIRE:NUMAVG 16",
+      "HORIZONTAL:RECORDLENGTH 10000"
+    ]
+  }
+}
