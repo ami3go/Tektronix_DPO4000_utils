@@ -1,6 +1,8 @@
 # A14 Advanced Trigger Backlog
 
-Status: **planned, not implemented**
+Status: **A14.1, A14.2, A14.3, A14.4, A14.5 implemented** (`TriggerConfig` foundation, PULSE
+width/runt/timeout, LOGIC pattern/setup-hold — see `dpo4000_utils/control.py`); A14.6-A14.9
+planned, not implemented.
 Parent docs: [`architecture.md`](architecture.md), [`regression-test-plan.md`](regression-test-plan.md)
 
 This document is the authoritative scope/acceptance-criteria backlog for A14, the first
@@ -55,9 +57,23 @@ types — A14.3 (Runt) and A14.5 (Timeout) below are implemented as `TRIGGER:A:T
 `LOGIC` (the instrument's default/pattern-style class, echoed back abbreviated as `LOGI`) and
 `SETHOLD`. `PATTERN`, `STATE`, and `TIMEOUT` as class names are rejected — those are not this
 instrument's actual keywords for logic-class sub-selection, despite being common Tektronix
-trigger terminology elsewhere. The full field layout under each class (pattern definition
-per channel, setup/hold timing) is **not yet mapped** — needs further live probing or the
-Programmer Manual before A14.4 is implemented.
+trigger terminology elsewhere.
+
+Field layout for both classes is now mapped and implemented (`dpo4000_utils/control.py`):
+for `LOGIC` (pattern) — `TRIGGER:A:LOGIC:FUNCTION {AND|OR|NAND|NOR}`,
+`TRIGGER:A:LOGIC:INPUT:CH{1-4} {HIGH|LOW|X}` (`DONTCARE` is rejected; the literal token is
+`X`), `TRIGGER:A:LOGIC:INPUT:CLOCK:SOURCE {CH1-4|NONE}`,
+`TRIGGER:A:LOGIC:INPUT:CLOCK:EDGE {RISE|FALL}`, and — oddly namespaced differently from every
+other `LOGIC` leaf — `TRIGGER:A:LOGIC:PATTERN:WHEN {TRUE|FALSE|LESSTHAN|MORETHAN}` (no
+associated time-limit leaf could be found for the `LESSTHAN`/`MORETHAN` comparators, so those
+values are accepted but any duration qualifier is unimplemented). `TRIGGER:A:LOGIC:THRESHOLD:
+CH{1-4}` also exists (per-channel comparison level) but only the query side was verified; it
+is not yet wired into `TriggerConfig`. For `SETHOLD` — `TRIGGER:A:LOGIC:SETHOLD:CLOCK:SOURCE
+{CH1-4}`, `:CLOCK:EDGE {RISE|FALL}`, `:CLOCK:THRESHOLD <level>`, `:DATA:THRESHOLD <level>`,
+`:SETTIME <time>`, `:HOLDTIME <time>` are all confirmed read+write. `:DATA:SOURCE` (which
+channel is the data line) could not be found under any tried name and remains unmapped — a
+`SETHOLD` config today can only threshold/time-qualify whatever the instrument's current data
+source already is.
 
 **`TRIGGER:A:VIDEO?`** returns a populated field set (`NTS;ALLL;1;0.0E+0;POS` — standard,
 line spec, field, delay, polarity) confirming the video-trigger subsystem exists and is
@@ -80,9 +96,10 @@ operational timeout — use a short, dedicated probe timeout so an unsupported c
 stall a real capture/automation run. This directly informs the "unsupported-trigger capability
 probe latency" requirement already named in `regression-test-plan.md` §14.
 
-**Net implication for scoping below**: A14.1-A14.3 (type selection, pulse width, runt) and
-A14.5 (timeout) can be scoped with confidence — their `TYPE`/`CLASS` selectors are confirmed.
-A14.4 (logic), A14.6 (video), A14.7 (sequence/B-trigger), and A14.8 (holdoff-by-count, if it
+**Net implication for scoping below**: A14.1-A14.5 (type selection, pulse width, runt, logic,
+timeout) are implemented with fully mapped fields, modulo the two explicitly-noted gaps above
+(pulse `TRANSITION` class, `SETHOLD` data source, logic pattern `LESSTHAN`/`MORETHAN` time
+qualifier). A14.6 (video), A14.7 (sequence/B-trigger), and A14.8 (holdoff-by-count, if it
 exists) still need their full field layout mapped against real hardware or the Programmer
 Manual before implementation starts on those specific sub-features — do not guess field names
 for them.
@@ -91,11 +108,11 @@ for them.
 
 | ID | Feature | SCPI foundation | Verification status | Priority |
 |---|---|---|---|---|
-| A14.1 | Trigger type selection & `TriggerConfig` dataclass | `TRIGGER:A:TYPE` | Confirmed | Very high (blocks all others) |
-| A14.2 | Pulse width trigger | `TRIGGER:A:TYPE PULSE`, `:PULSE:CLASS WIDTH` | Confirmed selector; width/polarity/comparator fields not yet mapped | High |
-| A14.3 | Runt trigger | `:PULSE:CLASS RUNT` | Confirmed selector; threshold/width fields not yet mapped | High |
-| A14.4 | Logic trigger | `TRIGGER:A:TYPE LOGIC`, `:LOGIC:CLASS` | Selector partially confirmed (`LOGIC`, `SETHOLD`); pattern/state field layout unmapped | Medium |
-| A14.5 | Timeout trigger | `:PULSE:CLASS TIMEOUT` | Confirmed selector; timeout-value field not yet mapped | Medium |
+| A14.1 | Trigger type selection & `TriggerConfig` dataclass | `TRIGGER:A:TYPE` | **Implemented** | Very high (blocks all others) |
+| A14.2 | Pulse width trigger | `TRIGGER:A:TYPE PULSE`, `:PULSE:CLASS WIDTH` | **Implemented** | High |
+| A14.3 | Runt trigger | `:PULSE:CLASS RUNT` | **Implemented** | High |
+| A14.4 | Logic trigger | `TRIGGER:A:TYPE LOGIC`, `:LOGIC:CLASS` | **Implemented** (`LOGIC`/`SETHOLD` classes; `SETHOLD` data-source leaf and pattern time-qualifier unmapped) | Medium |
+| A14.5 | Timeout trigger | `:PULSE:CLASS TIMEOUT` | **Implemented** | Medium |
 | A14.6 | Video trigger | `TRIGGER:A:TYPE VIDEO` | Selector confirmed; field layout unmapped | Low |
 | A14.7 | Sequence / B-trigger (A-then-B) | `TRIGGER:B:*` | Subsystem existence confirmed; event/mode structure unmapped | Medium |
 | A14.8 | Trigger holdoff | `TRIGGER:A:HOLDOFF:VALUE` | Holdoff-by-time confirmed; holdoff-by-count/other modes unconfirmed | Medium |
@@ -149,39 +166,59 @@ Acceptance:
   `get_trigger_level`, `get_edge_trigger_configuration`, `set_edge_trigger_source`,
   `rearm_trigger_after_image`, `nudge_trigger_level_knob`) remain unchanged per plan §15.1.
 
-### A14.2 — Pulse width trigger
+### A14.2 — Pulse width trigger — **Implemented**
 
-Behavior: `TRIGGER:A:TYPE PULSE` + `TRIGGER:A:PULSE:CLASS WIDTH`, plus width-comparator
-fields (likely polarity, comparator operator, low/high time bounds — **verify exact SCPI
-leaf names against hardware or the Programmer Manual before implementing**; do not guess).
+`TRIGGER:A:TYPE PULSE` + `TRIGGER:A:PULSE:CLASS WIDTH`, `:PULSE:SOURCE {CH1-4|AUX|LINE}`,
+`:WIDTH:POLARITY {POSITIVE|NEGATIVE}`, `:WIDTH:WHEN {LESSTHAN|MORETHAN|EQUAL|UNEQUAL|WITHIN|
+OUTSIDE}`, `:WIDTH:LOWLIMIT`/`:WIDTH:HIGHLIMIT` (time). `TriggerConfig` fields:
+`pulse_class="WIDTH"`, `pulse_polarity`, `pulse_when`, `pulse_low_limit`, `pulse_high_limit`.
 
-Acceptance: same L0-L1 boundary/contract requirements as A14.1's fields, plus a capability
-probe (see A14.10) confirming this trigger class is available before the GUI enables it.
+Acceptance: L0-L1 boundary/injection/exact-contract tests in `tests/test_control.py` and
+`tests/test_scpi_safety.py`; fake-VISA round-trip in `tests/test_trigger_config.py`; live
+round-trip exercised by `hardware_verification_core.py`'s `trigger-config-write` case.
 
-### A14.3 — Runt trigger
+### A14.3 — Runt trigger — **Implemented**
 
-Behavior: `TRIGGER:A:TYPE PULSE` + `TRIGGER:A:PULSE:CLASS RUNT`, plus runt-specific threshold/
-width fields (**leaf names unverified — map against hardware first**).
+`TRIGGER:A:PULSE:CLASS RUNT`, `:RUNT:POLARITY {POSITIVE|NEGATIVE|EITHER}`,
+`:RUNT:WHEN {OCCURS|LESSTHAN|MORETHAN|EQUAL|UNEQUAL}`, `:RUNT:THRESHOLD:HIGH`/`:LOW`
+(amplitude), `:RUNT:LOWLIMIT`/`:RUNT:HIGHLIMIT` (time). `TriggerConfig` fields:
+`pulse_class="RUNT"`, `pulse_polarity`, `pulse_when`, `pulse_threshold_high`,
+`pulse_threshold_low`, `pulse_low_limit`, `pulse_high_limit`.
 
 Acceptance: same pattern as A14.2.
 
-### A14.4 — Logic trigger
+### A14.4 — Logic trigger — **Implemented** (LOGIC and SETHOLD classes)
 
-Behavior: `TRIGGER:A:TYPE LOGIC` + `TRIGGER:A:LOGIC:CLASS {LOGIC|SETHOLD}` (confirmed keyword
-values — note `LOGIC` is the literal write value for the pattern-style class, distinct from
-the `TYPE` value of the same name). Per-channel pattern definitions and setup/hold timing
-fields are **unmapped — required verification step before implementation**.
+`TRIGGER:A:TYPE LOGIC` + `TRIGGER:A:LOGIC:CLASS {LOGIC|SETHOLD}`. For `LOGIC` (pattern):
+`:LOGIC:FUNCTION {AND|OR|NAND|NOR}`, `:LOGIC:INPUT:CH{1-4} {HIGH|LOW|X}`,
+`:LOGIC:INPUT:CLOCK:SOURCE {CH1-4|NONE}`, `:LOGIC:INPUT:CLOCK:EDGE {RISE|FALL}`,
+`:LOGIC:PATTERN:WHEN {TRUE|FALSE|LESSTHAN|MORETHAN}` (namespaced under `:PATTERN:` unlike
+every other `LOGIC` leaf here — verified, not a typo). For `SETHOLD`:
+`:LOGIC:SETHOLD:CLOCK:SOURCE {CH1-4}`, `:CLOCK:EDGE {RISE|FALL}`, `:CLOCK:THRESHOLD`,
+`:DATA:THRESHOLD`, `:SETTIME`, `:HOLDTIME`. `TriggerConfig` fields: `logic_class`,
+`logic_function`, `logic_input_ch1`..`logic_input_ch4`, `logic_clock_source` (shared leaf name,
+different SCPI path per class), `logic_clock_edge`, `logic_when`, `logic_clock_threshold`,
+`logic_data_threshold`, `logic_setup_time`, `logic_hold_time`.
 
-Acceptance: same pattern as A14.2, plus explicit test that the pattern-vs-setup/hold class
-selector round-trips correctly (`LOGI`/`SETH` abbreviations observed on this firmware).
+Known gaps, not guessed around: `SETHOLD`'s data-source leaf (which channel is the "data"
+line) could not be found under any tried name and is not settable; `LOGIC` pattern's
+`LESSTHAN`/`MORETHAN` comparators accept no associated time-limit field (none found);
+`TRIGGER:A:LOGIC:THRESHOLD:CH{1-4}` (per-channel pattern comparison level) is confirmed
+readable but write behavior was never tested, so it is not wired into `TriggerConfig`.
 
-### A14.5 — Timeout trigger
+Acceptance: explicit test that the pattern-vs-setup/hold class selector round-trips correctly
+(`LOGI`/`SETH` abbreviations observed on this firmware) — see
+`tests/test_trigger_config.py::test_get_trigger_configuration_logic_pattern_reads_class_specific_fields`
+and the `_sethold_` equivalent.
 
-Behavior: `TRIGGER:A:TYPE PULSE` + `TRIGGER:A:PULSE:CLASS TIMEOUT`, plus a timeout-duration
-field (**leaf name unverified**).
+### A14.5 — Timeout trigger — **Implemented**
 
-Acceptance: same pattern as A14.2. Timeout-value boundary matrix should include the
-project's standard non-finite/injection cases (plan §3.1) since this is a duration field.
+`TRIGGER:A:PULSE:CLASS TIMEOUT`, `:TIMEOUT:POLARITY {STAYSHIGH|STAYSLOW|EITHER}`,
+`:TIMEOUT:TIME` (duration). `TriggerConfig` fields: `pulse_class="TIMEOUT"`, `pulse_polarity`,
+`pulse_timeout_time`.
+
+Acceptance: same pattern as A14.2. Timeout-value boundary matrix includes the project's
+standard non-finite/injection cases (plan §3.1) since this is a duration field.
 
 ### A14.6 — Video trigger
 
@@ -262,27 +299,32 @@ Acceptance, cross-referencing `regression-test-plan.md` §14's existing A14 list
 
 ## Delivery phases
 
-### Phase A — foundation (A14.1)
+### Phase A — foundation (A14.1) — **done**
 
 `TriggerConfig` dataclass, corrected type enum, `configure_trigger()`/
-`get_trigger_configuration()`, full L0-L2 test coverage. Existing edge-trigger behavior must
-remain unchanged (regression invariant, plan §16).
+`get_trigger_configuration()`, full L0-L2 test coverage. Existing edge-trigger behavior
+remains unchanged (regression invariant, plan §16).
 
-### Phase B — confirmed-selector types (A14.2, A14.3, A14.5)
+### Phase B — confirmed-selector types (A14.2, A14.3, A14.5) — **done**
 
 Pulse width, runt, timeout — all share the confirmed `TYPE PULSE` + `PULSE:CLASS` selector.
-Field-level SCPI leaf names for each still need verification before their acceptance criteria
-can be finalized past the selector level.
+Field-level SCPI leaf names for each were verified and implemented.
+
+### Phase B.5 — Logic trigger (A14.4) — **done**
+
+Both `LOGIC` (pattern) and `SETHOLD` classes verified and implemented, with the `SETHOLD`
+data-source leaf and the pattern `LESSTHAN`/`MORETHAN` time-qualifier left unmapped (see
+A14.4's acceptance section) rather than guessed.
 
 ### Phase C — capability probing (A14.10)
 
 Build the bounded-timeout probe helper before attempting the remaining unmapped types, so
-A14.4/A14.6/A14.7/A14.8 investigation itself doesn't repeat the hang this document's own
-research run into.
+A14.6/A14.7/A14.8 investigation itself doesn't repeat the hang this document's own research
+run into.
 
-### Phase D — unmapped types (A14.4, A14.6, A14.7, A14.8)
+### Phase D — remaining unmapped types (A14.6, A14.7, A14.8)
 
-Logic, video, sequence/B-trigger, holdoff-by-count (if it exists). Each requires its own
+Video, sequence/B-trigger, holdoff-by-count (if it exists). Each requires its own
 hardware/manual verification pass before implementation, per this document's "Hardware
 findings" section.
 

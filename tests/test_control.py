@@ -6,6 +6,7 @@ from dpo4000_utils.control import (
     DisplayConfig,
     MathConfig,
     MeasurementConfig,
+    TRIGGER_LOGIC_CLASSES,
     TRIGGER_PULSE_CLASSES,
     TRIGGER_TYPES,
     TriggerConfig,
@@ -314,7 +315,7 @@ def test_trigger_config_commands_pulse_timeout():
 
 def test_trigger_config_rejects_unsupported_trigger_type():
     with pytest.raises(ValueError, match="not yet supported"):
-        build_trigger_config_commands(TriggerConfig(trigger_type="LOGIC"))
+        build_trigger_config_commands(TriggerConfig(trigger_type="VIDEO"))
 
 
 def test_trigger_config_rejects_invalid_trigger_type_before_any_command():
@@ -362,3 +363,94 @@ def test_trigger_config_queries_pulse_width():
 def test_trigger_config_queries_rejects_unsupported_type():
     with pytest.raises(ValueError, match="not yet supported"):
         build_trigger_config_queries("VIDEO")
+
+
+def test_trigger_logic_classes_are_the_live_verified_set():
+    assert TRIGGER_LOGIC_CLASSES == ("LOGIC", "SETHOLD")
+
+
+def test_trigger_config_commands_logic_pattern():
+    config = TriggerConfig(
+        trigger_type="logic",
+        logic_class="logic",
+        logic_function="and",
+        logic_input_ch1="high",
+        logic_input_ch2="low",
+        logic_input_ch3="x",
+        logic_input_ch4="x",
+        logic_clock_source="none",
+        logic_clock_edge="rise",
+        logic_when="true",
+    )
+    assert build_trigger_config_commands(config) == [
+        "TRIGGER:A:TYPE LOGIC",
+        "TRIGGER:A:LOGIC:CLASS LOGIC",
+        "TRIGGER:A:LOGIC:FUNCTION AND",
+        "TRIGGER:A:LOGIC:INPUT:CH1 HIGH",
+        "TRIGGER:A:LOGIC:INPUT:CH2 LOW",
+        "TRIGGER:A:LOGIC:INPUT:CH3 X",
+        "TRIGGER:A:LOGIC:INPUT:CH4 X",
+        "TRIGGER:A:LOGIC:INPUT:CLOCK:SOURCE NONE",
+        "TRIGGER:A:LOGIC:INPUT:CLOCK:EDGE RISE",
+        "TRIGGER:A:LOGIC:PATTERN:WHEN TRUE",
+    ]
+
+
+def test_trigger_config_commands_logic_sethold():
+    config = TriggerConfig(
+        trigger_type="LOGIC",
+        logic_class="SETHOLD",
+        logic_clock_source="CH1",
+        logic_clock_edge="RISE",
+        logic_clock_threshold="1.0",
+        logic_data_threshold="0.5",
+        logic_setup_time="8e-9",
+        logic_hold_time="8e-9",
+    )
+    assert build_trigger_config_commands(config) == [
+        "TRIGGER:A:TYPE LOGIC",
+        "TRIGGER:A:LOGIC:CLASS SETHOLD",
+        "TRIGGER:A:LOGIC:SETHOLD:CLOCK:SOURCE CH1",
+        "TRIGGER:A:LOGIC:SETHOLD:CLOCK:EDGE RISE",
+        "TRIGGER:A:LOGIC:SETHOLD:CLOCK:THRESHOLD 1",
+        "TRIGGER:A:LOGIC:SETHOLD:DATA:THRESHOLD 0.5",
+        "TRIGGER:A:LOGIC:SETHOLD:SETTIME 8e-09",
+        "TRIGGER:A:LOGIC:SETHOLD:HOLDTIME 8e-09",
+    ]
+
+
+def test_trigger_config_rejects_invalid_logic_class():
+    with pytest.raises(ValueError):
+        build_trigger_config_commands(TriggerConfig(trigger_type="LOGIC", logic_class="BOGUS"))
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("logic_function", "XOR"),
+        ("logic_input_ch1", "DONTCARE"),
+        ("logic_clock_source", "AUX"),
+        ("logic_clock_edge", "EITHER"),
+        ("logic_when", "SIDEWAYS"),
+    ],
+)
+def test_trigger_config_rejects_invalid_logic_pattern_enum_values(field, value):
+    with pytest.raises(ValueError):
+        build_trigger_config_commands(
+            TriggerConfig(trigger_type="LOGIC", logic_class="LOGIC", **{field: value})
+        )
+
+
+def test_trigger_config_queries_logic_sethold():
+    assert build_trigger_config_queries("LOGIC", logic_class="SETHOLD") == {
+        "logic_clock_source": "TRIGGER:A:LOGIC:SETHOLD:CLOCK:SOURCE?",
+        "logic_clock_edge": "TRIGGER:A:LOGIC:SETHOLD:CLOCK:EDGE?",
+        "logic_clock_threshold": "TRIGGER:A:LOGIC:SETHOLD:CLOCK:THRESHOLD?",
+        "logic_data_threshold": "TRIGGER:A:LOGIC:SETHOLD:DATA:THRESHOLD?",
+        "logic_setup_time": "TRIGGER:A:LOGIC:SETHOLD:SETTIME?",
+        "logic_hold_time": "TRIGGER:A:LOGIC:SETHOLD:HOLDTIME?",
+    }
+
+
+def test_trigger_config_queries_logic_without_class_is_empty():
+    assert build_trigger_config_queries("LOGIC") == {}

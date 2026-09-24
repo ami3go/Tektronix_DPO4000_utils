@@ -152,6 +152,119 @@ def test_get_trigger_configuration_unsupported_type_returns_raw_readback_only():
     assert scope.get_trigger_configuration() == {"trigger_type": "VID"}
 
 
+def test_configure_trigger_logic_pattern_writes_logic_commands():
+    scope = FakeScope()
+    scope.configure_trigger(
+        TriggerConfig(
+            trigger_type="LOGIC",
+            logic_class="LOGIC",
+            logic_function="OR",
+            logic_input_ch1="HIGH",
+            logic_input_ch2="X",
+            logic_clock_source="NONE",
+            logic_clock_edge="RISE",
+            logic_when="TRUE",
+        )
+    )
+    assert scope.instrument.writes == [
+        "TRIGGER:A:TYPE LOGIC",
+        "TRIGGER:A:LOGIC:CLASS LOGIC",
+        "TRIGGER:A:LOGIC:FUNCTION OR",
+        "TRIGGER:A:LOGIC:INPUT:CH1 HIGH",
+        "TRIGGER:A:LOGIC:INPUT:CH2 X",
+        "TRIGGER:A:LOGIC:INPUT:CLOCK:SOURCE NONE",
+        "TRIGGER:A:LOGIC:INPUT:CLOCK:EDGE RISE",
+        "TRIGGER:A:LOGIC:PATTERN:WHEN TRUE",
+    ]
+
+
+def test_configure_trigger_logic_sethold_writes_sethold_commands():
+    scope = FakeScope()
+    scope.configure_trigger(
+        TriggerConfig(
+            trigger_type="LOGIC",
+            logic_class="SETHOLD",
+            logic_clock_source="CH1",
+            logic_clock_edge="RISE",
+            logic_setup_time="5e-9",
+            logic_hold_time="5e-9",
+        )
+    )
+    assert scope.instrument.writes == [
+        "TRIGGER:A:TYPE LOGIC",
+        "TRIGGER:A:LOGIC:CLASS SETHOLD",
+        "TRIGGER:A:LOGIC:SETHOLD:CLOCK:SOURCE CH1",
+        "TRIGGER:A:LOGIC:SETHOLD:CLOCK:EDGE RISE",
+        "TRIGGER:A:LOGIC:SETHOLD:SETTIME 5e-09",
+        "TRIGGER:A:LOGIC:SETHOLD:HOLDTIME 5e-09",
+    ]
+
+
+def test_configure_trigger_logic_rejects_injected_field_before_any_write():
+    scope = FakeScope()
+    with pytest.raises(ValueError):
+        scope.configure_trigger(
+            TriggerConfig(trigger_type="LOGIC", logic_class="LOGIC", logic_function="AND;*RST")
+        )
+    assert scope.instrument.writes == []
+
+
+def test_get_trigger_configuration_logic_pattern_reads_class_specific_fields():
+    scope = FakeScope(
+        responses={
+            "TRIGGER:A:TYPE?": "LOGI",
+            "TRIGGER:A:LOGIC:CLASS?": "LOGI",
+            "TRIGGER:A:LOGIC:FUNCTION?": "AND",
+            "TRIGGER:A:LOGIC:INPUT:CH1?": "X",
+            "TRIGGER:A:LOGIC:INPUT:CH2?": "X",
+            "TRIGGER:A:LOGIC:INPUT:CH3?": "X",
+            "TRIGGER:A:LOGIC:INPUT:CH4?": "X",
+            "TRIGGER:A:LOGIC:INPUT:CLOCK:SOURCE?": "NON",
+            "TRIGGER:A:LOGIC:INPUT:CLOCK:EDGE?": "RIS",
+            "TRIGGER:A:LOGIC:PATTERN:WHEN?": "TRU",
+        }
+    )
+    result = scope.get_trigger_configuration()
+    assert result == {
+        "trigger_type": "LOGIC",
+        "logic_class": "LOGIC",
+        "logic_function": "AND",
+        "logic_input_ch1": "X",
+        "logic_input_ch2": "X",
+        "logic_input_ch3": "X",
+        "logic_input_ch4": "X",
+        "logic_clock_source": "NON",
+        "logic_clock_edge": "RIS",
+        "logic_when": "TRU",
+    }
+
+
+def test_get_trigger_configuration_logic_sethold_reads_class_specific_fields():
+    scope = FakeScope(
+        responses={
+            "TRIGGER:A:TYPE?": "LOGI",
+            "TRIGGER:A:LOGIC:CLASS?": "SETH",
+            "TRIGGER:A:LOGIC:SETHOLD:CLOCK:SOURCE?": "CH1",
+            "TRIGGER:A:LOGIC:SETHOLD:CLOCK:EDGE?": "RIS",
+            "TRIGGER:A:LOGIC:SETHOLD:CLOCK:THRESHOLD?": "1.0000",
+            "TRIGGER:A:LOGIC:SETHOLD:DATA:THRESHOLD?": "1.0000",
+            "TRIGGER:A:LOGIC:SETHOLD:SETTIME?": "8.0000E-9",
+            "TRIGGER:A:LOGIC:SETHOLD:HOLDTIME?": "8.0000E-9",
+        }
+    )
+    result = scope.get_trigger_configuration()
+    assert result == {
+        "trigger_type": "LOGIC",
+        "logic_class": "SETHOLD",
+        "logic_clock_source": "CH1",
+        "logic_clock_edge": "RIS",
+        "logic_clock_threshold": "1.0000",
+        "logic_data_threshold": "1.0000",
+        "logic_setup_time": "8.0000E-9",
+        "logic_hold_time": "8.0000E-9",
+    }
+
+
 @pytest.mark.parametrize("level", ["nan", "inf", "-inf"])
 def test_set_trigger_level_rejects_non_finite_values(level):
     scope = FakeScope()
