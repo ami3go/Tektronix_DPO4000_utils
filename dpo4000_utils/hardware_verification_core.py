@@ -577,17 +577,54 @@ class HardwareVerifier:
                 raise AssertionError(
                     f"configure_trigger()/get_trigger_configuration() round trip failed: {readback}"
                 )
+
+            scope.configure_trigger(
+                TriggerConfig(
+                    trigger_type="LOGIC",
+                    logic_class="LOGIC",
+                    logic_function="AND",
+                    logic_input_ch1="X",
+                    logic_input_ch2="X",
+                    logic_input_ch3="X",
+                    logic_input_ch4="X",
+                    logic_clock_source="NONE",
+                    logic_when="TRUE",
+                )
+            )
+            readback = scope.get_trigger_configuration()
+            if readback.get("trigger_type") != "LOGIC" or readback.get("logic_class") != "LOGIC":
+                raise AssertionError(
+                    f"configure_trigger()/get_trigger_configuration() LOGIC round trip failed: {readback}"
+                )
+
+            scope.configure_trigger(
+                TriggerConfig(
+                    trigger_type="LOGIC",
+                    logic_class="SETHOLD",
+                    logic_clock_source=f"CH{channel}",
+                    logic_clock_edge="RISE",
+                    logic_setup_time="8e-9",
+                    logic_hold_time="8e-9",
+                )
+            )
+            readback = scope.get_trigger_configuration()
+            if readback.get("trigger_type") != "LOGIC" or readback.get("logic_class") != "SETHOLD":
+                raise AssertionError(
+                    "configure_trigger()/get_trigger_configuration() LOGIC/SETHOLD round trip "
+                    f"failed: {readback}"
+                )
         finally:
-            # A narrow PULSE/WIDTH condition may rarely (or never) match the connected
-            # signal, which would otherwise stall every later case that waits for an
-            # acquisition to complete. Restore EDGE immediately rather than relying on
+            # None of the exercised conditions (a narrow PULSE/WIDTH match, an unclocked
+            # LOGIC pattern, a SETHOLD timing violation) are guaranteed to occur on the
+            # connected signal, which would otherwise stall every later case that waits for
+            # an acquisition to complete. Restore EDGE immediately rather than relying on
             # the end-of-run baseline reapply, which only runs once after every case.
             scope.configure_edge_trigger(
                 source=f"CH{channel}", slope="RISE", coupling="DC", mode="AUTO", level=current_level
             )
         return (
-            "TriggerConfig PULSE/WIDTH configure/readback round trip passed on "
-            f"CH{channel}; trigger was restored to EDGE immediately after."
+            "TriggerConfig PULSE/WIDTH and LOGIC (LOGIC/SETHOLD classes) configure/readback "
+            f"round trips passed on CH{channel}; trigger was restored to EDGE immediately after."
         )
 
     def _case_display_write(self) -> str:

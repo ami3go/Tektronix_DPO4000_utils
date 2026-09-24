@@ -77,6 +77,16 @@ TRIGGER_PULSE_RUNT_POLARITIES = ("POSITIVE", "NEGATIVE", "EITHER")
 TRIGGER_PULSE_RUNT_WHEN = ("OCCURS", "LESSTHAN", "MORETHAN", "EQUAL", "UNEQUAL")
 TRIGGER_PULSE_TIMEOUT_POLARITIES = ("STAYSHIGH", "STAYSLOW", "EITHER")
 
+# TRIGGER:A:TYPE LOGIC selects one of these via TRIGGER:A:LOGIC:CLASS. Live-verified
+# against a DPO4054 (see docs/a14-advanced-trigger-backlog.md). SETHOLD's DATA:SOURCE
+# leaf could not be found by probing and remains unmapped/unsettable here.
+TRIGGER_LOGIC_CLASSES = ("LOGIC", "SETHOLD")
+TRIGGER_LOGIC_FUNCTIONS = ("AND", "OR", "NAND", "NOR")
+TRIGGER_LOGIC_INPUT_STATES = ("HIGH", "LOW", "X")
+TRIGGER_LOGIC_CLOCK_SOURCES = ("CH1", "CH2", "CH3", "CH4", "NONE")
+TRIGGER_LOGIC_CLOCK_EDGES = ("RISE", "FALL")
+TRIGGER_LOGIC_PATTERN_WHEN = ("TRUE", "FALSE", "LESSTHAN", "MORETHAN")
+
 CHANNEL_CONFIG_FIELDS = (
     "display",
     "scale",
@@ -207,10 +217,10 @@ class MeasurementSetup:
 class TriggerConfig:
     """DPO4000 Desk A-trigger configuration payload.
 
-    Only EDGE and PULSE (classes WIDTH/RUNT/TIMEOUT) are supported by
-    ``configure_trigger()`` today; see docs/a14-advanced-trigger-backlog.md for the
-    remaining trigger types, which need their SCPI subtree verified against real
-    hardware before being added here.
+    Only EDGE, PULSE (classes WIDTH/RUNT/TIMEOUT), and LOGIC (classes LOGIC/SETHOLD)
+    are supported by ``configure_trigger()`` today; see
+    docs/a14-advanced-trigger-backlog.md for the remaining trigger types, which need
+    their SCPI subtree verified against real hardware before being added here.
     """
 
     trigger_type: str
@@ -230,6 +240,22 @@ class TriggerConfig:
     pulse_threshold_high: str | float | int | None = None
     pulse_threshold_low: str | float | int | None = None
     pulse_timeout_time: str | float | int | None = None
+    # LOGIC only. logic_clock_source/logic_clock_edge are shared between the LOGIC and
+    # SETHOLD classes (each writes a different SCPI leaf; only one class is active per
+    # config). SETHOLD's data source is not settable - its SCPI leaf could not be found.
+    logic_class: str | None = None
+    logic_function: str | None = None
+    logic_input_ch1: str | None = None
+    logic_input_ch2: str | None = None
+    logic_input_ch3: str | None = None
+    logic_input_ch4: str | None = None
+    logic_clock_source: str | None = None
+    logic_clock_edge: str | None = None
+    logic_when: str | None = None
+    logic_clock_threshold: str | float | int | None = None
+    logic_data_threshold: str | float | int | None = None
+    logic_setup_time: str | float | int | None = None
+    logic_hold_time: str | float | int | None = None
 
 
 def _normalize_token(value: str, *, field: str) -> str:
@@ -610,11 +636,110 @@ def _build_pulse_trigger_commands(config: TriggerConfig) -> list[str]:
     return commands
 
 
+_TRIGGER_LOGIC_CLASS_QUERIES: dict[str, dict[str, str]] = {
+    "LOGIC": {
+        "logic_function": "TRIGGER:A:LOGIC:FUNCTION?",
+        "logic_input_ch1": "TRIGGER:A:LOGIC:INPUT:CH1?",
+        "logic_input_ch2": "TRIGGER:A:LOGIC:INPUT:CH2?",
+        "logic_input_ch3": "TRIGGER:A:LOGIC:INPUT:CH3?",
+        "logic_input_ch4": "TRIGGER:A:LOGIC:INPUT:CH4?",
+        "logic_clock_source": "TRIGGER:A:LOGIC:INPUT:CLOCK:SOURCE?",
+        "logic_clock_edge": "TRIGGER:A:LOGIC:INPUT:CLOCK:EDGE?",
+        "logic_when": "TRIGGER:A:LOGIC:PATTERN:WHEN?",
+    },
+    "SETHOLD": {
+        "logic_clock_source": "TRIGGER:A:LOGIC:SETHOLD:CLOCK:SOURCE?",
+        "logic_clock_edge": "TRIGGER:A:LOGIC:SETHOLD:CLOCK:EDGE?",
+        "logic_clock_threshold": "TRIGGER:A:LOGIC:SETHOLD:CLOCK:THRESHOLD?",
+        "logic_data_threshold": "TRIGGER:A:LOGIC:SETHOLD:DATA:THRESHOLD?",
+        "logic_setup_time": "TRIGGER:A:LOGIC:SETHOLD:SETTIME?",
+        "logic_hold_time": "TRIGGER:A:LOGIC:SETHOLD:HOLDTIME?",
+    },
+}
+
+
+def _build_logic_trigger_commands(config: TriggerConfig) -> list[str]:
+    commands = ["TRIGGER:A:TYPE LOGIC"]
+    logic_class = (
+        normalize_scpi_enum(config.logic_class, TRIGGER_LOGIC_CLASSES, field="Logic trigger class")
+        if config.logic_class is not None
+        else None
+    )
+    if logic_class is not None:
+        commands.append(f"TRIGGER:A:LOGIC:CLASS {logic_class}")
+
+    if logic_class == "LOGIC":
+        if config.logic_function is not None:
+            function = normalize_scpi_enum(
+                config.logic_function, TRIGGER_LOGIC_FUNCTIONS, field="Logic trigger function"
+            )
+            commands.append(f"TRIGGER:A:LOGIC:FUNCTION {function}")
+        for channel, value in (
+            (1, config.logic_input_ch1),
+            (2, config.logic_input_ch2),
+            (3, config.logic_input_ch3),
+            (4, config.logic_input_ch4),
+        ):
+            if value is not None:
+                state = normalize_scpi_enum(
+                    value, TRIGGER_LOGIC_INPUT_STATES, field=f"Logic input CH{channel} state"
+                )
+                commands.append(f"TRIGGER:A:LOGIC:INPUT:CH{channel} {state}")
+        if config.logic_clock_source is not None:
+            clock_source = normalize_scpi_enum(
+                config.logic_clock_source, TRIGGER_LOGIC_CLOCK_SOURCES, field="Logic clock source"
+            )
+            commands.append(f"TRIGGER:A:LOGIC:INPUT:CLOCK:SOURCE {clock_source}")
+        if config.logic_clock_edge is not None:
+            clock_edge = normalize_scpi_enum(
+                config.logic_clock_edge, TRIGGER_LOGIC_CLOCK_EDGES, field="Logic clock edge"
+            )
+            commands.append(f"TRIGGER:A:LOGIC:INPUT:CLOCK:EDGE {clock_edge}")
+        if config.logic_when is not None:
+            when = normalize_scpi_enum(
+                config.logic_when, TRIGGER_LOGIC_PATTERN_WHEN, field="Logic pattern comparator"
+            )
+            commands.append(f"TRIGGER:A:LOGIC:PATTERN:WHEN {when}")
+    elif logic_class == "SETHOLD":
+        if config.logic_clock_source is not None:
+            clock_source = normalize_scpi_enum(
+                config.logic_clock_source, TRIGGER_LOGIC_CLOCK_SOURCES, field="Logic clock source"
+            )
+            commands.append(f"TRIGGER:A:LOGIC:SETHOLD:CLOCK:SOURCE {clock_source}")
+        if config.logic_clock_edge is not None:
+            clock_edge = normalize_scpi_enum(
+                config.logic_clock_edge, TRIGGER_LOGIC_CLOCK_EDGES, field="Logic clock edge"
+            )
+            commands.append(f"TRIGGER:A:LOGIC:SETHOLD:CLOCK:EDGE {clock_edge}")
+        if config.logic_clock_threshold is not None:
+            threshold = format_scpi_number(config.logic_clock_threshold, field="Logic clock threshold")
+            commands.append(f"TRIGGER:A:LOGIC:SETHOLD:CLOCK:THRESHOLD {threshold}")
+        if config.logic_data_threshold is not None:
+            threshold = format_scpi_number(config.logic_data_threshold, field="Logic data threshold")
+            commands.append(f"TRIGGER:A:LOGIC:SETHOLD:DATA:THRESHOLD {threshold}")
+        if config.logic_setup_time is not None:
+            setup_time = format_scpi_number(
+                config.logic_setup_time, field="Logic setup time", nonnegative=True
+            )
+            commands.append(f"TRIGGER:A:LOGIC:SETHOLD:SETTIME {setup_time}")
+        if config.logic_hold_time is not None:
+            hold_time = format_scpi_number(
+                config.logic_hold_time, field="Logic hold time", nonnegative=True
+            )
+            commands.append(f"TRIGGER:A:LOGIC:SETHOLD:HOLDTIME {hold_time}")
+
+    if config.mode is not None:
+        mode = normalize_trigger_choice(config.mode, TRIGGER_MODES, field="Trigger mode")
+        commands.append(f"TRIGGER:A:MODE {mode}")
+    return commands
+
+
 def build_trigger_config_commands(config: TriggerConfig) -> list[str]:
     """Build the A-trigger SCPI command sequence for one :class:`TriggerConfig`.
 
-    Only EDGE and PULSE (WIDTH/RUNT/TIMEOUT classes) are supported; see
-    docs/a14-advanced-trigger-backlog.md for the remaining trigger types.
+    Only EDGE, PULSE (WIDTH/RUNT/TIMEOUT classes), and LOGIC (LOGIC/SETHOLD classes)
+    are supported; see docs/a14-advanced-trigger-backlog.md for the remaining trigger
+    types.
     """
     trigger_type = normalize_scpi_enum(config.trigger_type, TRIGGER_TYPES, field="Trigger type")
     if trigger_type == "EDGE":
@@ -640,14 +765,18 @@ def build_trigger_config_commands(config: TriggerConfig) -> list[str]:
         )
     if trigger_type == "PULSE":
         return _build_pulse_trigger_commands(config)
+    if trigger_type == "LOGIC":
+        return _build_logic_trigger_commands(config)
     raise ValueError(
         f"Trigger type {trigger_type!r} is not yet supported by configure_trigger(); "
         "see docs/a14-advanced-trigger-backlog.md for its verification status."
     )
 
 
-def build_trigger_config_queries(trigger_type: str, pulse_class: str | None = None) -> dict[str, str]:
-    """Return the read-back query set for one trigger type (and PULSE class)."""
+def build_trigger_config_queries(
+    trigger_type: str, pulse_class: str | None = None, logic_class: str | None = None
+) -> dict[str, str]:
+    """Return the read-back query set for one trigger type (and PULSE/LOGIC class)."""
     normalized_type = normalize_scpi_enum(trigger_type, TRIGGER_TYPES, field="Trigger type")
     if normalized_type == "PULSE":
         queries = {"source": "TRIGGER:A:PULSE:SOURCE?"}
@@ -657,6 +786,13 @@ def build_trigger_config_queries(trigger_type: str, pulse_class: str | None = No
             )
             queries.update(_TRIGGER_PULSE_CLASS_QUERIES.get(normalized_class, {}))
         return queries
+    if normalized_type == "LOGIC":
+        if logic_class is None:
+            return {}
+        normalized_class = normalize_scpi_enum(
+            logic_class, TRIGGER_LOGIC_CLASSES, field="Logic trigger class"
+        )
+        return dict(_TRIGGER_LOGIC_CLASS_QUERIES.get(normalized_class, {}))
     raise ValueError(
         f"Trigger type {normalized_type!r} is not yet supported by get_trigger_configuration(); "
         "see docs/a14-advanced-trigger-backlog.md for its verification status."
@@ -857,8 +993,9 @@ class ControlMixin:
     def get_trigger_configuration(self) -> dict[str, Any]:
         """Read back the A-trigger configuration for its current type.
 
-        Only EDGE and PULSE (WIDTH/RUNT/TIMEOUT classes) are supported today; other
-        types return just ``{"trigger_type": <raw readback>}``.
+        Only EDGE, PULSE (WIDTH/RUNT/TIMEOUT classes), and LOGIC (LOGIC/SETHOLD
+        classes) are supported today; other types return just
+        ``{"trigger_type": <raw readback>}``.
         """
         scope = self.ensure_connected()
         raw_type = self._query_optional(scope, "TRIGGER:A:TYPE?").upper()
@@ -874,6 +1011,14 @@ class ControlMixin:
             queries = {"source": "TRIGGER:A:PULSE:SOURCE?"}
             if pulse_class is not None:
                 queries.update(_TRIGGER_PULSE_CLASS_QUERIES.get(pulse_class, {}))
+            result.update({name: self._query_optional(scope, query) for name, query in queries.items()})
+            return result
+        if raw_type == "LOGI":
+            raw_class = self._query_optional(scope, "TRIGGER:A:LOGIC:CLASS?").upper()
+            class_by_readback = {"LOGI": "LOGIC", "SETH": "SETHOLD"}
+            logic_class = class_by_readback.get(raw_class)
+            result = {"trigger_type": "LOGIC", "logic_class": logic_class or raw_class}
+            queries = _TRIGGER_LOGIC_CLASS_QUERIES.get(logic_class, {}) if logic_class else {}
             result.update({name: self._query_optional(scope, query) for name, query in queries.items()})
             return result
         return {"trigger_type": raw_type}
@@ -944,6 +1089,12 @@ __all__ = [
     "RECORD_LENGTH_POINTS_BY_LABEL",
     "TRIGGER_COUPLINGS",
     "TRIGGER_MODES",
+    "TRIGGER_LOGIC_CLASSES",
+    "TRIGGER_LOGIC_CLOCK_EDGES",
+    "TRIGGER_LOGIC_CLOCK_SOURCES",
+    "TRIGGER_LOGIC_FUNCTIONS",
+    "TRIGGER_LOGIC_INPUT_STATES",
+    "TRIGGER_LOGIC_PATTERN_WHEN",
     "TRIGGER_PULSE_CLASSES",
     "TRIGGER_PULSE_RUNT_POLARITIES",
     "TRIGGER_PULSE_RUNT_WHEN",
