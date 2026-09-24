@@ -14,6 +14,7 @@ from .control import (
     MathConfig,
     MeasurementConfig,
     MeasurementSetup,
+    TriggerConfig,
 )
 from .errors import (
     DPOCleanupError,
@@ -61,6 +62,7 @@ __all__ = [
     "MeasurementConfig",
     "MeasurementSetup",
     "ReferenceConfig",
+    "TriggerConfig",
     "WaveformData",
     "WaveformPreamble",
     "WaveformRequest",
