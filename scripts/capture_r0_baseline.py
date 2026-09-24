@@ -9,56 +9,9 @@ from __future__ import annotations
 
 import argparse
 import json
-import platform
-import subprocess
-from datetime import datetime, timezone
-from importlib import metadata
 from pathlib import Path
-from typing import Any
 
-from dpo4000_utils.baseline_capture import BaselineConfig, HardwareBaselineCapture
-
-
-def _package_version() -> str:
-    try:
-        return metadata.version("dpo4000-utils")
-    except metadata.PackageNotFoundError:
-        return "source-tree"
-
-
-def _commit_sha() -> str:
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            capture_output=True,
-            text=True,
-            check=True,
-            cwd=Path(__file__).resolve().parent,
-        )
-    except (OSError, subprocess.CalledProcessError):
-        return "unknown"
-    return result.stdout.strip()
-
-
-def _firmware_from_idn(idn: str) -> str:
-    for token in idn.split():
-        if token.upper().startswith("FV:"):
-            return token[3:]
-    return ""
-
-
-def _header(resource: str, idn: str) -> dict[str, Any]:
-    return {
-        "schema_version": 1,
-        "commit_sha": _commit_sha(),
-        "captured_at": datetime.now(timezone.utc).isoformat(),
-        "package_version": _package_version(),
-        "python": platform.python_version(),
-        "platform": platform.platform(),
-        "resource": resource,
-        "idn": idn,
-        "firmware": _firmware_from_idn(idn),
-    }
+from dpo4000_utils.baseline_capture import BaselineConfig, HardwareBaselineCapture, build_baseline_header
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -115,7 +68,7 @@ def main() -> int:
 
         if not args.skip_functional:
             print("\nCapturing R0-F functional baseline...")
-            functional = {**_header(config.resource, idn), **capture.capture_functional()}
+            functional = {**build_baseline_header(config.resource, idn), **capture.capture_functional()}
             functional_path = config.output_dir / "r0_functional_baseline.json"
             functional_path.write_text(json.dumps(functional, indent=2, sort_keys=True), encoding="utf-8")
             print(f"  wrote {functional_path}")
@@ -124,7 +77,7 @@ def main() -> int:
             print("\nCapturing R0-T timing baseline (this touches the scope repeatedly)...")
             timing_data = capture.capture_timing()
             timing = {
-                **_header(config.resource, idn),
+                **build_baseline_header(config.resource, idn),
                 "transport": config.resource.split("::")[0],
                 "operations": timing_data,
             }

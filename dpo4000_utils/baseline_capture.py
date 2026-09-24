@@ -8,9 +8,13 @@ as :mod:`dpo4000_utils.hardware_verification_core`.
 
 from __future__ import annotations
 
+import platform
 import statistics
+import subprocess
 import time
 from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
+from importlib import metadata
 from pathlib import Path
 from typing import Any, Callable
 
@@ -29,6 +33,49 @@ NOT_YET_COVERED: tuple[str, ...] = (
     "scheduler drift/jitter regression (section 6)",
     "soak/long-duration stability (section 12)",
 )
+
+
+def package_version() -> str:
+    try:
+        return metadata.version("dpo4000-utils")
+    except metadata.PackageNotFoundError:
+        return "source-tree"
+
+
+def commit_sha() -> str:
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=Path(__file__).resolve().parent,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return "unknown"
+    return result.stdout.strip()
+
+
+def firmware_from_idn(idn: str) -> str:
+    for token in idn.split():
+        if token.upper().startswith("FV:"):
+            return token[3:]
+    return ""
+
+
+def build_baseline_header(resource: str, idn: str) -> dict[str, Any]:
+    """Return the common schema/provenance header shared by every baseline JSON file."""
+    return {
+        "schema_version": 1,
+        "commit_sha": commit_sha(),
+        "captured_at": datetime.now(timezone.utc).isoformat(),
+        "package_version": package_version(),
+        "python": platform.python_version(),
+        "platform": platform.platform(),
+        "resource": resource,
+        "idn": idn,
+        "firmware": firmware_from_idn(idn),
+    }
 
 
 def distribution(samples: list[float]) -> dict[str, float | int]:

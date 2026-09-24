@@ -1,0 +1,51 @@
+{
+  "_note": "Initial defaults per docs/regression-test-plan.md section 4.4, seeded from the single r0_timing_baseline.json capture (5-20 reps per operation). Absolute tolerances are intentionally conservative (roughly 2-3x the baseline sample's own min-max spread). Review and tighten after more baseline runs accumulate; per section 16, threshold changes must be explicit and reviewed, never loosened automatically to make a failing comparison pass.",
+  "schema_version": 1,
+  "default_relative_limit": 1.30,
+  "operations": {
+    "connection": {
+      "relative_limit": 1.30,
+      "absolute_tolerance_s": 0.05
+    },
+    "channel_apply": {
+      "relative_limit": 1.30,
+      "absolute_tolerance_s": 0.03
+    },
+    "measurement_refresh": {
+      "relative_limit": 1.30,
+      "absolute_tolerance_s": 0.08
+    },
+    "single_acquisition": {
+      "relative_limit": 1.30,
+      "absolute_tolerance_s": 0.25
+    },
+    "png_capture": {
+      "relative_limit": 1.30,
+      "absolute_tolerance_s": 0.30
+    },
+    "csv_export": {
+      "relative_limit": 1.30,
+      "absolute_tolerance_s": 6.0
+    },
+    "waveform_acquisition.1000": {
+      "relative_limit": 1.30,
+      "absolute_tolerance_s": 0.15
+    },
+    "waveform_acquisition.10000": {
+      "relative_limit": 1.30,
+      "absolute_tolerance_s": 0.15
+    },
+    "waveform_acquisition.100000": {
+      "relative_limit": 1.30,
+      "absolute_tolerance_s": 0.25
+    },
+    "waveform_acquisition.1000000": {
+      "relative_limit": 1.30,
+      "absolute_tolerance_s": 0.30
+    },
+    "waveform_acquisition.10000000": {
+      "relative_limit": 1.30,
+      "absolute_tolerance_s": 2.0
+    }
+  }
+}
