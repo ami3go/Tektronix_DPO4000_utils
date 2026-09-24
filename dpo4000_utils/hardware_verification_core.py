@@ -29,6 +29,7 @@ from .control import (
     DisplayConfig,
     MathConfig,
     MeasurementConfig,
+    TriggerConfig,
     bool_from_scope_response,
 )
 from .errors import DPOWaveformError
@@ -117,6 +118,8 @@ PUBLIC_METHOD_RISK: dict[str, VerificationRisk] = {
     "get_trigger_level": VerificationRisk.READ_ONLY,
     "get_edge_trigger_configuration": VerificationRisk.READ_ONLY,
     "configure_edge_trigger": VerificationRisk.REVERSIBLE,
+    "get_trigger_configuration": VerificationRisk.READ_ONLY,
+    "configure_trigger": VerificationRisk.REVERSIBLE,
     "set_trigger_level": VerificationRisk.REVERSIBLE,
     "set_edge_trigger_source": VerificationRisk.REVERSIBLE,
     "trigger": VerificationRisk.DISRUPTIVE,
@@ -553,6 +556,40 @@ class HardwareVerifier:
             f"CH{channel}; baseline restore protects the original trigger setup."
         )
 
+    def _case_trigger_config_write(self) -> str:
+        scope = self._require_scope()
+        channel = self.config.test_channel
+        current_level = scope.get_trigger_level(channel=channel)
+        try:
+            scope.configure_trigger(
+                TriggerConfig(
+                    trigger_type="PULSE",
+                    pulse_class="WIDTH",
+                    source=f"CH{channel}",
+                    pulse_polarity="POSITIVE",
+                    pulse_when="LESSTHAN",
+                    pulse_low_limit="8e-9",
+                    pulse_high_limit="12e-9",
+                )
+            )
+            readback = scope.get_trigger_configuration()
+            if readback.get("trigger_type") != "PULSE" or readback.get("pulse_class") != "WIDTH":
+                raise AssertionError(
+                    f"configure_trigger()/get_trigger_configuration() round trip failed: {readback}"
+                )
+        finally:
+            # A narrow PULSE/WIDTH condition may rarely (or never) match the connected
+            # signal, which would otherwise stall every later case that waits for an
+            # acquisition to complete. Restore EDGE immediately rather than relying on
+            # the end-of-run baseline reapply, which only runs once after every case.
+            scope.configure_edge_trigger(
+                source=f"CH{channel}", slope="RISE", coupling="DC", mode="AUTO", level=current_level
+            )
+        return (
+            "TriggerConfig PULSE/WIDTH configure/readback round trip passed on "
+            f"CH{channel}; trigger was restored to EDGE immediately after."
+        )
+
     def _case_display_write(self) -> str:
         scope = self._require_scope()
         current = scope.get_display_settings()
@@ -890,6 +927,15 @@ class HardwareVerifier:
                         covers_methods=("configure_edge_trigger", "set_trigger_level", "set_edge_trigger_source"),
                     ),
                     self._case_trigger_write,
+                ),
+                (
+                    VerificationCase(
+                        "trigger-config-write",
+                        "TriggerConfig PULSE/WIDTH configure/readback write API",
+                        VerificationRisk.REVERSIBLE,
+                        covers_methods=("configure_trigger", "get_trigger_configuration"),
+                    ),
+                    self._case_trigger_config_write,
                 ),
                 (
                     VerificationCase(

@@ -60,12 +60,22 @@ MEASUREMENT_SETUP_QUERIES = {
     "value": "MEASUREMENT:MEAS{slot}:VALUE?",
 }
 
-TRIGGER_TYPES = ("EDGE", "PULSE", "RUNT", "TIMEOUT", "LOGIC", "VIDEO")
+TRIGGER_TYPES = ("EDGE", "LOGIC", "PULSE", "VIDEO", "BUS")
 TRIGGER_MODES = ("AUTO", "NORMAL")
 TRIGGER_SOURCES = ("CH1", "CH2", "CH3", "CH4", "AUX", "LINE")
 TRIGGER_SLOPES = ("RISE", "FALL", "EITHER")
 TRIGGER_COUPLINGS = ("DC", "AC", "HFREJ", "LFREJ", "NOISEREJ")
 FORCE_TRIGGER_COMMAND = "TRIG FORC"
+
+# TRIGGER:A:TYPE PULSE selects one of these via TRIGGER:A:PULSE:CLASS. Live-verified
+# against a DPO4054 (see docs/a14-advanced-trigger-backlog.md); TRANSITION's own field
+# layout is not yet mapped, so it is accepted as a class but has no field support below.
+TRIGGER_PULSE_CLASSES = ("WIDTH", "RUNT", "TIMEOUT", "TRANSITION")
+TRIGGER_PULSE_WIDTH_POLARITIES = ("POSITIVE", "NEGATIVE")
+TRIGGER_PULSE_WIDTH_WHEN = ("LESSTHAN", "MORETHAN", "EQUAL", "UNEQUAL", "WITHIN", "OUTSIDE")
+TRIGGER_PULSE_RUNT_POLARITIES = ("POSITIVE", "NEGATIVE", "EITHER")
+TRIGGER_PULSE_RUNT_WHEN = ("OCCURS", "LESSTHAN", "MORETHAN", "EQUAL", "UNEQUAL")
+TRIGGER_PULSE_TIMEOUT_POLARITIES = ("STAYSHIGH", "STAYSLOW", "EITHER")
 
 CHANNEL_CONFIG_FIELDS = (
     "display",
@@ -191,6 +201,35 @@ class MeasurementSetup:
     source1: str = ""
     source2: str = ""
     value: str = ""
+
+
+@dataclass(frozen=True)
+class TriggerConfig:
+    """DPO4000 Desk A-trigger configuration payload.
+
+    Only EDGE and PULSE (classes WIDTH/RUNT/TIMEOUT) are supported by
+    ``configure_trigger()`` today; see docs/a14-advanced-trigger-backlog.md for the
+    remaining trigger types, which need their SCPI subtree verified against real
+    hardware before being added here.
+    """
+
+    trigger_type: str
+    # Shared with EDGE (build_edge_trigger_commands requires all five when trigger_type
+    # is EDGE) and, for mode/source, with PULSE.
+    mode: str | None = None
+    source: str | None = None
+    slope: str | None = None
+    coupling: str | None = None
+    level: str | float | int | None = None
+    # PULSE only.
+    pulse_class: str | None = None
+    pulse_polarity: str | None = None
+    pulse_when: str | None = None
+    pulse_low_limit: str | float | int | None = None
+    pulse_high_limit: str | float | int | None = None
+    pulse_threshold_high: str | float | int | None = None
+    pulse_threshold_low: str | float | int | None = None
+    pulse_timeout_time: str | float | int | None = None
 
 
 def _normalize_token(value: str, *, field: str) -> str:
@@ -478,6 +517,152 @@ def build_edge_trigger_commands(
     return commands
 
 
+_TRIGGER_PULSE_CLASS_QUERIES: dict[str, dict[str, str]] = {
+    "WIDTH": {
+        "pulse_polarity": "TRIGGER:A:PULSE:WIDTH:POLARITY?",
+        "pulse_when": "TRIGGER:A:PULSE:WIDTH:WHEN?",
+        "pulse_low_limit": "TRIGGER:A:PULSE:WIDTH:LOWLIMIT?",
+        "pulse_high_limit": "TRIGGER:A:PULSE:WIDTH:HIGHLIMIT?",
+    },
+    "RUNT": {
+        "pulse_polarity": "TRIGGER:A:PULSE:RUNT:POLARITY?",
+        "pulse_when": "TRIGGER:A:PULSE:RUNT:WHEN?",
+        "pulse_threshold_high": "TRIGGER:A:PULSE:RUNT:THRESHOLD:HIGH?",
+        "pulse_threshold_low": "TRIGGER:A:PULSE:RUNT:THRESHOLD:LOW?",
+        "pulse_low_limit": "TRIGGER:A:PULSE:RUNT:LOWLIMIT?",
+        "pulse_high_limit": "TRIGGER:A:PULSE:RUNT:HIGHLIMIT?",
+    },
+    "TIMEOUT": {
+        "pulse_polarity": "TRIGGER:A:PULSE:TIMEOUT:POLARITY?",
+        "pulse_timeout_time": "TRIGGER:A:PULSE:TIMEOUT:TIME?",
+    },
+}
+
+
+def _build_pulse_trigger_commands(config: TriggerConfig) -> list[str]:
+    commands = ["TRIGGER:A:TYPE PULSE"]
+    pulse_class = (
+        normalize_scpi_enum(config.pulse_class, TRIGGER_PULSE_CLASSES, field="Pulse trigger class")
+        if config.pulse_class is not None
+        else None
+    )
+    if pulse_class is not None:
+        commands.append(f"TRIGGER:A:PULSE:CLASS {pulse_class}")
+    if config.source is not None:
+        source = normalize_trigger_choice(config.source, TRIGGER_SOURCES, field="Pulse trigger source")
+        commands.append(f"TRIGGER:A:PULSE:SOURCE {source}")
+
+    if pulse_class == "WIDTH":
+        if config.pulse_polarity is not None:
+            polarity = normalize_scpi_enum(
+                config.pulse_polarity, TRIGGER_PULSE_WIDTH_POLARITIES, field="Pulse width polarity"
+            )
+            commands.append(f"TRIGGER:A:PULSE:WIDTH:POLARITY {polarity}")
+        if config.pulse_when is not None:
+            when = normalize_scpi_enum(
+                config.pulse_when, TRIGGER_PULSE_WIDTH_WHEN, field="Pulse width comparator"
+            )
+            commands.append(f"TRIGGER:A:PULSE:WIDTH:WHEN {when}")
+        if config.pulse_low_limit is not None:
+            limit = format_scpi_number(config.pulse_low_limit, field="Pulse width low limit", nonnegative=True)
+            commands.append(f"TRIGGER:A:PULSE:WIDTH:LOWLIMIT {limit}")
+        if config.pulse_high_limit is not None:
+            limit = format_scpi_number(config.pulse_high_limit, field="Pulse width high limit", nonnegative=True)
+            commands.append(f"TRIGGER:A:PULSE:WIDTH:HIGHLIMIT {limit}")
+    elif pulse_class == "RUNT":
+        if config.pulse_polarity is not None:
+            polarity = normalize_scpi_enum(
+                config.pulse_polarity, TRIGGER_PULSE_RUNT_POLARITIES, field="Pulse runt polarity"
+            )
+            commands.append(f"TRIGGER:A:PULSE:RUNT:POLARITY {polarity}")
+        if config.pulse_when is not None:
+            when = normalize_scpi_enum(
+                config.pulse_when, TRIGGER_PULSE_RUNT_WHEN, field="Pulse runt comparator"
+            )
+            commands.append(f"TRIGGER:A:PULSE:RUNT:WHEN {when}")
+        if config.pulse_threshold_high is not None:
+            threshold = format_scpi_number(config.pulse_threshold_high, field="Pulse runt high threshold")
+            commands.append(f"TRIGGER:A:PULSE:RUNT:THRESHOLD:HIGH {threshold}")
+        if config.pulse_threshold_low is not None:
+            threshold = format_scpi_number(config.pulse_threshold_low, field="Pulse runt low threshold")
+            commands.append(f"TRIGGER:A:PULSE:RUNT:THRESHOLD:LOW {threshold}")
+        if config.pulse_low_limit is not None:
+            limit = format_scpi_number(config.pulse_low_limit, field="Pulse runt low limit", nonnegative=True)
+            commands.append(f"TRIGGER:A:PULSE:RUNT:LOWLIMIT {limit}")
+        if config.pulse_high_limit is not None:
+            limit = format_scpi_number(config.pulse_high_limit, field="Pulse runt high limit", nonnegative=True)
+            commands.append(f"TRIGGER:A:PULSE:RUNT:HIGHLIMIT {limit}")
+    elif pulse_class == "TIMEOUT":
+        if config.pulse_polarity is not None:
+            polarity = normalize_scpi_enum(
+                config.pulse_polarity, TRIGGER_PULSE_TIMEOUT_POLARITIES, field="Pulse timeout polarity"
+            )
+            commands.append(f"TRIGGER:A:PULSE:TIMEOUT:POLARITY {polarity}")
+        if config.pulse_timeout_time is not None:
+            timeout_time = format_scpi_number(
+                config.pulse_timeout_time, field="Pulse timeout time", nonnegative=True
+            )
+            commands.append(f"TRIGGER:A:PULSE:TIMEOUT:TIME {timeout_time}")
+
+    if config.mode is not None:
+        mode = normalize_trigger_choice(config.mode, TRIGGER_MODES, field="Trigger mode")
+        commands.append(f"TRIGGER:A:MODE {mode}")
+    return commands
+
+
+def build_trigger_config_commands(config: TriggerConfig) -> list[str]:
+    """Build the A-trigger SCPI command sequence for one :class:`TriggerConfig`.
+
+    Only EDGE and PULSE (WIDTH/RUNT/TIMEOUT classes) are supported; see
+    docs/a14-advanced-trigger-backlog.md for the remaining trigger types.
+    """
+    trigger_type = normalize_scpi_enum(config.trigger_type, TRIGGER_TYPES, field="Trigger type")
+    if trigger_type == "EDGE":
+        missing = [
+            name
+            for name, value in (
+                ("source", config.source),
+                ("slope", config.slope),
+                ("coupling", config.coupling),
+                ("mode", config.mode),
+                ("level", config.level),
+            )
+            if value is None
+        ]
+        if missing:
+            raise ValueError(f"EDGE trigger requires {', '.join(missing)} to be set.")
+        return build_edge_trigger_commands(
+            source=config.source,
+            slope=config.slope,
+            coupling=config.coupling,
+            mode=config.mode,
+            level=config.level,
+        )
+    if trigger_type == "PULSE":
+        return _build_pulse_trigger_commands(config)
+    raise ValueError(
+        f"Trigger type {trigger_type!r} is not yet supported by configure_trigger(); "
+        "see docs/a14-advanced-trigger-backlog.md for its verification status."
+    )
+
+
+def build_trigger_config_queries(trigger_type: str, pulse_class: str | None = None) -> dict[str, str]:
+    """Return the read-back query set for one trigger type (and PULSE class)."""
+    normalized_type = normalize_scpi_enum(trigger_type, TRIGGER_TYPES, field="Trigger type")
+    if normalized_type == "PULSE":
+        queries = {"source": "TRIGGER:A:PULSE:SOURCE?"}
+        if pulse_class is not None:
+            normalized_class = normalize_scpi_enum(
+                pulse_class, TRIGGER_PULSE_CLASSES, field="Pulse trigger class"
+            )
+            queries.update(_TRIGGER_PULSE_CLASS_QUERIES.get(normalized_class, {}))
+        return queries
+    raise ValueError(
+        f"Trigger type {normalized_type!r} is not yet supported by get_trigger_configuration(); "
+        "see docs/a14-advanced-trigger-backlog.md for its verification status."
+    )
+
+
 def build_display_setup_queries() -> dict[str, str]:
     return dict(DISPLAY_SETUP_QUERIES)
 
@@ -659,6 +844,40 @@ class ControlMixin:
         ):
             scope.write(command)
 
+    def configure_trigger(self, config: TriggerConfig) -> None:
+        """Apply an A-trigger configuration (EDGE or PULSE today).
+
+        Additive to ``configure_edge_trigger()``, which is unchanged and remains the
+        supported path for edge-only callers. See docs/a14-advanced-trigger-backlog.md.
+        """
+        scope = self.ensure_connected()
+        for command in build_trigger_config_commands(config):
+            scope.write(command)
+
+    def get_trigger_configuration(self) -> dict[str, Any]:
+        """Read back the A-trigger configuration for its current type.
+
+        Only EDGE and PULSE (WIDTH/RUNT/TIMEOUT classes) are supported today; other
+        types return just ``{"trigger_type": <raw readback>}``.
+        """
+        scope = self.ensure_connected()
+        raw_type = self._query_optional(scope, "TRIGGER:A:TYPE?").upper()
+        if raw_type == "EDG":
+            result: dict[str, Any] = {"trigger_type": "EDGE"}
+            result.update(self.get_edge_trigger_configuration())
+            return result
+        if raw_type == "PULS":
+            raw_class = self._query_optional(scope, "TRIGGER:A:PULSE:CLASS?").upper()
+            class_by_readback = {"WID": "WIDTH", "RUN": "RUNT", "TIMEO": "TIMEOUT", "TRAN": "TRANSITION"}
+            pulse_class = class_by_readback.get(raw_class)
+            result = {"trigger_type": "PULSE", "pulse_class": pulse_class or raw_class}
+            queries = {"source": "TRIGGER:A:PULSE:SOURCE?"}
+            if pulse_class is not None:
+                queries.update(_TRIGGER_PULSE_CLASS_QUERIES.get(pulse_class, {}))
+            result.update({name: self._query_optional(scope, query) for name, query in queries.items()})
+            return result
+        return {"trigger_type": raw_type}
+
     def apply_display_settings(self, config: DisplayConfig) -> None:
         scope = self.ensure_connected()
         for command in build_display_settings_commands(config):
@@ -725,9 +944,16 @@ __all__ = [
     "RECORD_LENGTH_POINTS_BY_LABEL",
     "TRIGGER_COUPLINGS",
     "TRIGGER_MODES",
+    "TRIGGER_PULSE_CLASSES",
+    "TRIGGER_PULSE_RUNT_POLARITIES",
+    "TRIGGER_PULSE_RUNT_WHEN",
+    "TRIGGER_PULSE_TIMEOUT_POLARITIES",
+    "TRIGGER_PULSE_WIDTH_POLARITIES",
+    "TRIGGER_PULSE_WIDTH_WHEN",
     "TRIGGER_SLOPES",
     "TRIGGER_SOURCES",
     "TRIGGER_TYPES",
+    "TriggerConfig",
     "bool_from_scope_response",
     "build_acquisition_mode_command",
     "build_acquisition_mode_query",
@@ -742,6 +968,8 @@ __all__ = [
     "build_display_settings_commands",
     "build_display_setup_queries",
     "build_edge_trigger_commands",
+    "build_trigger_config_commands",
+    "build_trigger_config_queries",
     "build_horizontal_position_command",
     "build_horizontal_position_query",
     "build_math_config_commands",

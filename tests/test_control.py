@@ -6,6 +6,9 @@ from dpo4000_utils.control import (
     DisplayConfig,
     MathConfig,
     MeasurementConfig,
+    TRIGGER_PULSE_CLASSES,
+    TRIGGER_TYPES,
+    TriggerConfig,
     build_acquisition_setup_commands,
     build_channel_config_commands,
     build_channel_config_queries,
@@ -21,6 +24,8 @@ from dpo4000_utils.control import (
     build_measurement_value_query,
     build_record_length_command,
     build_record_length_query,
+    build_trigger_config_commands,
+    build_trigger_config_queries,
     normalize_average_count,
     normalize_record_length,
     quote_scpi_string,
@@ -221,3 +226,139 @@ def test_edge_trigger_commands_aux_source_uses_general_level():
         mode="normal",
         level="TTL",
     )[-1] == "TRIGGER:A:LEVEL TTL"
+
+
+def test_trigger_types_are_the_live_verified_set():
+    # Regression guard: TRIGGER_TYPES previously listed RUNT/TIMEOUT as top-level types
+    # and omitted BUS. Both were wrong - see docs/a14-advanced-trigger-backlog.md.
+    assert TRIGGER_TYPES == ("EDGE", "LOGIC", "PULSE", "VIDEO", "BUS")
+    assert "RUNT" not in TRIGGER_TYPES
+    assert "TIMEOUT" not in TRIGGER_TYPES
+
+
+def test_trigger_pulse_classes_are_the_live_verified_set():
+    assert TRIGGER_PULSE_CLASSES == ("WIDTH", "RUNT", "TIMEOUT", "TRANSITION")
+
+
+def test_trigger_config_commands_edge_matches_build_edge_trigger_commands():
+    config = TriggerConfig(
+        trigger_type="EDGE", source="ch1", slope="rise", coupling="dc", mode="auto", level="1.25"
+    )
+    assert build_trigger_config_commands(config) == build_edge_trigger_commands(
+        source="ch1", slope="rise", coupling="dc", mode="auto", level="1.25"
+    )
+
+
+def test_trigger_config_edge_requires_all_edge_fields():
+    with pytest.raises(ValueError, match="requires"):
+        build_trigger_config_commands(TriggerConfig(trigger_type="EDGE", source="CH1"))
+
+
+def test_trigger_config_commands_pulse_width():
+    config = TriggerConfig(
+        trigger_type="pulse",
+        pulse_class="width",
+        source="ch1",
+        pulse_polarity="positive",
+        pulse_when="lessthan",
+        pulse_low_limit="8e-9",
+        pulse_high_limit="12e-9",
+        mode="auto",
+    )
+    assert build_trigger_config_commands(config) == [
+        "TRIGGER:A:TYPE PULSE",
+        "TRIGGER:A:PULSE:CLASS WIDTH",
+        "TRIGGER:A:PULSE:SOURCE CH1",
+        "TRIGGER:A:PULSE:WIDTH:POLARITY POSITIVE",
+        "TRIGGER:A:PULSE:WIDTH:WHEN LESSTHAN",
+        "TRIGGER:A:PULSE:WIDTH:LOWLIMIT 8e-09",
+        "TRIGGER:A:PULSE:WIDTH:HIGHLIMIT 1.2e-08",
+        "TRIGGER:A:MODE AUTO",
+    ]
+
+
+def test_trigger_config_commands_pulse_runt():
+    config = TriggerConfig(
+        trigger_type="PULSE",
+        pulse_class="RUNT",
+        pulse_polarity="EITHER",
+        pulse_when="OCCURS",
+        pulse_threshold_high="9.0",
+        pulse_threshold_low="1.0",
+    )
+    commands = build_trigger_config_commands(config)
+    assert commands == [
+        "TRIGGER:A:TYPE PULSE",
+        "TRIGGER:A:PULSE:CLASS RUNT",
+        "TRIGGER:A:PULSE:RUNT:POLARITY EITHER",
+        "TRIGGER:A:PULSE:RUNT:WHEN OCCURS",
+        "TRIGGER:A:PULSE:RUNT:THRESHOLD:HIGH 9",
+        "TRIGGER:A:PULSE:RUNT:THRESHOLD:LOW 1",
+    ]
+
+
+def test_trigger_config_commands_pulse_timeout():
+    config = TriggerConfig(
+        trigger_type="PULSE",
+        pulse_class="TIMEOUT",
+        pulse_polarity="STAYSHIGH",
+        pulse_timeout_time="8e-9",
+    )
+    assert build_trigger_config_commands(config) == [
+        "TRIGGER:A:TYPE PULSE",
+        "TRIGGER:A:PULSE:CLASS TIMEOUT",
+        "TRIGGER:A:PULSE:TIMEOUT:POLARITY STAYSHIGH",
+        "TRIGGER:A:PULSE:TIMEOUT:TIME 8e-09",
+    ]
+
+
+def test_trigger_config_rejects_unsupported_trigger_type():
+    with pytest.raises(ValueError, match="not yet supported"):
+        build_trigger_config_commands(TriggerConfig(trigger_type="LOGIC"))
+
+
+def test_trigger_config_rejects_invalid_trigger_type_before_any_command():
+    with pytest.raises(ValueError):
+        build_trigger_config_commands(TriggerConfig(trigger_type="NOT_A_TYPE"))
+
+
+def test_trigger_config_rejects_invalid_pulse_class():
+    with pytest.raises(ValueError):
+        build_trigger_config_commands(TriggerConfig(trigger_type="PULSE", pulse_class="BOGUS"))
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("pulse_polarity", "SIDEWAYS"),
+        ("pulse_when", "SIDEWAYS"),
+    ],
+)
+def test_trigger_config_rejects_invalid_width_enum_values(field, value):
+    with pytest.raises(ValueError):
+        build_trigger_config_commands(
+            TriggerConfig(trigger_type="PULSE", pulse_class="WIDTH", **{field: value})
+        )
+
+
+def test_trigger_config_width_rejects_either_polarity():
+    # WIDTH only accepts POSITIVE/NEGATIVE; EITHER is valid for RUNT/TIMEOUT but not WIDTH.
+    with pytest.raises(ValueError):
+        build_trigger_config_commands(
+            TriggerConfig(trigger_type="PULSE", pulse_class="WIDTH", pulse_polarity="EITHER")
+        )
+
+
+def test_trigger_config_queries_pulse_width():
+    assert build_trigger_config_queries("PULSE", "WIDTH") == {
+        "source": "TRIGGER:A:PULSE:SOURCE?",
+        "pulse_polarity": "TRIGGER:A:PULSE:WIDTH:POLARITY?",
+        "pulse_when": "TRIGGER:A:PULSE:WIDTH:WHEN?",
+        "pulse_low_limit": "TRIGGER:A:PULSE:WIDTH:LOWLIMIT?",
+        "pulse_high_limit": "TRIGGER:A:PULSE:WIDTH:HIGHLIMIT?",
+    }
+
+
+def test_trigger_config_queries_rejects_unsupported_type():
+    with pytest.raises(ValueError, match="not yet supported"):
+        build_trigger_config_queries("VIDEO")

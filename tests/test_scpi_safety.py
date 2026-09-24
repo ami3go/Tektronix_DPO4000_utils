@@ -10,10 +10,12 @@ from dpo4000_utils.control import (
     ChannelConfig,
     DisplayConfig,
     MeasurementConfig,
+    TriggerConfig,
     build_channel_config_commands,
     build_display_settings_commands,
     build_edge_trigger_commands,
     build_measurement_commands,
+    build_trigger_config_commands,
 )
 from dpo4000_utils.errors import DPOTransportError
 from dpo4000_utils.io_policy import optional_query
@@ -52,6 +54,40 @@ def test_display_numeric_and_trigger_level_reject_injected_commands():
             coupling="DC",
             mode="AUTO",
             level="1;*RST",
+        )
+
+
+def test_trigger_config_pulse_fields_reject_injected_commands():
+    with pytest.raises(ValueError):
+        build_trigger_config_commands(
+            TriggerConfig(trigger_type="PULSE", pulse_class="WIDTH", pulse_low_limit="8e-9;*RST")
+        )
+    with pytest.raises(ValueError):
+        build_trigger_config_commands(
+            TriggerConfig(trigger_type="PULSE", pulse_class="WIDTH", pulse_when="LESSTHAN;*RST")
+        )
+    with pytest.raises(ValueError):
+        build_trigger_config_commands(
+            TriggerConfig(
+                trigger_type="PULSE", pulse_class="RUNT", pulse_threshold_high="9;*RST"
+            )
+        )
+    with pytest.raises(ValueError):
+        build_trigger_config_commands(
+            TriggerConfig(
+                trigger_type="PULSE", pulse_class="TIMEOUT", pulse_timeout_time="8e-9;*RST"
+            )
+        )
+
+
+def test_trigger_config_pulse_fields_reject_nonfinite_values():
+    with pytest.raises(ValueError, match="finite"):
+        build_trigger_config_commands(
+            TriggerConfig(trigger_type="PULSE", pulse_class="WIDTH", pulse_low_limit="nan")
+        )
+    with pytest.raises(ValueError, match="finite"):
+        build_trigger_config_commands(
+            TriggerConfig(trigger_type="PULSE", pulse_class="TIMEOUT", pulse_timeout_time="inf")
         )
 
 
