@@ -87,6 +87,17 @@ TRIGGER_LOGIC_CLOCK_SOURCES = ("CH1", "CH2", "CH3", "CH4", "NONE")
 TRIGGER_LOGIC_CLOCK_EDGES = ("RISE", "FALL")
 TRIGGER_LOGIC_PATTERN_WHEN = ("TRUE", "FALSE", "LESSTHAN", "MORETHAN")
 
+# TRIGGER:A:TYPE VIDEO. Live-verified against a DPO4054 (see
+# docs/a14-advanced-trigger-backlog.md). Only SD standards responded; HD720P60/HD1080P60
+# were rejected. FIELD only accepted ALLLINES among the values tried; a companion
+# TRIGGER:A:VIDEO:SYNC? leaf always mirrors FIELD's value and rejects the same
+# candidates, so it looks like an alias rather than an independent setting and is not
+# exposed separately. A fourth field visible in the raw TRIGGER:A? dump (position after
+# FIELD, before POLARITY) could not be mapped to any leaf command tried.
+TRIGGER_VIDEO_STANDARDS = ("NTSC", "PAL", "SECAM")
+TRIGGER_VIDEO_FIELDS = ("ALLLINES",)
+TRIGGER_VIDEO_POLARITIES = ("POSITIVE", "NEGATIVE")
+
 CHANNEL_CONFIG_FIELDS = (
     "display",
     "scale",
@@ -217,8 +228,8 @@ class MeasurementSetup:
 class TriggerConfig:
     """DPO4000 Desk A-trigger configuration payload.
 
-    Only EDGE, PULSE (classes WIDTH/RUNT/TIMEOUT), and LOGIC (classes LOGIC/SETHOLD)
-    are supported by ``configure_trigger()`` today; see
+    Only EDGE, PULSE (classes WIDTH/RUNT/TIMEOUT), LOGIC (classes LOGIC/SETHOLD), and
+    VIDEO are supported by ``configure_trigger()`` today; see
     docs/a14-advanced-trigger-backlog.md for the remaining trigger types, which need
     their SCPI subtree verified against real hardware before being added here.
     """
@@ -256,6 +267,12 @@ class TriggerConfig:
     logic_data_threshold: str | float | int | None = None
     logic_setup_time: str | float | int | None = None
     logic_hold_time: str | float | int | None = None
+    # VIDEO only.
+    video_source: str | None = None
+    video_standard: str | None = None
+    video_line: str | int | None = None
+    video_field: str | None = None
+    video_polarity: str | None = None
 
 
 def _normalize_token(value: str, *, field: str) -> str:
@@ -734,12 +751,48 @@ def _build_logic_trigger_commands(config: TriggerConfig) -> list[str]:
     return commands
 
 
+_TRIGGER_VIDEO_QUERIES: dict[str, str] = {
+    "video_source": "TRIGGER:A:VIDEO:SOURCE?",
+    "video_standard": "TRIGGER:A:VIDEO:STANDARD?",
+    "video_line": "TRIGGER:A:VIDEO:LINE?",
+    "video_field": "TRIGGER:A:VIDEO:FIELD?",
+    "video_polarity": "TRIGGER:A:VIDEO:POLARITY?",
+}
+
+
+def _build_video_trigger_commands(config: TriggerConfig) -> list[str]:
+    commands = ["TRIGGER:A:TYPE VIDEO"]
+    if config.video_source is not None:
+        source = normalize_trigger_choice(config.video_source, TRIGGER_SOURCES, field="Video source")
+        commands.append(f"TRIGGER:A:VIDEO:SOURCE {source}")
+    if config.video_standard is not None:
+        standard = normalize_scpi_enum(
+            config.video_standard, TRIGGER_VIDEO_STANDARDS, field="Video standard"
+        )
+        commands.append(f"TRIGGER:A:VIDEO:STANDARD {standard}")
+    if config.video_line is not None:
+        line = format_scpi_number(config.video_line, field="Video line", positive=True, integer=True)
+        commands.append(f"TRIGGER:A:VIDEO:LINE {line}")
+    if config.video_field is not None:
+        field = normalize_scpi_enum(config.video_field, TRIGGER_VIDEO_FIELDS, field="Video field")
+        commands.append(f"TRIGGER:A:VIDEO:FIELD {field}")
+    if config.video_polarity is not None:
+        polarity = normalize_scpi_enum(
+            config.video_polarity, TRIGGER_VIDEO_POLARITIES, field="Video polarity"
+        )
+        commands.append(f"TRIGGER:A:VIDEO:POLARITY {polarity}")
+    if config.mode is not None:
+        mode = normalize_trigger_choice(config.mode, TRIGGER_MODES, field="Trigger mode")
+        commands.append(f"TRIGGER:A:MODE {mode}")
+    return commands
+
+
 def build_trigger_config_commands(config: TriggerConfig) -> list[str]:
     """Build the A-trigger SCPI command sequence for one :class:`TriggerConfig`.
 
-    Only EDGE, PULSE (WIDTH/RUNT/TIMEOUT classes), and LOGIC (LOGIC/SETHOLD classes)
-    are supported; see docs/a14-advanced-trigger-backlog.md for the remaining trigger
-    types.
+    Only EDGE, PULSE (WIDTH/RUNT/TIMEOUT classes), LOGIC (LOGIC/SETHOLD classes), and
+    VIDEO are supported; see docs/a14-advanced-trigger-backlog.md for the remaining
+    trigger types.
     """
     trigger_type = normalize_scpi_enum(config.trigger_type, TRIGGER_TYPES, field="Trigger type")
     if trigger_type == "EDGE":
@@ -767,6 +820,8 @@ def build_trigger_config_commands(config: TriggerConfig) -> list[str]:
         return _build_pulse_trigger_commands(config)
     if trigger_type == "LOGIC":
         return _build_logic_trigger_commands(config)
+    if trigger_type == "VIDEO":
+        return _build_video_trigger_commands(config)
     raise ValueError(
         f"Trigger type {trigger_type!r} is not yet supported by configure_trigger(); "
         "see docs/a14-advanced-trigger-backlog.md for its verification status."
@@ -793,6 +848,8 @@ def build_trigger_config_queries(
             logic_class, TRIGGER_LOGIC_CLASSES, field="Logic trigger class"
         )
         return dict(_TRIGGER_LOGIC_CLASS_QUERIES.get(normalized_class, {}))
+    if normalized_type == "VIDEO":
+        return dict(_TRIGGER_VIDEO_QUERIES)
     raise ValueError(
         f"Trigger type {normalized_type!r} is not yet supported by get_trigger_configuration(); "
         "see docs/a14-advanced-trigger-backlog.md for its verification status."
@@ -993,8 +1050,8 @@ class ControlMixin:
     def get_trigger_configuration(self) -> dict[str, Any]:
         """Read back the A-trigger configuration for its current type.
 
-        Only EDGE, PULSE (WIDTH/RUNT/TIMEOUT classes), and LOGIC (LOGIC/SETHOLD
-        classes) are supported today; other types return just
+        Only EDGE, PULSE (WIDTH/RUNT/TIMEOUT classes), LOGIC (LOGIC/SETHOLD classes),
+        and VIDEO are supported today; other types return just
         ``{"trigger_type": <raw readback>}``.
         """
         scope = self.ensure_connected()
@@ -1020,6 +1077,15 @@ class ControlMixin:
             result = {"trigger_type": "LOGIC", "logic_class": logic_class or raw_class}
             queries = _TRIGGER_LOGIC_CLASS_QUERIES.get(logic_class, {}) if logic_class else {}
             result.update({name: self._query_optional(scope, query) for name, query in queries.items()})
+            return result
+        if raw_type == "VID":
+            result = {"trigger_type": "VIDEO"}
+            result.update(
+                {
+                    name: self._query_optional(scope, query)
+                    for name, query in _TRIGGER_VIDEO_QUERIES.items()
+                }
+            )
             return result
         return {"trigger_type": raw_type}
 
@@ -1104,6 +1170,9 @@ __all__ = [
     "TRIGGER_SLOPES",
     "TRIGGER_SOURCES",
     "TRIGGER_TYPES",
+    "TRIGGER_VIDEO_FIELDS",
+    "TRIGGER_VIDEO_POLARITIES",
+    "TRIGGER_VIDEO_STANDARDS",
     "TriggerConfig",
     "bool_from_scope_response",
     "build_acquisition_mode_command",

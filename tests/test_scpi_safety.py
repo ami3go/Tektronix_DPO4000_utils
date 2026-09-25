@@ -119,6 +119,20 @@ def test_trigger_config_logic_fields_reject_nonfinite_values():
         )
 
 
+def test_trigger_config_video_fields_reject_injected_commands():
+    with pytest.raises(ValueError):
+        build_trigger_config_commands(TriggerConfig(trigger_type="VIDEO", video_source="CH1;*RST"))
+    with pytest.raises(ValueError):
+        build_trigger_config_commands(TriggerConfig(trigger_type="VIDEO", video_standard="NTSC;*RST"))
+    with pytest.raises(ValueError):
+        build_trigger_config_commands(TriggerConfig(trigger_type="VIDEO", video_line="5;*RST"))
+
+
+def test_trigger_config_video_line_rejects_nonfinite_values():
+    with pytest.raises(ValueError, match="finite"):
+        build_trigger_config_commands(TriggerConfig(trigger_type="VIDEO", video_line="nan"))
+
+
 def test_bus_type_position_display_and_protocol_values_are_single_message_only():
     with pytest.raises(ValueError):
         canonical_bus_type("I2C;*RST")

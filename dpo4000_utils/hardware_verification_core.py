@@ -613,18 +613,34 @@ class HardwareVerifier:
                     "configure_trigger()/get_trigger_configuration() LOGIC/SETHOLD round trip "
                     f"failed: {readback}"
                 )
+
+            scope.configure_trigger(
+                TriggerConfig(
+                    trigger_type="VIDEO",
+                    video_source=f"CH{channel}",
+                    video_standard="NTSC",
+                    video_field="ALLLINES",
+                    video_polarity="POSITIVE",
+                )
+            )
+            readback = scope.get_trigger_configuration()
+            if readback.get("trigger_type") != "VIDEO":
+                raise AssertionError(
+                    f"configure_trigger()/get_trigger_configuration() VIDEO round trip failed: {readback}"
+                )
         finally:
             # None of the exercised conditions (a narrow PULSE/WIDTH match, an unclocked
-            # LOGIC pattern, a SETHOLD timing violation) are guaranteed to occur on the
-            # connected signal, which would otherwise stall every later case that waits for
-            # an acquisition to complete. Restore EDGE immediately rather than relying on
-            # the end-of-run baseline reapply, which only runs once after every case.
+            # LOGIC pattern, a SETHOLD timing violation, a video sync signal) are guaranteed
+            # to occur on the connected signal, which would otherwise stall every later case
+            # that waits for an acquisition to complete. Restore EDGE immediately rather than
+            # relying on the end-of-run baseline reapply, which only runs once after every case.
             scope.configure_edge_trigger(
                 source=f"CH{channel}", slope="RISE", coupling="DC", mode="AUTO", level=current_level
             )
         return (
-            "TriggerConfig PULSE/WIDTH and LOGIC (LOGIC/SETHOLD classes) configure/readback "
-            f"round trips passed on CH{channel}; trigger was restored to EDGE immediately after."
+            "TriggerConfig PULSE/WIDTH, LOGIC (LOGIC/SETHOLD classes), and VIDEO "
+            f"configure/readback round trips passed on CH{channel}; trigger was restored to "
+            "EDGE immediately after."
         )
 
     def _case_display_write(self) -> str:

@@ -1,8 +1,8 @@
 # A14 Advanced Trigger Backlog
 
-Status: **A14.1, A14.2, A14.3, A14.4, A14.5 implemented** (`TriggerConfig` foundation, PULSE
-width/runt/timeout, LOGIC pattern/setup-hold — see `dpo4000_utils/control.py`); A14.6-A14.9
-planned, not implemented.
+Status: **A14.1, A14.2, A14.3, A14.4, A14.5, A14.6 implemented** (`TriggerConfig` foundation,
+PULSE width/runt/timeout, LOGIC pattern/setup-hold, VIDEO — see `dpo4000_utils/control.py`);
+A14.7-A14.9 planned, not implemented.
 Parent docs: [`architecture.md`](architecture.md), [`regression-test-plan.md`](regression-test-plan.md)
 
 This document is the authoritative scope/acceptance-criteria backlog for A14, the first
@@ -75,9 +75,15 @@ channel is the data line) could not be found under any tried name and remains un
 `SETHOLD` config today can only threshold/time-qualify whatever the instrument's current data
 source already is.
 
-**`TRIGGER:A:VIDEO?`** returns a populated field set (`NTS;ALLL;1;0.0E+0;POS` — standard,
-line spec, field, delay, polarity) confirming the video-trigger subsystem exists and is
-queryable, but the individual sub-command names and full enum ranges are **not yet mapped**.
+**`TRIGGER:A:VIDEO?`** returns a populated field set (`NTS;ALLL;1;0.0E+0;POS`), now fully
+mapped and implemented (`dpo4000_utils/control.py`): `TRIGGER:A:VIDEO:SOURCE {CH1-4}`,
+`:STANDARD {NTSC|PAL|SECAM}` (`HD720P60`/`HD1080P60` rejected — no HD support on this
+firmware/model), `:LINE <integer>`, `:FIELD {ALLLINES}` (the only value accepted among those
+tried), `:POLARITY {POSITIVE|NEGATIVE}`. A companion `TRIGGER:A:VIDEO:SYNC?` leaf always
+mirrors `:FIELD`'s value and rejects the same candidates, so it looks like an alias and isn't
+exposed as a separate `TriggerConfig` field. The dump's fourth positional value
+(`0.0E+0`, between field and polarity) could not be mapped to any leaf command tried
+(`:DELAY?`, `:HDELAY?` and others all errored) and remains unimplemented.
 
 **`TRIGGER:B:TYPE?`** returns `EDG` successfully, confirming a full B-trigger (sequence)
 subsystem exists in parallel to `TRIGGER:A:*`. Its event-count/mode structure is **not yet
@@ -96,12 +102,13 @@ operational timeout — use a short, dedicated probe timeout so an unsupported c
 stall a real capture/automation run. This directly informs the "unsupported-trigger capability
 probe latency" requirement already named in `regression-test-plan.md` §14.
 
-**Net implication for scoping below**: A14.1-A14.5 (type selection, pulse width, runt, logic,
-timeout) are implemented with fully mapped fields, modulo the two explicitly-noted gaps above
-(pulse `TRANSITION` class, `SETHOLD` data source, logic pattern `LESSTHAN`/`MORETHAN` time
-qualifier). A14.6 (video), A14.7 (sequence/B-trigger), and A14.8 (holdoff-by-count, if it
-exists) still need their full field layout mapped against real hardware or the Programmer
-Manual before implementation starts on those specific sub-features — do not guess field names
+**Net implication for scoping below**: A14.1-A14.6 (type selection, pulse width, runt, logic,
+timeout, video) are implemented with fully mapped fields, modulo the explicitly-noted gaps
+above (pulse `TRANSITION` class, `SETHOLD` data source, logic pattern `LESSTHAN`/`MORETHAN`
+time qualifier, video's unmapped fourth dump field). A14.7 (sequence/B-trigger) and A14.8
+(holdoff-by-count, if it exists) still need their full field layout mapped against real
+hardware or the Programmer Manual before implementation starts on those specific
+sub-features — do not guess field names
 for them.
 
 ## Feature matrix
@@ -113,7 +120,7 @@ for them.
 | A14.3 | Runt trigger | `:PULSE:CLASS RUNT` | **Implemented** | High |
 | A14.4 | Logic trigger | `TRIGGER:A:TYPE LOGIC`, `:LOGIC:CLASS` | **Implemented** (`LOGIC`/`SETHOLD` classes; `SETHOLD` data-source leaf and pattern time-qualifier unmapped) | Medium |
 | A14.5 | Timeout trigger | `:PULSE:CLASS TIMEOUT` | **Implemented** | Medium |
-| A14.6 | Video trigger | `TRIGGER:A:TYPE VIDEO` | Selector confirmed; field layout unmapped | Low |
+| A14.6 | Video trigger | `TRIGGER:A:TYPE VIDEO` | **Implemented** (fourth dump field unmapped) | Low |
 | A14.7 | Sequence / B-trigger (A-then-B) | `TRIGGER:B:*` | Subsystem existence confirmed; event/mode structure unmapped | Medium |
 | A14.8 | Trigger holdoff | `TRIGGER:A:HOLDOFF:VALUE` | Holdoff-by-time confirmed; holdoff-by-count/other modes unconfirmed | Medium |
 | A14.9 | Trigger tab GUI integration + boundary enforcement | n/a (GUI/architecture) | n/a | High |
@@ -220,14 +227,21 @@ and the `_sethold_` equivalent.
 Acceptance: same pattern as A14.2. Timeout-value boundary matrix includes the project's
 standard non-finite/injection cases (plan §3.1) since this is a duration field.
 
-### A14.6 — Video trigger
+### A14.6 — Video trigger — **Implemented**
 
-Behavior: `TRIGGER:A:TYPE VIDEO`, standard/line/field/polarity fields (`TRIGGER:A:VIDEO?`
-confirmed queryable with populated fields; **individual leaf command names unmapped**).
+`TRIGGER:A:TYPE VIDEO`, `:VIDEO:SOURCE {CH1-4}`, `:STANDARD {NTSC|PAL|SECAM}`,
+`:LINE <integer>`, `:FIELD {ALLLINES}`, `:POLARITY {POSITIVE|NEGATIVE}`. `TriggerConfig`
+fields: `video_source`, `video_standard`, `video_line`, `video_field`, `video_polarity`.
 
-Acceptance: same pattern as A14.2. Lowest priority — flag to the user whether this is worth
-delivering in A14's first pass given DPO4054 use cases skew toward general-purpose bench work
-rather than broadcast/video debug.
+Known gap: a fourth field visible in the raw `TRIGGER:A?` dump (between field and polarity)
+could not be mapped to any leaf command tried and remains unimplemented; `:FIELD` only
+accepted `ALLLINES` among the values probed, so specific-line-number field selection (as
+opposed to the separate `:LINE` number itself) may not be exposed via this command path, or
+uses a value this pass didn't try.
+
+Acceptance: same pattern as A14.2 — see
+`tests/test_control.py::test_trigger_config_commands_video` and
+`tests/test_trigger_config.py::test_get_trigger_configuration_video_reads_all_fields`.
 
 ### A14.7 — Sequence / B-trigger (A-then-B)
 
@@ -277,8 +291,8 @@ raw SCPI or `.scope` access was introduced, mirroring
 
 Behavior: build the bounded-timeout capability-probe helper implied throughout this document
 (short dedicated timeout, treats timeout as "unsupported," never blocks a real run) as a
-reusable driver-level utility, not ad-hoc script code — this is load-bearing for A14.4/A14.6/
-A14.7/A14.8's still-unmapped fields being probed safely later, and is explicitly named in
+reusable driver-level utility, not ad-hoc script code — this is load-bearing for A14.7/A14.8's
+still-unmapped fields being probed safely later, and is explicitly named in
 `regression-test-plan.md` §14 ("unsupported-trigger capability probe latency").
 
 Acceptance, cross-referencing `regression-test-plan.md` §14's existing A14 list:
@@ -316,17 +330,23 @@ Both `LOGIC` (pattern) and `SETHOLD` classes verified and implemented, with the 
 data-source leaf and the pattern `LESSTHAN`/`MORETHAN` time-qualifier left unmapped (see
 A14.4's acceptance section) rather than guessed.
 
+### Phase B.6 — Video trigger (A14.6) — **done**
+
+Verified and implemented, with the unmapped fourth `TRIGGER:A:VIDEO?` field left out (see
+A14.6's acceptance section) rather than guessed. Live probing during this phase did not hit
+the bounded-timeout hang the earlier PULSE/LOGIC probing did — every candidate resolved
+promptly, whether accepted or rejected.
+
 ### Phase C — capability probing (A14.10)
 
 Build the bounded-timeout probe helper before attempting the remaining unmapped types, so
-A14.6/A14.7/A14.8 investigation itself doesn't repeat the hang this document's own research
-run into.
+A14.7/A14.8 investigation itself doesn't repeat the hang this document's own research run
+into.
 
-### Phase D — remaining unmapped types (A14.6, A14.7, A14.8)
+### Phase D — remaining unmapped types (A14.7, A14.8)
 
-Video, sequence/B-trigger, holdoff-by-count (if it exists). Each requires its own
-hardware/manual verification pass before implementation, per this document's "Hardware
-findings" section.
+Sequence/B-trigger, holdoff-by-count (if it exists). Each requires its own hardware/manual
+verification pass before implementation, per this document's "Hardware findings" section.
 
 ### Phase E — GUI + qualification (A14.9, A14.10 completion)
 
