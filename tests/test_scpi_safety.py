@@ -10,11 +10,13 @@ from dpo4000_utils.control import (
     ChannelConfig,
     DisplayConfig,
     MeasurementConfig,
+    SequenceTriggerConfig,
     TriggerConfig,
     build_channel_config_commands,
     build_display_settings_commands,
     build_edge_trigger_commands,
     build_measurement_commands,
+    build_sequence_trigger_commands,
     build_trigger_config_commands,
 )
 from dpo4000_utils.errors import DPOTransportError
@@ -131,6 +133,22 @@ def test_trigger_config_video_fields_reject_injected_commands():
 def test_trigger_config_video_line_rejects_nonfinite_values():
     with pytest.raises(ValueError, match="finite"):
         build_trigger_config_commands(TriggerConfig(trigger_type="VIDEO", video_line="nan"))
+
+
+def test_sequence_trigger_fields_reject_injected_commands():
+    with pytest.raises(ValueError):
+        build_sequence_trigger_commands(SequenceTriggerConfig(source="CH1;*RST"))
+    with pytest.raises(ValueError):
+        build_sequence_trigger_commands(SequenceTriggerConfig(level="1;*RST"))
+    with pytest.raises(ValueError):
+        build_sequence_trigger_commands(SequenceTriggerConfig(time="8e-9;*RST"))
+
+
+def test_sequence_trigger_fields_reject_nonfinite_values():
+    with pytest.raises(ValueError, match="finite"):
+        build_sequence_trigger_commands(SequenceTriggerConfig(time="nan"))
+    with pytest.raises(ValueError, match="finite"):
+        build_sequence_trigger_commands(SequenceTriggerConfig(level="inf"))
 
 
 def test_bus_type_position_display_and_protocol_values_are_single_message_only():

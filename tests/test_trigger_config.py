@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from dpo4000_utils.control import ControlMixin, TriggerConfig
+from dpo4000_utils.control import ControlMixin, SequenceTriggerConfig, TriggerConfig
 from dpo4000_utils.trigger import TriggerMixin
 
 
@@ -342,3 +342,82 @@ def test_set_trigger_level_channel_scoped_write():
     scope = FakeScope()
     scope.set_trigger_level(2.5, channel=3, verify=False)
     assert scope.instrument.writes == ["TRIGGER:A:LEVEL:CH3 2.5"]
+
+
+def test_configure_sequence_trigger_writes_expected_commands():
+    scope = FakeScope()
+    scope.configure_sequence_trigger(
+        SequenceTriggerConfig(
+            source="CH2",
+            slope="FALL",
+            coupling="AC",
+            level="2.0",
+            by="EVENTS",
+            events_count="5",
+            state=True,
+        )
+    )
+    assert scope.instrument.writes == [
+        "TRIGGER:B:EDGE:SOURCE CH2",
+        "TRIGGER:B:EDGE:SLOPE FALL",
+        "TRIGGER:B:EDGE:COUPLING AC",
+        "TRIGGER:B:LEVEL 2",
+        "TRIGGER:B:BY EVENTS",
+        "TRIGGER:B:EVENTS:COUNT 5",
+        "TRIGGER:B:STATE ON",
+    ]
+
+
+def test_configure_sequence_trigger_disable_only():
+    scope = FakeScope()
+    scope.configure_sequence_trigger(SequenceTriggerConfig(state=False))
+    assert scope.instrument.writes == ["TRIGGER:B:STATE OFF"]
+
+
+def test_configure_sequence_trigger_rejects_injected_field_before_any_write():
+    scope = FakeScope()
+    with pytest.raises(ValueError):
+        scope.configure_sequence_trigger(SequenceTriggerConfig(source="CH1;*RST"))
+    assert scope.instrument.writes == []
+
+
+def test_get_sequence_trigger_configuration_reads_all_fields_and_normalizes_state():
+    scope = FakeScope(
+        responses={
+            "TRIGGER:B:STATE?": "1",
+            "TRIGGER:B:EDGE:SOURCE?": "CH1",
+            "TRIGGER:B:EDGE:SLOPE?": "RIS",
+            "TRIGGER:B:EDGE:COUPLING?": "DC",
+            "TRIGGER:B:LEVEL?": "1.0000",
+            "TRIGGER:B:BY?": "TIM",
+            "TRIGGER:B:TIME?": "8.0000E-9",
+            "TRIGGER:B:EVENTS:COUNT?": "1",
+        }
+    )
+    result = scope.get_sequence_trigger_configuration()
+    assert result == {
+        "state": True,
+        "source": "CH1",
+        "slope": "RIS",
+        "coupling": "DC",
+        "level": "1.0000",
+        "by": "TIM",
+        "time": "8.0000E-9",
+        "events_count": "1",
+    }
+
+
+def test_get_sequence_trigger_configuration_state_off_normalizes_false():
+    scope = FakeScope(
+        responses={
+            "TRIGGER:B:STATE?": "0",
+            "TRIGGER:B:EDGE:SOURCE?": "CH1",
+            "TRIGGER:B:EDGE:SLOPE?": "RIS",
+            "TRIGGER:B:EDGE:COUPLING?": "DC",
+            "TRIGGER:B:LEVEL?": "1.0000",
+            "TRIGGER:B:BY?": "TIM",
+            "TRIGGER:B:TIME?": "8.0000E-9",
+            "TRIGGER:B:EVENTS:COUNT?": "1",
+        }
+    )
+    assert scope.get_sequence_trigger_configuration()["state"] is False
