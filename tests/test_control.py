@@ -6,8 +6,11 @@ from dpo4000_utils.control import (
     DisplayConfig,
     MathConfig,
     MeasurementConfig,
+    SEQUENCE_TRIGGER_QUERIES,
+    SequenceTriggerConfig,
     TRIGGER_LOGIC_CLASSES,
     TRIGGER_PULSE_CLASSES,
+    TRIGGER_SEQUENCE_BY,
     TRIGGER_TYPES,
     TRIGGER_VIDEO_FIELDS,
     TRIGGER_VIDEO_POLARITIES,
@@ -28,6 +31,7 @@ from dpo4000_utils.control import (
     build_measurement_value_query,
     build_record_length_command,
     build_record_length_query,
+    build_sequence_trigger_commands,
     build_trigger_config_commands,
     build_trigger_config_queries,
     normalize_average_count,
@@ -518,4 +522,73 @@ def test_trigger_config_queries_video():
         "video_line": "TRIGGER:A:VIDEO:LINE?",
         "video_field": "TRIGGER:A:VIDEO:FIELD?",
         "video_polarity": "TRIGGER:A:VIDEO:POLARITY?",
+    }
+
+
+def test_trigger_sequence_by_is_the_live_verified_set():
+    assert TRIGGER_SEQUENCE_BY == ("TIME", "EVENTS")
+
+
+def test_sequence_trigger_commands_full_config_state_written_last():
+    config = SequenceTriggerConfig(
+        state=True,
+        source="ch2",
+        slope="fall",
+        coupling="ac",
+        level="2.0",
+        by="events",
+        time="20e-9",
+        events_count="5",
+    )
+    assert build_sequence_trigger_commands(config) == [
+        "TRIGGER:B:EDGE:SOURCE CH2",
+        "TRIGGER:B:EDGE:SLOPE FALL",
+        "TRIGGER:B:EDGE:COUPLING AC",
+        "TRIGGER:B:LEVEL 2",
+        "TRIGGER:B:BY EVENTS",
+        "TRIGGER:B:TIME 2e-08",
+        "TRIGGER:B:EVENTS:COUNT 5",
+        "TRIGGER:B:STATE ON",
+    ]
+
+
+def test_sequence_trigger_commands_disable_only():
+    assert build_sequence_trigger_commands(SequenceTriggerConfig(state=False)) == [
+        "TRIGGER:B:STATE OFF"
+    ]
+
+
+def test_sequence_trigger_commands_empty_config_is_empty():
+    assert build_sequence_trigger_commands(SequenceTriggerConfig()) == []
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("slope", "SIDEWAYS"),
+        ("coupling", "BOGUS"),
+        ("by", "MAYBE"),
+        ("source", "NOTACHANNEL"),
+    ],
+)
+def test_sequence_trigger_commands_rejects_invalid_enum_values(field, value):
+    with pytest.raises(ValueError):
+        build_sequence_trigger_commands(SequenceTriggerConfig(**{field: value}))
+
+
+def test_sequence_trigger_commands_events_count_rejects_non_positive():
+    with pytest.raises(ValueError):
+        build_sequence_trigger_commands(SequenceTriggerConfig(events_count="0"))
+
+
+def test_sequence_trigger_queries():
+    assert SEQUENCE_TRIGGER_QUERIES == {
+        "state": "TRIGGER:B:STATE?",
+        "source": "TRIGGER:B:EDGE:SOURCE?",
+        "slope": "TRIGGER:B:EDGE:SLOPE?",
+        "coupling": "TRIGGER:B:EDGE:COUPLING?",
+        "level": "TRIGGER:B:LEVEL?",
+        "by": "TRIGGER:B:BY?",
+        "time": "TRIGGER:B:TIME?",
+        "events_count": "TRIGGER:B:EVENTS:COUNT?",
     }

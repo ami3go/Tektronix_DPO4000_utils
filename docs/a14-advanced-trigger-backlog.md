@@ -1,8 +1,8 @@
 # A14 Advanced Trigger Backlog
 
-Status: **A14.1, A14.2, A14.3, A14.4, A14.5, A14.6 implemented** (`TriggerConfig` foundation,
-PULSE width/runt/timeout, LOGIC pattern/setup-hold, VIDEO — see `dpo4000_utils/control.py`);
-A14.7-A14.9 planned, not implemented.
+Status: **A14.1-A14.7 implemented** (`TriggerConfig` foundation, PULSE width/runt/timeout,
+LOGIC pattern/setup-hold, VIDEO, B-trigger/sequence — see `dpo4000_utils/control.py`);
+A14.8-A14.9 planned, not implemented.
 Parent docs: [`architecture.md`](architecture.md), [`regression-test-plan.md`](regression-test-plan.md)
 
 This document is the authoritative scope/acceptance-criteria backlog for A14, the first
@@ -85,31 +85,47 @@ exposed as a separate `TriggerConfig` field. The dump's fourth positional value
 (`0.0E+0`, between field and polarity) could not be mapped to any leaf command tried
 (`:DELAY?`, `:HDELAY?` and others all errored) and remains unimplemented.
 
-**`TRIGGER:B:TYPE?`** returns `EDG` successfully, confirming a full B-trigger (sequence)
-subsystem exists in parallel to `TRIGGER:A:*`. Its event-count/mode structure is **not yet
-mapped** — see the quirk below.
+**`TRIGGER:B:*`** (sequence/B-trigger) is now fully mapped and implemented
+(`dpo4000_utils/control.py`), applied through a separate `SequenceTriggerConfig`/
+`configure_sequence_trigger()` API rather than folded into `TriggerConfig`, since B-trigger
+layers on top of whatever A trigger type is active rather than being a `trigger_type` choice
+of its own: `TRIGGER:B:STATE {ON|OFF}` (top-level enable), `TRIGGER:B:EDGE:SOURCE {CH1-4|
+AUX|LINE}`, `:EDGE:SLOPE {RISE|FALL|EITHER}`, `:EDGE:COUPLING`, `TRIGGER:B:LEVEL`
+(mirroring A's edge fields — `TRIGGER:B:TYPE` only accepts `EDGE`, PULSE/LOGIC/VIDEO all
+rejected, so B-trigger has no type field), `TRIGGER:B:BY {TIME|EVENTS}` (delay mode),
+`TRIGGER:B:TIME` (delay-by-time duration), `TRIGGER:B:EVENTS:COUNT` (delay-by-events count).
+
+**Live-verified constraint, not a bug**: `TRIGGER:B:STATE ON` is rejected (`*ESR?` reports a
+command-execution error, code 16; state readback stays `0`/False) unless A's trigger type is
+already `EDGE`. Reproduced directly: enabling B while A was `VIDEO` failed; switching A back
+to `EDGE` first and retrying the identical `STATE ON` write succeeded immediately. Callers
+must configure A as EDGE before enabling B — documented on `SequenceTriggerConfig` and
+enforced by ordering in the hardware-verification case.
 
 **`TRIGGER:A:HOLDOFF:VALUE?`** works and returns a time value in seconds (holdoff-by-time is
 supported and readable at the byte level already exercised in `TRIGGER:A?`'s dump).
 
-**Firmware quirk — bounded-timeout probing is mandatory, not optional**: two unsupported/
-incorrectly-named queries (`TRIGGER:B:EVENTS:MODE?`, `TRIGGER:A:HOLDOFF:BY?`) did not return a
-prompt SCPI error. They **timed out silently** (`VI_ERROR_TMO`) instead, requiring a full VISA
-timeout to elapse before the caller got any response at all, and requiring a subsequent
-`*CLS`/health check before continuing. Any A14 capability-probe code (see A14.10) must treat a
-timeout the same as "not supported" and must never probe with the driver's normal/long
-operational timeout — use a short, dedicated probe timeout so an unsupported command can't
-stall a real capture/automation run. This directly informs the "unsupported-trigger capability
-probe latency" requirement already named in `regression-test-plan.md` §14.
+**Firmware quirk — bounded-timeout probing is mandatory, not optional**: `TRIGGER:B:EVENTS:
+MODE?` and `TRIGGER:A:HOLDOFF:BY?` do not return a prompt SCPI error. They **time out
+silently** (`VI_ERROR_TMO`) instead, requiring a full VISA timeout to elapse before the caller
+gets any response at all, and requiring a subsequent `*CLS`/health check before continuing.
+Re-confirmed for `TRIGGER:B:EVENTS:MODE?` specifically during A14.7's own research (reproduced
+cleanly with a 3s bounded timeout, recovered immediately) — this is a genuinely nonexistent
+leaf on this firmware, not a transient issue, and the working leaf for the event count is the
+sibling `TRIGGER:B:EVENTS:COUNT` (confirmed separately, unaffected). Any A14 capability-probe
+code (see A14.10) must treat a timeout the same as "not supported" and must never probe with
+the driver's normal/long operational timeout — use a short, dedicated probe timeout so an
+unsupported command can't stall a real capture/automation run. This directly informs the
+"unsupported-trigger capability probe latency" requirement already named in
+`regression-test-plan.md` §14.
 
-**Net implication for scoping below**: A14.1-A14.6 (type selection, pulse width, runt, logic,
-timeout, video) are implemented with fully mapped fields, modulo the explicitly-noted gaps
-above (pulse `TRANSITION` class, `SETHOLD` data source, logic pattern `LESSTHAN`/`MORETHAN`
-time qualifier, video's unmapped fourth dump field). A14.7 (sequence/B-trigger) and A14.8
-(holdoff-by-count, if it exists) still need their full field layout mapped against real
-hardware or the Programmer Manual before implementation starts on those specific
-sub-features — do not guess field names
-for them.
+**Net implication for scoping below**: A14.1-A14.7 (type selection, pulse width, runt, logic,
+timeout, video, sequence/B-trigger) are implemented with fully mapped fields, modulo the
+explicitly-noted gaps above (pulse `TRANSITION` class, `SETHOLD` data source, logic pattern
+`LESSTHAN`/`MORETHAN` time qualifier, video's unmapped fourth dump field). A14.8
+(holdoff-by-count, if it exists) still needs its full field layout mapped against real
+hardware or the Programmer Manual before implementation starts — do not guess field names
+for it.
 
 ## Feature matrix
 
@@ -121,7 +137,7 @@ for them.
 | A14.4 | Logic trigger | `TRIGGER:A:TYPE LOGIC`, `:LOGIC:CLASS` | **Implemented** (`LOGIC`/`SETHOLD` classes; `SETHOLD` data-source leaf and pattern time-qualifier unmapped) | Medium |
 | A14.5 | Timeout trigger | `:PULSE:CLASS TIMEOUT` | **Implemented** | Medium |
 | A14.6 | Video trigger | `TRIGGER:A:TYPE VIDEO` | **Implemented** (fourth dump field unmapped) | Low |
-| A14.7 | Sequence / B-trigger (A-then-B) | `TRIGGER:B:*` | Subsystem existence confirmed; event/mode structure unmapped | Medium |
+| A14.7 | Sequence / B-trigger (A-then-B) | `TRIGGER:B:*` | **Implemented** (requires A=EDGE to enable) | Medium |
 | A14.8 | Trigger holdoff | `TRIGGER:A:HOLDOFF:VALUE` | Holdoff-by-time confirmed; holdoff-by-count/other modes unconfirmed | Medium |
 | A14.9 | Trigger tab GUI integration + boundary enforcement | n/a (GUI/architecture) | n/a | High |
 | A14.10 | HIL/regression qualification tie-in | n/a | n/a | Essential (gates completion) |
@@ -243,17 +259,29 @@ Acceptance: same pattern as A14.2 — see
 `tests/test_control.py::test_trigger_config_commands_video` and
 `tests/test_trigger_config.py::test_get_trigger_configuration_video_reads_all_fields`.
 
-### A14.7 — Sequence / B-trigger (A-then-B)
+### A14.7 — Sequence / B-trigger (A-then-B) — **Implemented**
 
-Behavior: `TRIGGER:B:*` subsystem, parallel to `TRIGGER:A:*` (existence confirmed via
-`TRIGGER:B:TYPE?` returning `EDG`). Event-count-before-B-arms and B-trigger type/level fields
-are **unmapped**. The problematic `TRIGGER:B:EVENTS:MODE?` query from hardware probing
-either uses a different command path than guessed or isn't supported on this firmware —
-needs confirmation either way, not another blind retry with the driver's normal timeout.
+`TRIGGER:B:STATE {ON|OFF}` (enable), `TRIGGER:B:EDGE:SOURCE {CH1-4|AUX|LINE}`,
+`:EDGE:SLOPE {RISE|FALL|EITHER}`, `:EDGE:COUPLING`, `TRIGGER:B:LEVEL` (B's own edge
+condition — `TRIGGER:B:TYPE` is EDGE-only, PULSE/LOGIC/VIDEO all rejected), `TRIGGER:B:BY
+{TIME|EVENTS}`, `TRIGGER:B:TIME`, `TRIGGER:B:EVENTS:COUNT`. Applied through a dedicated
+`SequenceTriggerConfig`/`configure_sequence_trigger()`/`get_sequence_trigger_configuration()`
+API, separate from `TriggerConfig`/`configure_trigger()`, since B-trigger layers on top of
+whatever A trigger type is active rather than being a `trigger_type` choice.
 
-Acceptance: same L0-L1 pattern as A14.1, plus this sub-feature specifically needs the bounded-
-timeout capability probe from A14.10 built and working *first*, since even scoping this
-correctly required discovering the timeout-instead-of-error behavior.
+`TRIGGER:B:EVENTS:MODE?` was re-confirmed to hang (reproduced cleanly with a bounded 3s
+timeout, recovered immediately) rather than being invalid syntax or a transient issue; the
+sibling `TRIGGER:B:EVENTS:COUNT` leaf works and is unaffected.
+
+**Live-verified constraint**: `TRIGGER:B:STATE ON` is rejected (`*ESR?` command-execution
+error; readback stays False) unless A's trigger type is already EDGE — reproduced directly by
+toggling A between VIDEO and EDGE and retrying the identical write. Documented on
+`SequenceTriggerConfig` and enforced by ordering in the hardware-verification case (A is
+restored to EDGE before B is exercised, not after).
+
+Acceptance: same L0-L1 pattern as A14.1 — see
+`tests/test_control.py::test_sequence_trigger_commands_full_config_state_written_last` and
+`tests/test_trigger_config.py::test_get_sequence_trigger_configuration_reads_all_fields_and_normalizes_state`.
 
 ### A14.8 — Trigger holdoff
 
@@ -291,7 +319,7 @@ raw SCPI or `.scope` access was introduced, mirroring
 
 Behavior: build the bounded-timeout capability-probe helper implied throughout this document
 (short dedicated timeout, treats timeout as "unsupported," never blocks a real run) as a
-reusable driver-level utility, not ad-hoc script code — this is load-bearing for A14.7/A14.8's
+reusable driver-level utility, not ad-hoc script code — this is load-bearing for A14.8's
 still-unmapped fields being probed safely later, and is explicitly named in
 `regression-test-plan.md` §14 ("unsupported-trigger capability probe latency").
 
@@ -337,16 +365,22 @@ A14.6's acceptance section) rather than guessed. Live probing during this phase 
 the bounded-timeout hang the earlier PULSE/LOGIC probing did — every candidate resolved
 promptly, whether accepted or rejected.
 
+### Phase B.7 — Sequence / B-trigger (A14.7) — **done**
+
+Verified and implemented as a separate `SequenceTriggerConfig` API. Re-confirmed
+`TRIGGER:B:EVENTS:MODE?` hangs (not invalid syntax) with a bounded 3s timeout — clean
+recovery, no repeat of the original unbounded-timeout incident. Discovered and documented a
+real hardware constraint along the way: B-trigger can only be enabled while A is EDGE type.
+
 ### Phase C — capability probing (A14.10)
 
-Build the bounded-timeout probe helper before attempting the remaining unmapped types, so
-A14.7/A14.8 investigation itself doesn't repeat the hang this document's own research run
-into.
+Build the bounded-timeout probe helper before attempting the remaining unmapped area, so
+A14.8 investigation doesn't repeat the hang this document's own research ran into.
 
-### Phase D — remaining unmapped types (A14.7, A14.8)
+### Phase D — remaining unmapped areas (A14.8)
 
-Sequence/B-trigger, holdoff-by-count (if it exists). Each requires its own hardware/manual
-verification pass before implementation, per this document's "Hardware findings" section.
+Holdoff-by-count (if it exists). Requires its own hardware/manual verification pass before
+implementation, per this document's "Hardware findings" section.
 
 ### Phase E — GUI + qualification (A14.9, A14.10 completion)
 

@@ -14,6 +14,7 @@ from .control import (
     MathConfig,
     MeasurementConfig,
     MeasurementSetup,
+    SequenceTriggerConfig,
     TriggerConfig,
 )
 from .errors import (
@@ -62,6 +63,7 @@ __all__ = [
     "MeasurementConfig",
     "MeasurementSetup",
     "ReferenceConfig",
+    "SequenceTriggerConfig",
     "TriggerConfig",
     "WaveformData",
     "WaveformPreamble",

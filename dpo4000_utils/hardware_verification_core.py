@@ -29,6 +29,7 @@ from .control import (
     DisplayConfig,
     MathConfig,
     MeasurementConfig,
+    SequenceTriggerConfig,
     TriggerConfig,
     bool_from_scope_response,
 )
@@ -120,6 +121,8 @@ PUBLIC_METHOD_RISK: dict[str, VerificationRisk] = {
     "configure_edge_trigger": VerificationRisk.REVERSIBLE,
     "get_trigger_configuration": VerificationRisk.READ_ONLY,
     "configure_trigger": VerificationRisk.REVERSIBLE,
+    "get_sequence_trigger_configuration": VerificationRisk.READ_ONLY,
+    "configure_sequence_trigger": VerificationRisk.REVERSIBLE,
     "set_trigger_level": VerificationRisk.REVERSIBLE,
     "set_edge_trigger_source": VerificationRisk.REVERSIBLE,
     "trigger": VerificationRisk.DISRUPTIVE,
@@ -628,19 +631,47 @@ class HardwareVerifier:
                 raise AssertionError(
                     f"configure_trigger()/get_trigger_configuration() VIDEO round trip failed: {readback}"
                 )
+
+            # TRIGGER:B:STATE ON is rejected (*ESR? command-execution error, state stays
+            # False) unless A is already EDGE - a live-verified constraint, not a bug in
+            # the command sequence. Restore A to EDGE before exercising B.
+            scope.configure_edge_trigger(
+                source=f"CH{channel}", slope="RISE", coupling="DC", mode="AUTO", level=current_level
+            )
+            scope.configure_sequence_trigger(
+                SequenceTriggerConfig(
+                    source=f"CH{channel}",
+                    slope="RISE",
+                    coupling="DC",
+                    level=current_level,
+                    by="EVENTS",
+                    events_count="1",
+                    state=True,
+                )
+            )
+            sequence_readback = scope.get_sequence_trigger_configuration()
+            if sequence_readback.get("state") is not True:
+                raise AssertionError(
+                    "configure_sequence_trigger()/get_sequence_trigger_configuration() round "
+                    f"trip failed: {sequence_readback}"
+                )
         finally:
             # None of the exercised conditions (a narrow PULSE/WIDTH match, an unclocked
-            # LOGIC pattern, a SETHOLD timing violation, a video sync signal) are guaranteed
-            # to occur on the connected signal, which would otherwise stall every later case
-            # that waits for an acquisition to complete. Restore EDGE immediately rather than
-            # relying on the end-of-run baseline reapply, which only runs once after every case.
+            # LOGIC pattern, a SETHOLD timing violation, a video sync signal, a B-trigger
+            # edge event) are guaranteed to occur on the connected signal, which would
+            # otherwise stall every later case that waits for an acquisition to complete.
+            # Restore EDGE immediately and disable B-triggering (its STATE flag is a
+            # separate subsystem configure_edge_trigger() never touches) rather than
+            # relying on the end-of-run baseline reapply, which only runs once after
+            # every case.
+            scope.configure_sequence_trigger(SequenceTriggerConfig(state=False))
             scope.configure_edge_trigger(
                 source=f"CH{channel}", slope="RISE", coupling="DC", mode="AUTO", level=current_level
             )
         return (
-            "TriggerConfig PULSE/WIDTH, LOGIC (LOGIC/SETHOLD classes), and VIDEO "
-            f"configure/readback round trips passed on CH{channel}; trigger was restored to "
-            "EDGE immediately after."
+            "TriggerConfig PULSE/WIDTH, LOGIC (LOGIC/SETHOLD classes), VIDEO, and "
+            "SequenceTriggerConfig (B-trigger) configure/readback round trips passed on "
+            f"CH{channel}; trigger was restored to EDGE and B-trigger disabled immediately after."
         )
 
     def _case_display_write(self) -> str:
@@ -984,9 +1015,14 @@ class HardwareVerifier:
                 (
                     VerificationCase(
                         "trigger-config-write",
-                        "TriggerConfig PULSE/WIDTH configure/readback write API",
+                        "TriggerConfig PULSE/WIDTH/LOGIC/VIDEO and B-trigger configure/readback write API",
                         VerificationRisk.REVERSIBLE,
-                        covers_methods=("configure_trigger", "get_trigger_configuration"),
+                        covers_methods=(
+                            "configure_trigger",
+                            "get_trigger_configuration",
+                            "configure_sequence_trigger",
+                            "get_sequence_trigger_configuration",
+                        ),
                     ),
                     self._case_trigger_config_write,
                 ),

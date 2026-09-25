@@ -98,6 +98,14 @@ TRIGGER_VIDEO_STANDARDS = ("NTSC", "PAL", "SECAM")
 TRIGGER_VIDEO_FIELDS = ("ALLLINES",)
 TRIGGER_VIDEO_POLARITIES = ("POSITIVE", "NEGATIVE")
 
+# TRIGGER:B:* (sequence/B-trigger, layered on top of the A trigger via TRIGGER:B:STATE).
+# Live-verified against a DPO4054 (see docs/a14-advanced-trigger-backlog.md).
+# TRIGGER:B:TYPE only accepts EDGE (PULSE/LOGIC/VIDEO all rejected), so B-trigger has no
+# type-selection field here - it is always an edge condition. TRIGGER:B:EVENTS:MODE?
+# reproducibly hangs (VI_ERROR_TMO, not a prompt SCPI error) rather than being invalid -
+# the working leaf for the event count is TRIGGER:B:EVENTS:COUNT, confirmed separately.
+TRIGGER_SEQUENCE_BY = ("TIME", "EVENTS")
+
 CHANNEL_CONFIG_FIELDS = (
     "display",
     "scale",
@@ -273,6 +281,34 @@ class TriggerConfig:
     video_line: str | int | None = None
     video_field: str | None = None
     video_polarity: str | None = None
+
+
+@dataclass(frozen=True)
+class SequenceTriggerConfig:
+    """B-trigger (sequence) configuration payload, layered on top of the A trigger.
+
+    Applied through ``configure_sequence_trigger()``, separate from
+    ``configure_trigger()``: B-trigger is an independent enable/condition that sits on
+    top of whatever A trigger type is active, not a ``trigger_type`` choice of its own.
+    ``TRIGGER:B:TYPE`` only accepts EDGE on this firmware, so there is no type field -
+    B-trigger is always an edge condition. ``by``/``time``/``events_count`` select
+    whether B arms a fixed delay after A (``by="TIME"``) or after counting N occurrences
+    of B's own edge condition (``by="EVENTS"``).
+
+    Live-verified constraint: ``state=True`` (``TRIGGER:B:STATE ON``) is rejected
+    (``*ESR?`` reports a command-execution error, and the state readback stays False)
+    unless the A trigger's type is already EDGE. Callers must configure A as EDGE
+    (``configure_trigger``/``configure_edge_trigger``) before enabling B.
+    """
+
+    state: bool | None = None
+    source: str | None = None
+    slope: str | None = None
+    coupling: str | None = None
+    level: str | float | int | None = None
+    by: str | None = None
+    time: str | float | int | None = None
+    events_count: str | int | None = None
 
 
 def _normalize_token(value: str, *, field: str) -> str:
@@ -787,6 +823,41 @@ def _build_video_trigger_commands(config: TriggerConfig) -> list[str]:
     return commands
 
 
+def build_sequence_trigger_commands(config: SequenceTriggerConfig) -> list[str]:
+    """Build the B-trigger (sequence) SCPI command sequence for one
+    :class:`SequenceTriggerConfig`. ``state`` is written last so B's own condition and
+    delay-by settings are in place before B-triggering is (re)enabled."""
+    commands: list[str] = []
+    if config.source is not None:
+        source = normalize_trigger_choice(config.source, TRIGGER_SOURCES, field="B-trigger source")
+        commands.append(f"TRIGGER:B:EDGE:SOURCE {source}")
+    if config.slope is not None:
+        slope = normalize_trigger_choice(config.slope, TRIGGER_SLOPES, field="B-trigger slope")
+        commands.append(f"TRIGGER:B:EDGE:SLOPE {slope}")
+    if config.coupling is not None:
+        coupling = normalize_trigger_choice(
+            config.coupling, TRIGGER_COUPLINGS, field="B-trigger coupling"
+        )
+        commands.append(f"TRIGGER:B:EDGE:COUPLING {coupling}")
+    if config.level is not None:
+        level = normalize_trigger_level(config.level)
+        commands.append(f"TRIGGER:B:LEVEL {level}")
+    if config.by is not None:
+        by = normalize_scpi_enum(config.by, TRIGGER_SEQUENCE_BY, field="B-trigger delay mode")
+        commands.append(f"TRIGGER:B:BY {by}")
+    if config.time is not None:
+        delay_time = format_scpi_number(config.time, field="B-trigger delay time", nonnegative=True)
+        commands.append(f"TRIGGER:B:TIME {delay_time}")
+    if config.events_count is not None:
+        count = format_scpi_number(
+            config.events_count, field="B-trigger event count", positive=True, integer=True
+        )
+        commands.append(f"TRIGGER:B:EVENTS:COUNT {count}")
+    if config.state is not None:
+        commands.append(f"TRIGGER:B:STATE {scpi_bool(config.state)}")
+    return commands
+
+
 def build_trigger_config_commands(config: TriggerConfig) -> list[str]:
     """Build the A-trigger SCPI command sequence for one :class:`TriggerConfig`.
 
@@ -854,6 +925,18 @@ def build_trigger_config_queries(
         f"Trigger type {normalized_type!r} is not yet supported by get_trigger_configuration(); "
         "see docs/a14-advanced-trigger-backlog.md for its verification status."
     )
+
+
+SEQUENCE_TRIGGER_QUERIES: dict[str, str] = {
+    "state": "TRIGGER:B:STATE?",
+    "source": "TRIGGER:B:EDGE:SOURCE?",
+    "slope": "TRIGGER:B:EDGE:SLOPE?",
+    "coupling": "TRIGGER:B:EDGE:COUPLING?",
+    "level": "TRIGGER:B:LEVEL?",
+    "by": "TRIGGER:B:BY?",
+    "time": "TRIGGER:B:TIME?",
+    "events_count": "TRIGGER:B:EVENTS:COUNT?",
+}
 
 
 def build_display_setup_queries() -> dict[str, str]:
@@ -1089,6 +1172,25 @@ class ControlMixin:
             return result
         return {"trigger_type": raw_type}
 
+    def configure_sequence_trigger(self, config: SequenceTriggerConfig) -> None:
+        """Apply a B-trigger (sequence) configuration layered on top of the A trigger.
+
+        Independent of ``configure_trigger()``/``configure_edge_trigger()``, which
+        configure the A trigger only. See docs/a14-advanced-trigger-backlog.md.
+        """
+        scope = self.ensure_connected()
+        for command in build_sequence_trigger_commands(config):
+            scope.write(command)
+
+    def get_sequence_trigger_configuration(self) -> dict[str, Any]:
+        """Read back the B-trigger (sequence) configuration."""
+        scope = self.ensure_connected()
+        result: dict[str, Any] = {
+            name: self._query_optional(scope, query) for name, query in SEQUENCE_TRIGGER_QUERIES.items()
+        }
+        result["state"] = bool_from_scope_response(result["state"])
+        return result
+
     def apply_display_settings(self, config: DisplayConfig) -> None:
         scope = self.ensure_connected()
         for command in build_display_settings_commands(config):
@@ -1167,12 +1269,15 @@ __all__ = [
     "TRIGGER_PULSE_TIMEOUT_POLARITIES",
     "TRIGGER_PULSE_WIDTH_POLARITIES",
     "TRIGGER_PULSE_WIDTH_WHEN",
+    "TRIGGER_SEQUENCE_BY",
     "TRIGGER_SLOPES",
     "TRIGGER_SOURCES",
     "TRIGGER_TYPES",
     "TRIGGER_VIDEO_FIELDS",
     "TRIGGER_VIDEO_POLARITIES",
     "TRIGGER_VIDEO_STANDARDS",
+    "SEQUENCE_TRIGGER_QUERIES",
+    "SequenceTriggerConfig",
     "TriggerConfig",
     "bool_from_scope_response",
     "build_acquisition_mode_command",
@@ -1188,6 +1293,7 @@ __all__ = [
     "build_display_settings_commands",
     "build_display_setup_queries",
     "build_edge_trigger_commands",
+    "build_sequence_trigger_commands",
     "build_trigger_config_commands",
     "build_trigger_config_queries",
     "build_horizontal_position_command",
