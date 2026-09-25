@@ -148,8 +148,59 @@ def test_get_trigger_configuration_pulse_timeout_reads_class_specific_fields():
 
 
 def test_get_trigger_configuration_unsupported_type_returns_raw_readback_only():
-    scope = FakeScope(responses={"TRIGGER:A:TYPE?": "VID"})
-    assert scope.get_trigger_configuration() == {"trigger_type": "VID"}
+    scope = FakeScope(responses={"TRIGGER:A:TYPE?": "BUS"})
+    assert scope.get_trigger_configuration() == {"trigger_type": "BUS"}
+
+
+def test_configure_trigger_video_writes_video_commands():
+    scope = FakeScope()
+    scope.configure_trigger(
+        TriggerConfig(
+            trigger_type="VIDEO",
+            video_source="CH1",
+            video_standard="PAL",
+            video_line="10",
+            video_field="ALLLINES",
+            video_polarity="NEGATIVE",
+        )
+    )
+    assert scope.instrument.writes == [
+        "TRIGGER:A:TYPE VIDEO",
+        "TRIGGER:A:VIDEO:SOURCE CH1",
+        "TRIGGER:A:VIDEO:STANDARD PAL",
+        "TRIGGER:A:VIDEO:LINE 10",
+        "TRIGGER:A:VIDEO:FIELD ALLLINES",
+        "TRIGGER:A:VIDEO:POLARITY NEGATIVE",
+    ]
+
+
+def test_configure_trigger_video_rejects_injected_field_before_any_write():
+    scope = FakeScope()
+    with pytest.raises(ValueError):
+        scope.configure_trigger(TriggerConfig(trigger_type="VIDEO", video_source="CH1;*RST"))
+    assert scope.instrument.writes == []
+
+
+def test_get_trigger_configuration_video_reads_all_fields():
+    scope = FakeScope(
+        responses={
+            "TRIGGER:A:TYPE?": "VID",
+            "TRIGGER:A:VIDEO:SOURCE?": "CH1",
+            "TRIGGER:A:VIDEO:STANDARD?": "NTS",
+            "TRIGGER:A:VIDEO:LINE?": "1",
+            "TRIGGER:A:VIDEO:FIELD?": "ALLL",
+            "TRIGGER:A:VIDEO:POLARITY?": "POS",
+        }
+    )
+    result = scope.get_trigger_configuration()
+    assert result == {
+        "trigger_type": "VIDEO",
+        "video_source": "CH1",
+        "video_standard": "NTS",
+        "video_line": "1",
+        "video_field": "ALLL",
+        "video_polarity": "POS",
+    }
 
 
 def test_configure_trigger_logic_pattern_writes_logic_commands():

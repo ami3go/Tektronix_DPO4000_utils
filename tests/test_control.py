@@ -9,6 +9,9 @@ from dpo4000_utils.control import (
     TRIGGER_LOGIC_CLASSES,
     TRIGGER_PULSE_CLASSES,
     TRIGGER_TYPES,
+    TRIGGER_VIDEO_FIELDS,
+    TRIGGER_VIDEO_POLARITIES,
+    TRIGGER_VIDEO_STANDARDS,
     TriggerConfig,
     build_acquisition_setup_commands,
     build_channel_config_commands,
@@ -315,7 +318,7 @@ def test_trigger_config_commands_pulse_timeout():
 
 def test_trigger_config_rejects_unsupported_trigger_type():
     with pytest.raises(ValueError, match="not yet supported"):
-        build_trigger_config_commands(TriggerConfig(trigger_type="VIDEO"))
+        build_trigger_config_commands(TriggerConfig(trigger_type="BUS"))
 
 
 def test_trigger_config_rejects_invalid_trigger_type_before_any_command():
@@ -362,7 +365,7 @@ def test_trigger_config_queries_pulse_width():
 
 def test_trigger_config_queries_rejects_unsupported_type():
     with pytest.raises(ValueError, match="not yet supported"):
-        build_trigger_config_queries("VIDEO")
+        build_trigger_config_queries("BUS")
 
 
 def test_trigger_logic_classes_are_the_live_verified_set():
@@ -454,3 +457,65 @@ def test_trigger_config_queries_logic_sethold():
 
 def test_trigger_config_queries_logic_without_class_is_empty():
     assert build_trigger_config_queries("LOGIC") == {}
+
+
+def test_trigger_video_constants_are_the_live_verified_sets():
+    assert TRIGGER_VIDEO_STANDARDS == ("NTSC", "PAL", "SECAM")
+    assert TRIGGER_VIDEO_FIELDS == ("ALLLINES",)
+    assert TRIGGER_VIDEO_POLARITIES == ("POSITIVE", "NEGATIVE")
+
+
+def test_trigger_config_commands_video():
+    config = TriggerConfig(
+        trigger_type="video",
+        video_source="ch1",
+        video_standard="ntsc",
+        video_line="5",
+        video_field="alllines",
+        video_polarity="positive",
+        mode="auto",
+    )
+    assert build_trigger_config_commands(config) == [
+        "TRIGGER:A:TYPE VIDEO",
+        "TRIGGER:A:VIDEO:SOURCE CH1",
+        "TRIGGER:A:VIDEO:STANDARD NTSC",
+        "TRIGGER:A:VIDEO:LINE 5",
+        "TRIGGER:A:VIDEO:FIELD ALLLINES",
+        "TRIGGER:A:VIDEO:POLARITY POSITIVE",
+        "TRIGGER:A:MODE AUTO",
+    ]
+
+
+def test_trigger_config_commands_video_with_no_fields_is_just_type():
+    assert build_trigger_config_commands(TriggerConfig(trigger_type="VIDEO")) == [
+        "TRIGGER:A:TYPE VIDEO"
+    ]
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("video_standard", "HD1080P60"),
+        ("video_field", "LINE"),
+        ("video_polarity", "EITHER"),
+        ("video_source", "NOTACHANNEL"),
+    ],
+)
+def test_trigger_config_rejects_invalid_video_enum_values(field, value):
+    with pytest.raises(ValueError):
+        build_trigger_config_commands(TriggerConfig(trigger_type="VIDEO", **{field: value}))
+
+
+def test_trigger_config_video_line_rejects_non_integer():
+    with pytest.raises(ValueError, match="integer"):
+        build_trigger_config_commands(TriggerConfig(trigger_type="VIDEO", video_line="2.5"))
+
+
+def test_trigger_config_queries_video():
+    assert build_trigger_config_queries("VIDEO") == {
+        "video_source": "TRIGGER:A:VIDEO:SOURCE?",
+        "video_standard": "TRIGGER:A:VIDEO:STANDARD?",
+        "video_line": "TRIGGER:A:VIDEO:LINE?",
+        "video_field": "TRIGGER:A:VIDEO:FIELD?",
+        "video_polarity": "TRIGGER:A:VIDEO:POLARITY?",
+    }
