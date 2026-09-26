@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ....trend import DEFAULT_RENDER_POINTS, MeasurementTrendModel, TrendSnapshot
+from ....trend import DEFAULT_RENDER_POINTS, MeasurementTrendModel
 
 
 class TrendPlotWidget(QWidget):
