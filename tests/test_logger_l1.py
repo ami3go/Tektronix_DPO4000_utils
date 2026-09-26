@@ -78,5 +78,7 @@ def test_logger_gui_boundary_and_canonical_page_order() -> None:
     assert ".query(" not in source
     assert ".write(" not in source
     assert "scope.read_waveform" not in source
-    assert '"Automation",\n    "Logger",\n    "File"' in layout
-    assert "FILE_PAGE_INDEX = 7" in layout
+    assert '"Automation",\n    "Recipe",\n    "Logger",\n    "File"' in layout
+    assert "RECIPE_PAGE_INDEX = 6" in layout
+    assert "LOGGER_PAGE_INDEX = 7" in layout
+    assert "FILE_PAGE_INDEX = 8" in layout

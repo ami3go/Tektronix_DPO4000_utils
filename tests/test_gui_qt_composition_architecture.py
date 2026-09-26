@@ -8,7 +8,11 @@ COMPOSITION = ROOT / "dpo4000_utils" / "gui_qt" / "composition"
 
 
 def _class(tree: ast.AST, name: str) -> ast.ClassDef:
-    return next(node for node in ast.walk(tree) if isinstance(node, ast.ClassDef) and node.name == name)
+    return next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ClassDef) and node.name == name
+    )
 
 
 def test_production_composition_window_directly_inherits_only_qmainwindow() -> None:
@@ -21,8 +25,12 @@ def test_production_composition_window_directly_inherits_only_qmainwindow() -> N
 
 
 def test_runner_and_package_export_only_composed_production_window() -> None:
-    runner = (ROOT / "dpo4000_utils" / "gui_qt" / "runner.py").read_text(encoding="utf-8")
-    package_init = (ROOT / "dpo4000_utils" / "gui_qt" / "__init__.py").read_text(encoding="utf-8")
+    runner = (ROOT / "dpo4000_utils" / "gui_qt" / "runner.py").read_text(
+        encoding="utf-8"
+    )
+    package_init = (ROOT / "dpo4000_utils" / "gui_qt" / "__init__.py").read_text(
+        encoding="utf-8"
+    )
     expected = "from .composition.window import QtScopeWindow"
     assert expected in runner
     assert expected in package_init
@@ -59,7 +67,9 @@ def test_only_legacy_surface_adapter_may_import_historical_window_stack() -> Non
 
 def test_connection_page_is_owned_by_composition_adapter() -> None:
     legacy = (COMPOSITION / "legacy_surface.py").read_text(encoding="utf-8")
-    connection = (COMPOSITION / "pages" / "connection.py").read_text(encoding="utf-8")
+    connection = (COMPOSITION / "pages" / "connection.py").read_text(
+        encoding="utf-8"
+    )
 
     assert "class ComposedFeatureSurface(MilestoneAFeatureWindow)" in legacy
     assert "return build_connection_page(self)" in legacy
@@ -106,6 +116,9 @@ def test_composed_page_registry_owns_lazy_build_and_navigation_trigger() -> None
         "Measurement",
         "Trigger",
         "Acquisition",
+        "Automation",
+        "Recipe",
+        "Logger",
         "File",
         "Display",
         "Log",
@@ -113,7 +126,10 @@ def test_composed_page_registry_owns_lazy_build_and_navigation_trigger() -> None
         assert f'"{title}"' in services
     assert "def ensure_built" in services
     assert "def select" in services
-    assert "surface._ensure_control_page_built = self.page_controller.ensure_built" in window
+    assert (
+        "surface._ensure_control_page_built = self.page_controller.ensure_built"
+        in window
+    )
     assert "surface._select_drawer_page = self.page_controller.select" in window
 
 

@@ -25,7 +25,7 @@ def test_a14_trigger_page_uses_public_driver_boundary_only() -> None:
 
 def test_production_surface_routes_trigger_page_through_composition() -> None:
     source = LEGACY_SURFACE.read_text(encoding="utf-8")
-    assert "from .pages import build_connection_page, build_trigger_page" in source
+    assert "build_trigger_page" in source
     assert "def _build_trigger_tab(self):" in source
     assert "return build_trigger_page(self)" in source
 

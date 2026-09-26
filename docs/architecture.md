@@ -18,6 +18,7 @@ QtScopeWindow(QMainWindow)  <-- production launch shell
                     +-- mature v0.7 widgets / Automation / Logger
                     +-- composition/pages/connection.py
                     +-- composition/pages/trigger.py
+                    +-- composition/pages/recipe.py
 
 ScopeDispatchController
             |
@@ -31,6 +32,11 @@ PersistentScopeSession facade (GUI thread)
             |
             v
 dedicated PersistentScopeWorker QThread
+            |
+            +-- A15 RecipeSequencer (inside one worker action)
+            |       |
+            |       +-- validated public driver calls
+            |       +-- monotonic Delay / pause / cancel / retry
             |
             v
 DPO4054 / DPO4000Scope public API
@@ -68,7 +74,19 @@ The production shell owns explicit service/controller objects:
 
 The mature v0.7 feature implementation is retained behind `composition/legacy_surface.py`. That adapter is intentionally the only composition module permitted to import the historical `*_window` stack. The old modules are compatibility implementation shims, not production ancestors. This boundary lets individual feature implementations be extracted or replaced without changing the production shell or public driver contract.
 
-Connection and Trigger are now composition-owned page builders. `composition/pages/trigger.py` is the A14 migration boundary for Advanced Trigger UI. It preserves mature acquisition/trigger-level/horizontal/re-arm widgets where useful, but type-specific A-trigger, holdoff, and B-trigger configuration is newly built in composition and dispatched only through public driver calls.
+Connection, Trigger, and Recipe are composition-owned page builders. `composition/pages/trigger.py` is the A14 migration boundary for Advanced Trigger UI. It preserves mature acquisition/trigger-level/horizontal/re-arm widgets where useful, but type-specific A-trigger, holdoff, and B-trigger configuration is newly built in composition and dispatched only through public driver calls. `composition/pages/recipe.py` is the A15 Test Recipe / Sequencer surface; it edits/validates versioned JSON and submits the complete recipe through the same asynchronous scope gateway.
+
+## A15 recipe execution boundary
+
+`dpo4000_utils.recipe` is framework-neutral. It owns the versioned recipe model, structural validation, whole-recipe method/signature preflight, monotonic Delay semantics, bounded retry/backoff, pause/resume/cancel state, and ordered step results.
+
+A Desk recipe is submitted as **one** `_run_action(..., retain_session=True)` operation. The callback receives the worker-owned public `DPO4000Scope` instance and constructs `RecipeSequencer(scope)` there. This is intentional: recipe steps are serialized with every other scope operation and never obtain a second GUI-thread session.
+
+The recipe format does not expose arbitrary SCPI, Python expressions, imports, shell commands, or private/dotted attribute access. Session and transport lifecycle methods (`connect`, `disconnect`, `ensure_connected`, `configure_session`, `temporary_timeout`) and `probe_scpi_query` are explicitly unavailable to recipes. JSON configuration mappings are converted to the corresponding validated public config dataclasses before method-signature preflight.
+
+Pause/cancel are cooperative. Delay and retry waits are interruptible; paused wall time does not consume a Delay budget. A public driver method already executing is not forcibly interrupted from another thread, because that would violate worker/session ownership. Its normal driver timeout/cancellation behavior remains the bound for that operation.
+
+This engine is the planned reuse boundary for later features: A16 consumes recipe-produced values/results for pass/fail evaluation, A18 consumes recipe/result artifacts for evidence bundles, and A25 can reuse the same schema and sequencer without Qt.
 
 ## Driver boundary rule
 
@@ -81,9 +99,9 @@ Desktop GUI code must not:
 - implement waveform acquisition/CSV transfer logic;
 - configure raw VISA timeout or line termination itself.
 
-The GUI owns presentation/orchestration concerns: dialogs, destination folders, generated filenames, preview rendering, widget state, preferences, logging, keyboard shortcuts, Automation/Logger state machines, and asynchronous worker dispatch.
+The GUI owns presentation/orchestration concerns: dialogs, destination folders, generated filenames, preview rendering, widget state, preferences, logging, keyboard shortcuts, Automation/Logger/Recipe state projection, and asynchronous worker dispatch.
 
-`tests/test_gui_driver_boundary.py` protects the public-driver boundary. `tests/test_a14_trigger_gui_contract.py` additionally locks the composed Trigger page to the same rule and verifies the A14 widget/enabled-state contract. `tests/test_gui_qt_composition_architecture.py` protects the v0.8 composition boundary: shallow launch MRO, one approved legacy adapter, explicit controller dependencies, and no raw VISA/SCPI ownership in the composition layer. `tests/test_async_scope_action_contract.py` continues to protect the asynchronous state machines introduced in v0.7.
+`tests/test_gui_driver_boundary.py` protects the public-driver boundary. `tests/test_a14_trigger_gui_contract.py` additionally locks the composed Trigger page to the same rule and verifies the A14 widget/enabled-state contract. A15 adds recipe boundary/integration tests that protect worker-owned scope execution, preflight-before-I/O, canonical navigation, pause timing, and denied transport/raw-probe methods. `tests/test_gui_qt_composition_architecture.py` protects the v0.8 composition boundary: shallow launch MRO, one approved legacy adapter, explicit controller dependencies, and no raw VISA/SCPI ownership in the composition layer. `tests/test_async_scope_action_contract.py` continues to protect the asynchronous state machines introduced in v0.7.
 
 ## Session lifecycle
 
@@ -91,7 +109,7 @@ The GUI owns presentation/orchestration concerns: dialogs, destination folders, 
 
 The feature runtime creates one `PersistentScopeSession` lazily. Its dedicated worker thread creates, uses, reconnects, and closes the retained `DPO4054` on that same thread. Requests are serialized using Qt queued connections and completion is delivered back to the GUI through callbacks/signals. v0.8 routes all feature-surface `_run_action()` calls through the composed `ScopeDispatchController` before they enter that runtime.
 
-There is deliberately **no nested `QEventLoop` wait** in the production scope path. Scope submission returns immediately. Code that needs a result supplies `on_success` / `on_error` continuations. The A14 Trigger page follows this rule for trigger and B-trigger readback updates.
+There is deliberately **no nested `QEventLoop` wait** in the production scope path. Scope submission returns immediately. Code that needs a result supplies `on_success` / `on_error` continuations. The A14 Trigger page follows this rule for trigger and B-trigger readback updates. The A15 Recipe page uses the same continuation boundary; per-step progress is projected back to Qt through signals while execution remains on the scope worker.
 
 `Keep session` defaults to enabled. When disabled for backend compatibility, the same worker/session architecture is used but the retained scope is closed after the operation. Transport errors invalidate the session so a later retry reconnects lazily.
 
@@ -99,7 +117,9 @@ There is deliberately **no nested `QEventLoop` wait** in the production scope pa
 
 ## Page lifecycle
 
-The production shell exposes eight named page controllers: Connection, Channels, Measurement, Trigger, Acquisition, File, Display, and Log. `PageController.ensure_built()` owns the production lazy-build trigger and delegates into the compatibility surface. Migrated builders such as Connection and Trigger are then selected by `ComposedFeatureSurface`, so new page behavior is composition-owned without adding another historical window inheritance layer. `PageController.select()` owns navigation state and delegates projection into the current feature surface.
+The canonical production layout now exposes eleven pages: Connection, Channels, Measurement, Trigger, Acquisition, Automation, Recipe, Logger, File, Display, and Log. `PageController.ensure_built()` owns the production lazy-build trigger and delegates into the compatibility surface. Migrated builders such as Connection, Trigger, and Recipe are selected by `ComposedFeatureSurface`, so new page behavior is composition-owned without adding another historical window inheritance layer. `PageController.select()` owns navigation state and delegates projection into the current feature surface.
+
+Recipe is inserted between Automation and Logger. Existing shortcuts remain stable; Recipe uses `Ctrl+Shift+6` so the historical Logger/File/Display/Log shortcuts do not move.
 
 This keeps the production page registry explicit while mature page widget implementations are being retired incrementally.
 
@@ -111,7 +131,7 @@ Connection refresh is staged as Core → REF → BUS for fault isolation and fas
 
 The composed top-level window delegates shutdown to `LifecycleController`, which closes the compatibility feature surface. The mature close chain stops Automation and Logger activity, marks cooperative cancellations, closes the retained instrument on its owning worker thread, and tears down the worker safely. Threads are not forcibly terminated while VISA code is running; the configured driver timeout remains the upper bound for a backend operation that cannot cooperate sooner.
 
-Automation fresh-Single workflows additionally use cancellation events and bounded acquisition timeouts.
+Automation fresh-Single workflows additionally use cancellation events and bounded acquisition timeouts. A15 Recipe cancellation uses its own cooperative event/checkpoint path within the serialized worker action.
 
 ## Driver calls used by DPO4000 Desk
 
@@ -136,7 +156,7 @@ Representative public operations include:
 - `save_all_channels_to_single_csv()`;
 - `save_scope_settings()` / `apply_scope_settings()`.
 
-`probe_scpi_query()` is a driver-level qualification utility rather than a normal GUI operation. It temporarily caps the active VISA timeout, treats a timeout as unsupported only after recovery/health validation, and restores the prior timeout exactly. This prevents exploratory capability checks from inheriting the normal long operational timeout.
+`probe_scpi_query()` is a driver-level qualification utility rather than a normal GUI or recipe operation. It temporarily caps the active VISA timeout, treats a timeout as unsupported only after recovery/health validation, and restores the prior timeout exactly. This prevents exploratory capability checks from inheriting the normal long operational timeout.
 
 Decoded BUS transaction extraction is capability-gated until hardware qualification; no undocumented command is owned by the GUI.
 

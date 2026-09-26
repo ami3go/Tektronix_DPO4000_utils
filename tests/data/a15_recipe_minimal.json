@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "name": "minimal",
+  "steps": [
+    {"kind": "delay", "name": "No-op settle", "seconds": 0.0}
+  ]
+}
