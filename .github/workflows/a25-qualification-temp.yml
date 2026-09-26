@@ -1,0 +1,113 @@
+name: A25 Hardware Qualification (temporary)
+
+on:
+  push:
+    branches: [a25-headless-job-runner]
+
+permissions:
+  contents: read
+
+env:
+  DPO4000_HARDWARE: "1"
+  DPO4000_RESOURCE: "TCPIP0::192.168.0.5::INSTR"
+  DPO4000_EXPECT_IDN: "TEKTRONIX,DPO4054"
+  DPO4000_TIMEOUT_MS: "20000"
+
+jobs:
+  qualification:
+    name: A25 DPO4054 headless job qualification
+    if: github.repository == 'ami3go/Tektronix_DPO4000_utils'
+    runs-on: [self-hosted, dpo4000]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .[dev]
+      - name: Recheck focused A25 contracts
+        run: |
+          pytest -q \
+            tests/test_a25_job_runner.py \
+            tests/test_a25_job_runner_errors.py
+      - name: Validate installed CLI without VISA
+        run: |
+          cat > a25-validation-recipe.json <<'JSON'
+          {
+            "version": 1,
+            "name": "A25 validation qualification",
+            "steps": [
+              {"kind": "call", "name": "IDN", "method": "query_identity"}
+            ]
+          }
+          JSON
+          dpo4000-job \
+            --recipe a25-validation-recipe.json \
+            --validate-only \
+            --report a25-validation-report.json \
+            --quiet
+      - name: Capture A25 direct-vs-headless timing candidate
+        run: |
+          python scripts/benchmark_a25_job_runner.py \
+            --steps 1,100,1000 \
+            --repetitions 5 \
+            --output a25-job-benchmark.json
+      - name: Run actual read-only CLI against DPO4054
+        run: |
+          cat > a25-hardware-recipe.json <<'JSON'
+          {
+            "version": 1,
+            "name": "A25 DPO4054 holdoff",
+            "steps": [
+              {"kind": "call", "name": "HOLDOFF", "method": "get_trigger_holdoff"}
+            ]
+          }
+          JSON
+          cat > a25-hardware-rules.json <<'JSON'
+          {
+            "version": 1,
+            "name": "A25 holdoff sanity",
+            "root": {
+              "type": "compare",
+              "id": "holdoff_non_negative",
+              "input": "HOLDOFF",
+              "operator": ">=",
+              "value": 0.0
+            }
+          }
+          JSON
+          dpo4000-job \
+            --resource "${DPO4000_RESOURCE}" \
+            --expect-idn "${DPO4000_EXPECT_IDN}" \
+            --timeout-ms "${DPO4000_TIMEOUT_MS}" \
+            --recipe a25-hardware-recipe.json \
+            --rules a25-hardware-rules.json \
+            --report a25-cli-hardware-report.json \
+            --quiet
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          payload = json.loads(Path('a25-cli-hardware-report.json').read_text())
+          assert payload['exit_code'] == 0, payload
+          assert payload['status'] == 'pass', payload
+          assert payload['identity'] and 'TEKTRONIX,DPO4054' in payload['identity'].upper(), payload
+          PY
+      - name: Run API-level read-only DPO4054 integration
+        run: |
+          pytest -q -m hardware \
+            tests/hardware/test_a25_headless_job_hardware.py \
+            --junitxml=a25-hardware-junit.xml
+      - name: Upload A25 qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a25-dpo4054-qualification-${{ github.run_id }}
+          path: |
+            a25-validation-report.json
+            a25-job-benchmark.json
+            a25-cli-hardware-report.json
+            a25-hardware-junit.xml
+          if-no-files-found: warn
