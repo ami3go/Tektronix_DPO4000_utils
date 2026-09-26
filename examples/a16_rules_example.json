@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "name": "5 V rail acceptance",
+  "root": {
+    "type": "group",
+    "id": "rail_acceptance",
+    "logic": "AND",
+    "children": [
+      {
+        "type": "compare",
+        "id": "vout_min",
+        "input": "MEAS1",
+        "operator": ">=",
+        "value": 4.95
+      },
+      {
+        "type": "compare",
+        "id": "vout_max",
+        "input": "MEAS1",
+        "operator": "<=",
+        "value": 5.05
+      },
+      {
+        "type": "compare",
+        "id": "ripple_limit",
+        "input": "MEAS2",
+        "operator": "<=",
+        "value": 0.05
+      }
+    ]
+  }
+}
