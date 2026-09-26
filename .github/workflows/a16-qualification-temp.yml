@@ -1,0 +1,49 @@
+name: A16 Hardware Qualification (temporary)
+
+on:
+  push:
+    branches: [a16-pass-fail-rules]
+
+permissions:
+  contents: read
+
+env:
+  DPO4000_HARDWARE: "1"
+  DPO4000_RESOURCE: "TCPIP0::192.168.0.5::INSTR"
+  DPO4000_EXPECT_IDN: "TEKTRONIX,DPO4054"
+  DPO4000_TIMEOUT_MS: "20000"
+
+jobs:
+  qualification:
+    name: A16 DPO4054 read-only qualification
+    if: github.repository == 'ami3go/Tektronix_DPO4000_utils'
+    runs-on: [self-hosted, dpo4000]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .[dev]
+      - name: Recheck focused A16 software contracts
+        run: |
+          pytest -q \
+            tests/test_a16_rule_engine.py \
+            tests/test_a16_rule_mapping.py \
+            tests/test_a16_rule_limits.py \
+            tests/test_a16_rule_gui_contract.py
+      - name: Run read-only DPO4054 A15-to-A16 qualification
+        run: |
+          pytest -q -m hardware \
+            tests/hardware/test_a16_rule_hardware.py \
+            --junitxml=a16-hardware-junit.xml
+      - name: Upload A16 qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a16-dpo4054-qualification-${{ github.run_id }}
+          path: a16-hardware-junit.xml
+          if-no-files-found: warn
