@@ -1,0 +1,72 @@
+name: A14 Hardware Qualification (temporary)
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  a14-hardware:
+    if: >-
+      github.head_ref == 'a14-finish' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    name: A14 DPO4054 qualification
+    runs-on: [self-hosted, dpo4000]
+    timeout-minutes: 60
+
+    env:
+      DPO4000_HARDWARE: "1"
+      DPO4000_RESOURCE: "TCPIP0::192.168.0.5::INSTR"
+      DPO4000_EXPECT_IDN: "TEKTRONIX,DPO4054"
+      DPO4000_ENABLE_WRITE_TESTS: "1"
+      DPO4000_A14_PROBE_TIMEOUT_MS: "500"
+
+    steps:
+      - name: Check out A14 branch
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .[dev]
+
+      - name: Record VISA environment
+        run: |
+          mkdir -p a14-qualification
+          python - <<'PY' | tee a14-qualification/visa-environment.txt
+          import os
+          from dpo4000_utils import list_visa_resources
+
+          print("DPO4000_RESOURCE=", os.environ["DPO4000_RESOURCE"])
+          print("DPO4000_EXPECT_IDN=", os.environ["DPO4000_EXPECT_IDN"])
+          print("Visible VISA resources:")
+          for resource in list_visa_resources():
+              print("  ", resource)
+          PY
+
+      - name: Run focused A14 HIL
+        run: |
+          set -o pipefail
+          pytest -q -m hardware tests/hardware/test_a14_advanced_trigger_hardware.py \
+            | tee a14-qualification/a14-hil.txt
+
+      - name: Capture measured R0-T candidate with A14 operations
+        run: |
+          python scripts/capture_r0_baseline.py \
+            --resource "$DPO4000_RESOURCE" \
+            --output-dir a14-qualification/baseline \
+            --skip-functional \
+            --capability-probe-timeout-ms 500
+
+      - name: Upload A14 qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a14-hardware-qualification-${{ github.run_number }}
+          path: a14-qualification/
+          if-no-files-found: error
+          retention-days: 90

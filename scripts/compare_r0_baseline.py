@@ -50,6 +50,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument("--timeout-ms", type=int, default=20_000)
+    parser.add_argument(
+        "--capability-probe-timeout-ms",
+        type=int,
+        default=500,
+        help="Dedicated bounded timeout used by live A14 unsupported-capability probes.",
+    )
     parser.add_argument("--test-channel", type=int, choices=(1, 2, 3, 4), default=1)
     parser.add_argument("--reps-standard", type=int, default=20)
     parser.add_argument("--reps-heavy", type=int, default=5)
@@ -74,6 +80,7 @@ def _capture_candidate_live(args: argparse.Namespace, output_dir: Path) -> tuple
         resource=args.resource,
         output_dir=output_dir,
         timeout_ms=args.timeout_ms,
+        capability_probe_timeout_ms=args.capability_probe_timeout_ms,
         test_channel=args.test_channel,
         reps_standard=args.reps_standard,
         reps_heavy=args.reps_heavy,
@@ -102,6 +109,10 @@ def main() -> int:
     args = build_parser().parse_args()
     if args.candidate_functional and not args.candidate_timing:
         raise SystemExit("--candidate-timing is required when --candidate-functional is given")
+    if args.timeout_ms <= 0:
+        raise SystemExit("--timeout-ms must be positive")
+    if args.capability_probe_timeout_ms <= 0:
+        raise SystemExit("--capability-probe-timeout-ms must be positive")
 
     output_dir = args.output_dir or default_output_dir()
     output_dir.mkdir(parents=True, exist_ok=True)
