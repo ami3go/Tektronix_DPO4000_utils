@@ -7,6 +7,7 @@ from typing import Any
 
 from .acquisition_modes import AcquisitionModeReadbackMixin
 from .acquisition_state import AcquisitionStateMixin
+from .advanced_trigger import AdvancedTriggerMixin
 from .bus import BusMixin, normalize_bus
 from .bus_decoded import (
     DecodedBusCapability,
@@ -33,6 +34,7 @@ class DPO4000Scope(
     TriggerMixin,
     AcquisitionModeReadbackMixin,
     AcquisitionStateMixin,
+    AdvancedTriggerMixin,
     ControlMixin,
     ReferenceMixin,
     BusMixin,
