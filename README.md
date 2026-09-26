@@ -11,6 +11,7 @@ PySide6 DPO4000 Desk
         |
         +-- composition controllers / serialized scope worker
         +-- A15 RecipeSequencer
+        +-- A16 RuleEngine (local, no instrument I/O)
         |
         v
 DPO4054 / DPO4000Scope public API
@@ -19,9 +20,9 @@ DPO4054 / DPO4000Scope public API
 PyVISA / VISA backend / oscilloscope
 ```
 
-The GUI must not own SCPI commands, access the raw `scope.scope` VISA handle, parse hardcopy payloads, or implement waveform/settings transfer logic. Instrument behavior belongs in the reusable driver API. A15 recipes follow the same boundary: they execute validated public driver calls inside the existing serialized worker and cannot take over the VISA/session lifecycle or submit arbitrary SCPI.
+The GUI must not own SCPI commands, access the raw `scope.scope` VISA handle, parse hardcopy payloads, or implement waveform/settings transfer logic. Instrument behavior belongs in the reusable driver API. A15 recipes follow the same boundary: they execute validated public driver calls inside the existing serialized worker and cannot take over the VISA/session lifecycle or submit arbitrary SCPI. A16 rules are evaluated locally after recipe completion and do not own VISA, SCPI, Python expression evaluation, or sequencing control flow.
 
-See `docs/architecture.md` for the enforced boundary and `docs/a15-recipe-sequencer-plan.md` for A15 details.
+See `docs/architecture.md`, `docs/a15-recipe-sequencer-plan.md`, and `docs/a16-pass-fail-rules.md`.
 
 ## Features
 
@@ -29,6 +30,7 @@ See `docs/architecture.md` for the enforced boundary and `docs/a15-recipe-sequen
 - USB/VISA and Ethernet VISA resources with a worker-owned retained session option.
 - Advanced A-trigger configuration, verified time holdoff, and Sequence/B-trigger controls.
 - A15 Test Recipe / Sequencer with versioned JSON recipes, validation, public-driver call steps, deterministic Delay steps, pause/resume/cancel, bounded retry/backoff, live step status, and timing results.
+- A16 Pass/Fail Rule Engine with versioned JSON rule sets, `PASS` / `FAIL` / `INVALID`, numeric/range/delta operators, AND/OR/NOT rule trees, recipe-result inputs, and Desk rule-result presentation.
 - Automation and Logger workflows for unattended capture/logging with recovery, limits, retention, and run reporting.
 - PNG screen capture with preview and clipboard copy.
 - Enabled-channel waveform export to CSV.
@@ -120,6 +122,7 @@ Recipes are JSON and contain linear `call` and `delay` steps. Configuration mapp
     },
     {
       "kind": "call",
+      "name": "HOLDOFF",
       "method": "get_trigger_holdoff"
     }
   ]
@@ -127,6 +130,28 @@ Recipes are JSON and contain linear `call` and `delay` steps. Configuration mapp
 ```
 
 See `examples/a15_recipe_example.json` and `docs/a15-recipe-schema.md`.
+
+## A16 pass/fail rule example
+
+A16 consumes caller-provided scalars or values extracted from completed A15 steps. A unique A15 step name is available directly as a rule input, so the `HOLDOFF` step above can be checked without another scope query.
+
+```json
+{
+  "version": 1,
+  "name": "Holdoff sanity",
+  "root": {
+    "type": "compare",
+    "id": "holdoff_non_negative",
+    "input": "HOLDOFF",
+    "operator": ">=",
+    "value": 0.0
+  }
+}
+```
+
+Compound limits use `AND`, `OR`, and `NOT` groups. Invalid/missing/non-finite inputs return `INVALID` and never silently become `PASS`.
+
+See `examples/a16_rules_example.json`, `docs/a16-pass-fail-rules.md`, and `docs/a16-test-matrix.md`.
 
 ## Python API example
 
@@ -146,6 +171,24 @@ with DPO4054(
     )
     scope.save_image_path("scope_screen.png")
     scope.save_all_channels_to_single_csv("waveforms.csv")
+```
+
+A16 rule evaluation is independent of hardware:
+
+```python
+from dpo4000_utils import (
+    CompareOperator,
+    RuleEngine,
+    RuleSet,
+    ScalarRule,
+)
+
+rules = RuleSet(
+    "5 V minimum",
+    ScalarRule("vout_min", "MEAS1", CompareOperator.GTE, value=4.95),
+)
+result = RuleEngine().evaluate(rules, {"MEAS1": 5.01})
+print(result.status.value)  # PASS
 ```
 
 For frontend-style short-lived sessions:
@@ -211,6 +254,15 @@ DPO4000_EXPECT_IDN='TEKTRONIX,DPO4054' \
 pytest -q -m hardware tests/hardware/test_a15_recipe_hardware.py
 ```
 
+A16 read-only DPO4054 integration qualification:
+
+```bash
+DPO4000_HARDWARE=1 \
+DPO4000_RESOURCE='TCPIP0::192.168.0.5::INSTR' \
+DPO4000_EXPECT_IDN='TEKTRONIX,DPO4054' \
+pytest -q -m hardware tests/hardware/test_a16_rule_hardware.py
+```
+
 Capture the controlled A15 timing candidate with:
 
 ```bash
@@ -240,13 +292,13 @@ See `docs/hardware-verification.md` for safety profiles, complete bench commands
 ## Repository layout
 
 ```text
-dpo4000_utils/               reusable scope driver/API and recipe engine
+dpo4000_utils/               reusable scope driver/API, recipe engine, and rule engine
 dpo4000_utils/gui_qt/        PySide6 DPO4000 Desk application
 dpo4000_utils/gui/           framework-neutral GUI support helpers/assets
-examples/                    driver/API and recipe examples
+examples/                    driver/API, recipe, and rule examples
 scripts/                     build, baseline, packaging, and hardware-verification helpers
 docs/                        documentation and GitHub Pages
-tests/                       API, architecture, GUI, recipe, and hardware tests
+tests/                       API, architecture, GUI, recipe, rule, and hardware tests
 ```
 
 The former Tk frontend and its archived snapshots were removed in v0.4.0. `dpo4000-desk` is the only desktop application command.
