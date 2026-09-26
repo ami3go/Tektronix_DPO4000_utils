@@ -1,0 +1,62 @@
+name: A15 Hardware Qualification (temporary)
+
+on:
+  push:
+    branches: [a15-recipe-sequencer]
+
+permissions:
+  contents: read
+
+jobs:
+  a15-hardware:
+    name: A15 DPO4054 qualification
+    runs-on: [self-hosted, dpo4000]
+    timeout-minutes: 60
+
+    env:
+      DPO4000_HARDWARE: "1"
+      DPO4000_RESOURCE: "TCPIP0::192.168.0.5::INSTR"
+      DPO4000_EXPECT_IDN: "TEKTRONIX,DPO4054"
+      DPO4000_ENABLE_WRITE_TESTS: "1"
+      DPO4000_TIMEOUT_MS: "20000"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install A15 qualification dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .[dev]
+
+      - name: Record VISA environment
+        run: |
+          python - <<'PY'
+          import pyvisa
+          rm = pyvisa.ResourceManager()
+          print("backend:", rm.visalib)
+          print("resources:", rm.list_resources())
+          PY
+
+      - name: Run focused A15 DPO4054 HIL
+        run: pytest -q -m hardware tests/hardware/test_a15_recipe_hardware.py
+
+      - name: Capture A15 R0-T candidate
+        run: |
+          mkdir -p hardware_verification_reports/a15
+          python scripts/capture_a15_recipe_baseline.py \
+            --resource "$DPO4000_RESOURCE" \
+            --output hardware_verification_reports/a15/a15_recipe_timing.json \
+            --reps 20 \
+            --dispatch-steps 1000
+
+      - name: Upload A15 qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a15-dpo4054-qualification
+          path: hardware_verification_reports/a15/
+          if-no-files-found: warn

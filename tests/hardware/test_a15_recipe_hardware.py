@@ -38,6 +38,12 @@ def a15_scope() -> Iterator[DPO4054]:
     )
     scope.connect()
     try:
+        idn = scope.query_identity().strip()
+        expected = os.getenv("DPO4000_EXPECT_IDN", "").strip().upper()
+        if expected and expected not in idn.upper():
+            raise AssertionError(
+                f"Connected instrument IDN {idn!r} does not contain expected {expected!r}"
+            )
         yield scope
     finally:
         scope.disconnect()
