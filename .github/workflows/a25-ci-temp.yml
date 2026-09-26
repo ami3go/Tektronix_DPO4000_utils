@@ -1,0 +1,139 @@
+name: A25 Software CI (temporary)
+
+on:
+  push:
+    branches: [a25-headless-job-runner]
+
+permissions:
+  contents: read
+
+env:
+  RELEASE_CONSTRAINTS: constraints-release.txt
+
+jobs:
+  core:
+    name: A25 Core Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e .[dev]
+      - run: pytest -q
+
+  ruff:
+    name: A25 Ruff
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e .[dev]
+      - run: ruff check dpo4000_utils tests scripts tektronix_utils.py
+
+  cli:
+    name: A25 CLI and benchmark smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e .[dev]
+      - name: Validate installed CLI without VISA
+        run: |
+          cat > /tmp/a25-validation-recipe.json <<'JSON'
+          {
+            "version": 1,
+            "name": "A25 validation smoke",
+            "steps": [
+              {"kind": "call", "name": "IDN", "method": "query_identity"}
+            ]
+          }
+          JSON
+          dpo4000-job --recipe /tmp/a25-validation-recipe.json --validate-only --quiet
+          dpo4000-job --help >/dev/null
+      - name: Run direct-vs-headless benchmark
+        run: |
+          python scripts/benchmark_a25_job_runner.py \
+            --steps 1,100,1000 \
+            --repetitions 2 \
+            --output a25-job-benchmark.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: a25-job-benchmark-smoke
+          path: a25-job-benchmark.json
+
+  pyside6:
+    name: A25 accumulated PySide6 suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libxcb-cursor0 libxkbcommon-x11-0
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e .[dev,pyside6]
+      - env:
+          QT_QPA_PLATFORM: offscreen
+        run: pytest -q
+
+  linux-package:
+    name: A25 Linux Desk regression build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libxcb-cursor0 libxkbcommon-x11-0
+      - run: |
+          python -m pip install "pip==26.2.1"
+          python -m pip install -c "${RELEASE_CONSTRAINTS}" -e ".[build,pyside6,scientific]"
+      - env:
+          BUILD_SKIP_INSTALL: "1"
+        run: bash scripts/build_linux_executable.sh
+      - env:
+          QT_QPA_PLATFORM: offscreen
+        run: timeout 20s ./dist/DPO4000Desk/DPO4000Desk --startup-check
+
+  windows-package:
+    name: A25 Windows Desk regression build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - shell: pwsh
+        run: |
+          python -m pip install "pip==26.2.1"
+          python -m pip install -c $env:RELEASE_CONSTRAINTS -e ".[build,pyside6,scientific]"
+      - shell: cmd
+        env:
+          BUILD_SKIP_INSTALL: "1"
+        run: scripts\build_windows_exe.bat
+      - name: Smoke-test packaged executable
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          $exe = (Resolve-Path "dist\DPO4000Desk\DPO4000Desk.exe").Path
+          $process = Start-Process -FilePath $exe -ArgumentList "--startup-check" -PassThru
+          if (-not $process.WaitForExit(15000)) {
+            $process.Kill()
+            throw "Packaged Windows startup check timed out."
+          }
+          if ($process.ExitCode -ne 0) {
+            throw "Packaged Windows startup check failed with exit code $($process.ExitCode)."
+          }
