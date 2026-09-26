@@ -22,8 +22,11 @@ for _name in (
     "get_decoded_bus_capability",
     "supports_decoded_bus_events",
     "read_decoded_bus_events",
+    "get_trigger_holdoff",
+    "probe_scpi_query",
 ):
     _core.PUBLIC_METHOD_RISK[_name] = _core.VerificationRisk.READ_ONLY
+_core.PUBLIC_METHOD_RISK["set_trigger_holdoff"] = _core.VerificationRisk.REVERSIBLE
 
 PUBLIC_FUNCTION_RISK = _core.PUBLIC_FUNCTION_RISK
 PUBLIC_METHOD_RISK = _core.PUBLIC_METHOD_RISK
@@ -51,7 +54,38 @@ class HardwareVerifier(_core.HardwareVerifier):
         scope.is_acquiring()
         scope.get_trigger_state()
         scope.is_busy()
-        return detail + " Session configuration and acquisition/trigger/BUSY readbacks passed."
+
+        # A14 read-only qualification: verify the known-good holdoff leaf and prove
+        # the known hanging B-trigger candidate is bounded and leaves the normal
+        # operational VISA timeout unchanged.
+        instrument = scope.ensure_connected()
+        original_timeout = getattr(instrument, "timeout", None)
+        scope.get_trigger_holdoff()
+        supported = scope.probe_scpi_query("TRIGGER:A:HOLDOFF:VALUE?", timeout_ms=500)
+        if not supported.supported:
+            raise AssertionError(f"Verified A14 holdoff query was not supported: {supported}")
+        unsupported = scope.probe_scpi_query("TRIGGER:B:EVENTS:MODE?", timeout_ms=500)
+        if unsupported.supported:
+            raise AssertionError("Known unsupported TRIGGER:B:EVENTS:MODE? unexpectedly succeeded.")
+        if getattr(instrument, "timeout", None) != original_timeout:
+            raise AssertionError("A14 capability probe did not restore the original VISA timeout.")
+        return detail + " Session state plus A14 holdoff/capability-probe readbacks passed."
+
+    def _case_trigger_config_write(self) -> str:
+        detail = super()._case_trigger_config_write()
+        scope = self._require_scope()
+        original_holdoff = scope.get_trigger_holdoff()
+        try:
+            readback = scope.set_trigger_holdoff(original_holdoff)
+            if readback is None or abs(float(readback) - float(original_holdoff)) > max(
+                1e-15, abs(float(original_holdoff)) * 1e-9
+            ):
+                raise AssertionError(
+                    f"A14 holdoff write/readback mismatch: wrote={original_holdoff}, read={readback}"
+                )
+        finally:
+            scope.set_trigger_holdoff(original_holdoff, verify=False)
+        return detail + " A14 holdoff write/readback passed and original value was restored."
 
     def _case_bus_readbacks(self) -> str:
         scope = self._require_scope()
@@ -95,8 +129,12 @@ class HardwareVerifier(_core.HardwareVerifier):
             "get_trigger_state",
             "is_acquiring",
             "is_busy",
+            "get_trigger_holdoff",
+            "probe_scpi_query",
         }:
             return super()._symbol_status("get_acquisition_setup", method=True)
+        if method and symbol == "set_trigger_holdoff":
+            return super()._symbol_status("configure_trigger", method=True)
         if method and symbol in {
             "get_decoded_bus_capability",
             "supports_decoded_bus_events",
