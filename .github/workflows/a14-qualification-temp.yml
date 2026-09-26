@@ -6,7 +6,9 @@ on:
 
 jobs:
   a14-hardware:
-    if: github.head_ref == 'a14-finish'
+    if: >-
+      github.head_ref == 'a14-finish' &&
+      github.event.pull_request.head.repo.full_name == github.repository
     name: A14 DPO4054 qualification
     runs-on: [self-hosted, dpo4000]
     timeout-minutes: 60
