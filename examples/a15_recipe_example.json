@@ -4,9 +4,16 @@
   "steps": [
     {
       "kind": "call",
-      "name": "Enable CH1",
-      "method": "set_channel_enabled",
-      "args": [1, true],
+      "name": "Configure CH1",
+      "method": "configure_channel",
+      "args": [
+        {
+          "channel": 1,
+          "display": true,
+          "scale": 0.5,
+          "coupling": "DC"
+        }
+      ],
       "kwargs": {},
       "retry": {
         "attempts": 1,
