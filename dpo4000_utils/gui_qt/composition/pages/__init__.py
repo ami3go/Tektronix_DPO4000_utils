@@ -2,6 +2,12 @@
 
 from .connection import build_connection_page
 from .recipe import build_recipe_page
+from .scientific_export import attach_scientific_export_panel
 from .trigger import build_trigger_page
 
-__all__ = ["build_connection_page", "build_recipe_page", "build_trigger_page"]
+__all__ = [
+    "attach_scientific_export_panel",
+    "build_connection_page",
+    "build_recipe_page",
+    "build_trigger_page",
+]

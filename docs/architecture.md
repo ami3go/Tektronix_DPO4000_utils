@@ -15,10 +15,11 @@ QtScopeWindow(QMainWindow)  <-- production launch shell
             |
             +-- LegacyFeatureSurface compatibility adapter
                     |
-                    +-- mature v0.7 widgets / Automation / Logger
+                    +-- mature v0.7 widgets / Automation / Logger / File
                     +-- composition/pages/connection.py
                     +-- composition/pages/trigger.py
                     +-- composition/pages/recipe.py
+                    +-- composition/pages/scientific_export.py
 
 ScopeDispatchController
             |
@@ -37,6 +38,11 @@ dedicated PersistentScopeWorker QThread
             |       |
             |       +-- validated public driver calls
             |       +-- monotonic Delay / pause / cancel / retry
+            |
+            +-- A21 Desk export action
+            |       |
+            |       +-- public read_enabled_waveforms()
+            |       +-- framework-neutral scientific exporter
             |
             v
 DPO4054 / DPO4000Scope public API
@@ -68,6 +74,15 @@ A16 RuleEngine (local / framework-neutral / no instrument I/O)
             +-- PASS / FAIL / INVALID
             +-- scalar/range/delta rules
             +-- AND / OR / NOT composition
+
+WaveformData / already-acquired traces
+            |
+            v
+A21 scientific_export (framework-neutral / no instrument I/O)
+            |
+            +-- lossless NumPy NPZ
+            +-- portable DPOZ (manifest + raw + CSV)
+            +-- deterministic import / round-trip
 ```
 
 ## Production composition boundary
@@ -84,43 +99,60 @@ The production shell owns explicit service/controller objects:
 - `WindowChromeController` — frameless-window drag/minimize/maximize/close behavior;
 - `LifecycleController` — shutdown of the embedded feature surface and its asynchronous runtime.
 
-The mature v0.7 feature implementation is retained behind `composition/legacy_surface.py`. That adapter is intentionally the only composition module permitted to import the historical `*_window` stack. The old modules are compatibility implementation shims, not production ancestors. This boundary lets individual feature implementations be extracted or replaced without changing the production shell or public driver contract.
+The mature v0.7 feature implementation is retained behind `composition/legacy_surface.py`. That adapter is intentionally the only composition module permitted to import the historical `*_window` stack. The old modules are compatibility implementation shims, not production ancestors. This boundary lets individual feature implementations be extracted or extended without changing the production shell or public driver contract.
 
-Connection, Trigger, and Recipe are composition-owned page builders. `composition/pages/trigger.py` is the A14 migration boundary for Advanced Trigger UI. It preserves mature acquisition/trigger-level/horizontal/re-arm widgets where useful, but type-specific A-trigger, holdoff, and B-trigger configuration is newly built in composition and dispatched only through public driver calls. `composition/pages/recipe.py` is the A15/A16 Test Recipe + Pass/Fail surface; it edits/validates versioned JSON, submits the complete recipe through the asynchronous scope gateway, then evaluates A16 rules locally after a completed recipe result is returned.
+Connection, Trigger, and Recipe are composition-owned page builders. `composition/pages/trigger.py` is the A14 migration boundary for Advanced Trigger UI. `composition/pages/recipe.py` is the A15/A16 Test Recipe + Pass/Fail surface. A21 deliberately does **not** replace the mature File page: `ComposedFeatureSurface._build_file_tab()` first builds the existing File page and then attaches the composition-owned `ScientificExportPanel` from `composition/pages/scientific_export.py`.
 
 ## A15 recipe execution boundary
 
 `dpo4000_utils.recipe` is framework-neutral. It owns the versioned recipe model, structural validation, whole-recipe method/signature preflight, monotonic Delay semantics, bounded retry/backoff, pause/resume/cancel state, and ordered step results.
 
-A Desk recipe is submitted as **one** `_run_action(..., retain_session=True)` operation. The callback receives the worker-owned public `DPO4000Scope` instance and constructs `RecipeSequencer(scope)` there. This is intentional: recipe steps are serialized with every other scope operation and never obtain a second GUI-thread session.
+A Desk recipe is submitted as **one** `_run_action(..., retain_session=True)` operation. The callback receives the worker-owned public `DPO4000Scope` instance and constructs `RecipeSequencer(scope)` there. Recipe steps are serialized with every other scope operation and never obtain a second GUI-thread session.
 
-The recipe format does not expose arbitrary SCPI, Python expressions, imports, shell commands, or private/dotted attribute access. Session and transport lifecycle methods (`connect`, `disconnect`, `ensure_connected`, `configure_session`, `temporary_timeout`) and `probe_scpi_query` are explicitly unavailable to recipes. JSON configuration mappings are converted to the corresponding validated public config dataclasses before method-signature preflight.
+The recipe format does not expose arbitrary SCPI, Python expressions, imports, shell commands, or private/dotted attribute access. Session/transport lifecycle methods and `probe_scpi_query` remain unavailable to recipes.
 
-Pause/cancel are cooperative. Delay and retry waits are interruptible; paused wall time does not consume a Delay budget. A public driver method already executing is not forcibly interrupted from another thread, because that would violate worker/session ownership. Its normal driver timeout/cancellation behavior remains the bound for that operation.
+Pause/cancel are cooperative. Delay and retry waits are interruptible; paused wall time does not consume a Delay budget. A public driver method already executing is not forcibly interrupted from another thread because that would violate worker/session ownership.
 
-This engine is the reuse boundary for later features: A16 consumes recipe-produced values/results for pass/fail evaluation, A18 consumes recipe/result artifacts plus the A16 decision for evidence bundles, and A25 can reuse the same schema and sequencer without Qt.
+This engine is a reuse boundary for later features: A16 consumes recipe values/results; A18 can consume recipe/result artifacts plus A16 decisions; A25 can reuse the same schema and sequencer without Qt.
 
 ## A16 pass/fail evaluation boundary
 
-`dpo4000_utils.rules` is also framework-neutral, but unlike A15 it owns **no instrument lifecycle at all**. It accepts a caller-provided mapping of values and returns a deterministic decision tree.
+`dpo4000_utils.rules` is framework-neutral and owns no instrument lifecycle. It accepts a caller-provided mapping of values and returns a deterministic decision tree.
 
-Supported scalar rules include:
+Supported scalar rules include numeric comparisons, inclusive ranges, absolute delta, and relative delta. Logical composition uses three-state `AND` / `OR` / `NOT` semantics. Missing, non-numeric, NaN, Inf, or otherwise unusable inputs produce `INVALID`; such inputs never silently become `PASS`.
 
-- `>` / `>=` / `<` / `<=`;
-- exact numeric `==` / `!=`;
-- inclusive `inside [low, high]` and complementary `outside`;
-- `abs_delta<=` against a reference/tolerance;
-- `rel_delta<=`, with a zero reference producing `INVALID`.
+`recipe_result_values()` is the A15→A16 adapter. Every completed A15 step is addressable by index/name; unique names are promoted directly, and dataclass/mapping results are flattened with dot-separated keys.
 
-Logical composition uses three-state `AND` / `OR` / `NOT` semantics. Missing, non-numeric, NaN, Inf, or otherwise unusable inputs produce `INVALID`; such inputs never silently become `PASS`.
+A16 does not evaluate Python expressions, import modules, execute shell commands, own SCPI, or implement sequencing/branching. In Desk it runs only after an A15 recipe reaches `COMPLETED` and performs no second worker action or VISA session.
 
-A16 result records contain stable rule IDs, the actual numeric value when available, the expected operator/limit mapping, one UTC timestamp shared by the evaluation tree, a reason string, and the nested child results. Rule IDs must be unique and the rule document is bounded by node/depth limits.
+## A21 scientific export boundary
 
-`recipe_result_values()` is the A15→A16 adapter. Every completed A15 step is addressable by `step.<index>` and `step.<name>`. A unique step name is also exposed directly, and dataclass/mapping results are flattened with dot-separated keys. Duplicate step names are deliberately not promoted to ambiguous direct keys.
+`dpo4000_utils.scientific_export` is framework-neutral and owns **no instrument I/O**. Its input is `WaveformData` that has already been acquired through the public driver or produced by another trusted source.
 
-A16 does not evaluate Python expressions, import modules, execute shell commands, own SCPI, or implement sequencing/branching. Sequencing remains A15's responsibility; later branching can consume A16 outcomes without moving control flow into the rule engine.
+A21 supports two versioned archive surfaces:
 
-In DPO4000 Desk, A16 evaluation runs only after an A15 recipe reaches `COMPLETED`. It executes in the GUI-side continuation because the rule engine is local and deterministic; no second worker action or VISA session is created. Failed/cancelled recipes are not reinterpreted as pass/fail rule outcomes.
+- **NPZ** — NumPy-native raw/X/Y arrays plus a UTF-8 JSON manifest, always imported with `allow_pickle=False`;
+- **DPOZ** — portable ZIP containing `manifest.json`, exact little-endian raw samples, and one scaled CSV trace per waveform.
+
+Both formats preserve enough information to reconstruct `WaveformData`: source/label, transfer range, requested encoding, acquisition timestamp, raw sample type/content, and the full `WaveformPreamble`. Export and import therefore form a deterministic raw-data round trip rather than only a convenience CSV conversion.
+
+A21 validates schema/version, unknown fields, trace/sample limits, raw byte/dtype/shape consistency, finite metadata/scaling values, duplicate sources, and floating raw sample finiteness. DPOZ is read directly from deterministic archive member names and is never extracted onto the filesystem. NPZ import does not permit pickle/object loading.
+
+File finalization is atomic: a same-directory temporary file is completely written and closed, then `os.replace()` swaps it into the destination. On failure the temporary file is removed and an existing destination remains unchanged.
+
+A21 is intentionally independent of A18 Evidence Bundle and A20 Measurement Trend Dashboard. Those future features may feed already-collected data into A21, but A21 neither imports nor requires their models. This lets scientific export remain a reusable storage boundary for scripts, Desk, future evidence bundles, trends, and A25 headless jobs.
+
+### Desk execution model
+
+The File-page A21 panel submits one `_run_action(..., retain_session=True)` callback. Inside the scope worker the callback:
+
+1. acquires enabled channels using public `read_enabled_waveforms()`;
+2. creates the NPZ/DPOZ archive with `export_scientific_dataset()`;
+3. returns `ScientificExportResult` throughput metrics to the GUI continuation.
+
+This means both waveform transfer and potentially expensive 1M-point serialization/file I/O run outside the Qt GUI thread. The GUI callback only projects status/metrics. No raw `.scope`, `.query()`, `.write()`, or `ResourceManager` access is allowed in the A21 panel.
+
+Headless scientific export can bypass Qt entirely by acquiring `WaveformData` through the public driver and then calling `export_scientific_dataset()` directly.
 
 ## Driver boundary rule
 
@@ -130,20 +162,20 @@ Desktop GUI code must not:
 - issue SCPI through the underlying PyVISA object;
 - parse hardcopy byte streams;
 - implement setup JSON restore logic;
-- implement waveform acquisition/CSV transfer logic;
+- implement waveform acquisition/CSV/scientific-transfer protocol logic;
 - configure raw VISA timeout or line termination itself.
 
-The GUI owns presentation/orchestration concerns: dialogs, destination folders, generated filenames, preview rendering, widget state, preferences, logging, keyboard shortcuts, Automation/Logger/Recipe state projection, rule-set editing/result projection, and asynchronous worker dispatch.
+The GUI owns presentation/orchestration concerns: dialogs, destination paths, generated filenames, preview rendering, widget state, preferences, logging, keyboard shortcuts, Automation/Logger/Recipe state projection, rule-set editing/result projection, A21 export choices/status projection, and asynchronous worker dispatch.
 
-`tests/test_gui_driver_boundary.py` protects the public-driver boundary. `tests/test_a14_trigger_gui_contract.py` additionally locks the composed Trigger page to the same rule and verifies the A14 widget/enabled-state contract. A15 adds recipe boundary/integration tests that protect worker-owned scope execution, preflight-before-I/O, canonical navigation, pause timing, and denied transport/raw-probe methods. A16 adds rule-operator, invalid-input, logical-composition, schema, recipe-context, and GUI-contract tests. `tests/test_gui_qt_composition_architecture.py` protects the v0.8 composition boundary: shallow launch MRO, one approved legacy adapter, explicit controller dependencies, and no raw VISA/SCPI ownership in the composition layer. `tests/test_async_scope_action_contract.py` continues to protect the asynchronous state machines introduced in v0.7.
+`tests/test_gui_driver_boundary.py` protects the public-driver boundary. A14, A15, and A16 add focused feature contracts. A21 adds exact archive round-trip/atomicity/schema tests plus `tests/test_a21_scientific_export_gui_contract.py`, which locks the File-page extension and raw-transport prohibition. `tests/test_gui_qt_composition_architecture.py` continues to protect the shallow production composition boundary.
 
 ## Session lifecycle
 
-`DPO4000Scope` accepts `timeout_ms`, `read_termination`, and `write_termination` settings. `ConnectionMixin.connect()` applies them before the initial identity query. Runtime updates use the public `configure_session()` method; GUI worker code does not mutate the raw VISA resource.
+`DPO4000Scope` accepts `timeout_ms`, `read_termination`, and `write_termination` settings. `ConnectionMixin.connect()` applies them before the initial identity query. Runtime updates use public `configure_session()`; GUI worker code does not mutate the raw VISA resource.
 
-The feature runtime creates one `PersistentScopeSession` lazily. Its dedicated worker thread creates, uses, reconnects, and closes the retained `DPO4054` on that same thread. Requests are serialized using Qt queued connections and completion is delivered back to the GUI through callbacks/signals. v0.8 routes all feature-surface `_run_action()` calls through the composed `ScopeDispatchController` before they enter that runtime.
+The feature runtime creates one `PersistentScopeSession` lazily. Its dedicated worker thread creates, uses, reconnects, and closes the retained `DPO4054` on that same thread. Requests are serialized using Qt queued connections and completion is delivered back to the GUI through callbacks/signals.
 
-There is deliberately **no nested `QEventLoop` wait** in the production scope path. Scope submission returns immediately. Code that needs a result supplies `on_success` / `on_error` continuations. The A14 Trigger page follows this rule for trigger and B-trigger readback updates. The A15 Recipe page uses the same continuation boundary; per-step progress is projected back to Qt through signals while execution remains on the scope worker. A16 consumes the completed `RecipeResult` in that continuation and performs no instrument call.
+There is deliberately **no nested `QEventLoop` wait** in the production scope path. Scope submission returns immediately. A14 readbacks use continuations; A15 runs per-step work in the scope worker; A16 consumes completed recipe results locally; A21 captures and serializes waveform data inside a worker action then returns metrics to the GUI.
 
 `Keep session` defaults to enabled. When disabled for backend compatibility, the same worker/session architecture is used but the retained scope is closed after the operation. Transport errors invalidate the session so a later retry reconnects lazily.
 
@@ -151,11 +183,9 @@ There is deliberately **no nested `QEventLoop` wait** in the production scope pa
 
 ## Page lifecycle
 
-The canonical production layout exposes eleven pages: Connection, Channels, Measurement, Trigger, Acquisition, Automation, Recipe, Logger, File, Display, and Log. `PageController.ensure_built()` owns the production lazy-build trigger and delegates into the compatibility surface. Migrated builders such as Connection, Trigger, and Recipe are selected by `ComposedFeatureSurface`, so new page behavior is composition-owned without adding another historical window inheritance layer. `PageController.select()` owns navigation state and delegates projection into the current feature surface.
+The canonical production layout exposes eleven pages: Connection, Channels, Measurement, Trigger, Acquisition, Automation, Recipe, Logger, File, Display, and Log. `PageController.ensure_built()` owns lazy construction and `PageController.select()` owns navigation state.
 
-Recipe is inserted between Automation and Logger. Existing shortcuts remain stable; Recipe uses `Ctrl+Shift+6` so the historical Logger/File/Display/Log shortcuts do not move. A16 extends this same Recipe page rather than adding another top-level page, because rules are attached to completed recipe values/results.
-
-This keeps the production page registry explicit while mature page widget implementations are being retired incrementally.
+Recipe is inserted between Automation and Logger. Existing shortcuts remain stable. A16 extends Recipe rather than adding a new top-level page. A21 likewise extends the existing File page rather than adding a twelfth page, because scientific export is another output/storage operation alongside the existing image/CSV/settings capabilities.
 
 ## Coherent parameter refresh
 
@@ -163,9 +193,9 @@ Connection refresh is staged as Core → REF → BUS for fault isolation and fas
 
 ## Shutdown and cancellation
 
-The composed top-level window delegates shutdown to `LifecycleController`, which closes the compatibility feature surface. The mature close chain stops Automation and Logger activity, marks cooperative cancellations, closes the retained instrument on its owning worker thread, and tears down the worker safely. Threads are not forcibly terminated while VISA code is running; the configured driver timeout remains the upper bound for a backend operation that cannot cooperate sooner.
+The composed top-level window delegates shutdown to `LifecycleController`, which closes the compatibility feature surface. The mature close chain stops Automation and Logger activity, marks cooperative cancellations, closes the retained instrument on its owning worker thread, and tears down the worker safely. Threads are not forcibly terminated while VISA code is running; configured driver timeouts remain the upper bound for backend operations that cannot cooperate sooner.
 
-Automation fresh-Single workflows additionally use cancellation events and bounded acquisition timeouts. A15 Recipe cancellation uses its own cooperative event/checkpoint path within the serialized worker action. A16 has no asynchronous activity of its own and therefore adds no shutdown/session behavior.
+A15 Recipe cancellation uses its cooperative checkpoint path. A16 has no asynchronous activity of its own. A21 currently runs as one serialized worker action; it does not spawn additional exporter threads or retain background file handles after completion.
 
 ## Driver calls used by DPO4000 Desk
 
@@ -177,22 +207,16 @@ Representative public operations include:
 - `get_channel_configuration()` / `configure_channel()`;
 - `get_math_configuration()` / `configure_math()`;
 - `get_all_measurement_setups()` / `add_measurement()` / `disable_measurement()`;
-- `get_trigger_level()` / `set_trigger_level()` / `configure_edge_trigger()`;
-- `get_trigger_configuration()` / `configure_trigger()`;
-- `get_trigger_holdoff()` / `set_trigger_holdoff()`;
-- `get_sequence_trigger_configuration()` / `configure_sequence_trigger()`;
-- `get_acquisition_setup()` / `configure_acquisition()`;
-- `get_display_settings()` / `apply_display_settings()`;
-- `get_reference_configuration()` / `configure_reference()`;
-- `get_bus_configuration()` / `configure_bus()`;
-- `get_decoded_bus_capability()`;
-- `save_image_path()`;
-- `save_all_channels_to_single_csv()`;
-- `save_scope_settings()` / `apply_scope_settings()`.
+- trigger and Sequence/B-trigger configuration/readback;
+- acquisition configuration/state operations;
+- display, REF, BUS, screenshot, settings, and CSV operations;
+- `read_waveform()` / `read_channel_waveform_data()` / `read_enabled_waveforms()`.
 
-`probe_scpi_query()` is a driver-level qualification utility rather than a normal GUI or recipe operation. It temporarily caps the active VISA timeout, treats a timeout as unsupported only after recovery/health validation, and restores the prior timeout exactly. This prevents exploratory capability checks from inheriting the normal long operational timeout.
+A21's `export_scientific_dataset()` / `import_scientific_dataset()` are framework utilities, not driver transport methods. They can be reused without a connected oscilloscope.
 
-Decoded BUS transaction extraction is capability-gated until hardware qualification; no undocumented command is owned by the GUI.
+`probe_scpi_query()` is a driver-level qualification utility rather than a normal GUI or recipe operation. It temporarily caps the active VISA timeout, treats a timeout as unsupported only after recovery/health validation, and restores the prior timeout exactly.
+
+Decoded BUS transaction extraction remains capability-gated until qualified; no undocumented command is owned by the GUI.
 
 ## GUI support package
 
@@ -200,4 +224,4 @@ Decoded BUS transaction extraction is capability-gated until hardware qualificat
 
 ## Migration policy
 
-New production behavior belongs in the composition controllers/services or framework-neutral driver/runtime modules. New inheritance layers must not be added to the production launch path. Legacy `*_window.py` modules may be changed only to preserve compatibility or while extracting a feature behind the adapter. The adapter itself is an explicit migration seam and must not grow raw transport or SCPI responsibilities.
+New production behavior belongs in composition controllers/services or framework-neutral driver/runtime modules. New inheritance layers must not be added to the production launch path. Legacy `*_window.py` modules may be changed only to preserve compatibility or while extracting/extending a feature behind the adapter. The adapter itself is an explicit migration seam and must not grow raw transport or SCPI responsibilities.
