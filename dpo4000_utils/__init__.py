@@ -33,6 +33,21 @@ from .errors import (
 from .hardcopy import extract_png_bytes, strip_ieee_block_header
 from .reference import ReferenceConfig
 from .instrument import DPO4000Scope, DPO4054
+from .rules import (
+    CompareOperator,
+    LogicOperator,
+    RuleEngine,
+    RuleEvaluation,
+    RuleGroup,
+    RuleSet,
+    RuleSetResult,
+    RuleStatus,
+    RuleValidationError,
+    ScalarRule,
+    recipe_result_values,
+    rule_set_from_mapping,
+    rule_set_to_mapping,
+)
 from .session import scope_session
 from .waveform import (
     WaveformData,
@@ -48,6 +63,7 @@ __all__ = [
     "BusConfig",
     "CapabilityProbeResult",
     "ChannelConfig",
+    "CompareOperator",
     "DEFAULT_CAPABILITY_PROBE_TIMEOUT_MS",
     "DPO4000Scope",
     "DPO4054",
@@ -62,10 +78,19 @@ __all__ = [
     "DPOTransportError",
     "DPOWaveformError",
     "DisplayConfig",
+    "LogicOperator",
     "MathConfig",
     "MeasurementConfig",
     "MeasurementSetup",
     "ReferenceConfig",
+    "RuleEngine",
+    "RuleEvaluation",
+    "RuleGroup",
+    "RuleSet",
+    "RuleSetResult",
+    "RuleStatus",
+    "RuleValidationError",
+    "ScalarRule",
     "SequenceTriggerConfig",
     "TriggerConfig",
     "WaveformData",
@@ -81,4 +106,7 @@ __all__ = [
     "parse_ascii_curve",
     "read_channel_waveform_data",
     "read_waveform",
+    "recipe_result_values",
+    "rule_set_from_mapping",
+    "rule_set_to_mapping",
 ]
