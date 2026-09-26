@@ -16,6 +16,7 @@ def test_a14_trigger_page_uses_public_driver_boundary_only() -> None:
     assert "scope.get_trigger_configuration()" in source
     assert "scope.configure_sequence_trigger(config)" in source
     assert "scope.get_sequence_trigger_configuration()" in source
+    assert source.count("on_success=") >= 4
     assert ".query(" not in source
     assert ".write(" not in source
     assert "scope.scope" not in source
@@ -75,6 +76,7 @@ def test_a14_trigger_widget_contract_and_enabled_relationships() -> None:
     ]
     assert host.a14_trigger_pages.count() == 4
     assert host.a14_trigger_pages.currentIndex() == 0
+    assert host.a14_holdoff.text() == ""
 
     host.a14_trigger_type.setCurrentText("PULSE")
     assert host.a14_trigger_pages.currentIndex() == 1
