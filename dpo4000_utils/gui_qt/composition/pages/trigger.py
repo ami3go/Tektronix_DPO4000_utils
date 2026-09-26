@@ -346,7 +346,8 @@ def _build_a_trigger_card(host: Any) -> QWidget:
     host.a14_trigger_type = _combo(_A_TRIGGER_TYPES)
     host.a14_trigger_type.setObjectName("A14TriggerType")
     host.a14_trigger_mode = _combo(TRIGGER_MODES)
-    host.a14_holdoff = QLineEdit("0")
+    host.a14_holdoff = QLineEdit()
+    host.a14_holdoff.setPlaceholderText("leave unchanged")
     host.a14_holdoff.setObjectName("A14TriggerHoldoff")
     host.a14_trigger_pages = QStackedWidget()
     host.a14_trigger_pages.setObjectName("A14TriggerTypeStack")
@@ -381,15 +382,18 @@ def _build_a_trigger_card(host: Any) -> QWidget:
             scope.configure_trigger(config, holdoff=holdoff)
             return scope.get_trigger_configuration()
 
-        result = host._run_action("Applying advanced trigger", action)
-        _show_a_readback(host, result)
+        host._run_action(
+            "Applying advanced trigger",
+            action,
+            on_success=lambda result: _show_a_readback(host, result),
+        )
 
     def read_trigger() -> None:
-        result = host._run_action(
+        host._run_action(
             "Reading advanced trigger",
             lambda scope: scope.get_trigger_configuration(),
+            on_success=lambda result: _show_a_readback(host, result),
         )
-        _show_a_readback(host, result)
 
     host.a14_trigger_type.currentTextChanged.connect(type_changed)
     type_changed(host.a14_trigger_type.currentText())
@@ -457,15 +461,18 @@ def _build_sequence_card(host: Any) -> QWidget:
             scope.configure_sequence_trigger(config)
             return scope.get_sequence_trigger_configuration()
 
-        result = host._run_action("Applying B trigger", action)
-        _show_b_readback(host, result)
+        host._run_action(
+            "Applying B trigger",
+            action,
+            on_success=lambda result: _show_b_readback(host, result),
+        )
 
     def read_sequence() -> None:
-        result = host._run_action(
+        host._run_action(
             "Reading B trigger",
             lambda scope: scope.get_sequence_trigger_configuration(),
+            on_success=lambda result: _show_b_readback(host, result),
         )
-        _show_b_readback(host, result)
 
     host.a14_b_by.currentTextChanged.connect(lambda _text: _refresh_sequence_fields(host))
     _refresh_sequence_fields(host)
