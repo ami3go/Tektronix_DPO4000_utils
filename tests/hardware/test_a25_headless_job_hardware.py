@@ -8,7 +8,12 @@ from pathlib import Path
 
 import pytest
 
-from dpo4000_utils.job_runner import HeadlessJobRunner, JobConfig, JobExitCode
+from dpo4000_utils.job_runner import (
+    HeadlessJobRunner,
+    JobConfig,
+    JobExitCode,
+    write_job_report,
+)
 
 _TRUE_VALUES = {"1", "true", "yes", "on"}
 
@@ -69,7 +74,6 @@ def test_a25_read_only_recipe_rule_and_report(tmp_path: Path) -> None:
         JobConfig(
             recipe_path=recipe_path,
             rules_path=rules_path,
-            report_path=report_path,
             resource=resource,
             timeout_ms=int(os.getenv("DPO4000_TIMEOUT_MS", "20000")),
             expect_idn=os.getenv("DPO4000_EXPECT_IDN", "TEKTRONIX,DPO4054"),
@@ -80,3 +84,9 @@ def test_a25_read_only_recipe_rule_and_report(tmp_path: Path) -> None:
     assert result.recipe_result is not None
     assert result.rule_result is not None
     assert float(result.recipe_result.steps[0].value) >= 0.0
+
+    write_job_report(report_path, result)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    assert payload["schema"] == "dpo4000-headless-job"
+    assert payload["exit_code"] == 0
+    assert payload["status"] == "pass"
