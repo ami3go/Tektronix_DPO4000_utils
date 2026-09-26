@@ -1,5 +1,6 @@
 """Tektronix DPO4000 utility package."""
 
+from .advanced_trigger import CapabilityProbeResult, DEFAULT_CAPABILITY_PROBE_TIMEOUT_MS
 from .bus import BusConfig
 from .connection import (
     build_tcpip_instr_resource,
@@ -45,7 +46,9 @@ from .waveform import (
 __all__ = [
     "AcquisitionConfig",
     "BusConfig",
+    "CapabilityProbeResult",
     "ChannelConfig",
+    "DEFAULT_CAPABILITY_PROBE_TIMEOUT_MS",
     "DPO4000Scope",
     "DPO4054",
     "DPOCleanupError",
