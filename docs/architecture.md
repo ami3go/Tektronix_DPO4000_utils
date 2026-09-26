@@ -56,6 +56,18 @@ DPO4054 / DPO4000Scope public API
             |
             v
 PyVISA / VISA backend / oscilloscope
+
+A15 RecipeResult
+            |
+            v
+recipe_result_values()
+            |
+            v
+A16 RuleEngine (local / framework-neutral / no instrument I/O)
+            |
+            +-- PASS / FAIL / INVALID
+            +-- scalar/range/delta rules
+            +-- AND / OR / NOT composition
 ```
 
 ## Production composition boundary
@@ -74,7 +86,7 @@ The production shell owns explicit service/controller objects:
 
 The mature v0.7 feature implementation is retained behind `composition/legacy_surface.py`. That adapter is intentionally the only composition module permitted to import the historical `*_window` stack. The old modules are compatibility implementation shims, not production ancestors. This boundary lets individual feature implementations be extracted or replaced without changing the production shell or public driver contract.
 
-Connection, Trigger, and Recipe are composition-owned page builders. `composition/pages/trigger.py` is the A14 migration boundary for Advanced Trigger UI. It preserves mature acquisition/trigger-level/horizontal/re-arm widgets where useful, but type-specific A-trigger, holdoff, and B-trigger configuration is newly built in composition and dispatched only through public driver calls. `composition/pages/recipe.py` is the A15 Test Recipe / Sequencer surface; it edits/validates versioned JSON and submits the complete recipe through the same asynchronous scope gateway.
+Connection, Trigger, and Recipe are composition-owned page builders. `composition/pages/trigger.py` is the A14 migration boundary for Advanced Trigger UI. It preserves mature acquisition/trigger-level/horizontal/re-arm widgets where useful, but type-specific A-trigger, holdoff, and B-trigger configuration is newly built in composition and dispatched only through public driver calls. `composition/pages/recipe.py` is the A15/A16 Test Recipe + Pass/Fail surface; it edits/validates versioned JSON, submits the complete recipe through the asynchronous scope gateway, then evaluates A16 rules locally after a completed recipe result is returned.
 
 ## A15 recipe execution boundary
 
@@ -86,7 +98,29 @@ The recipe format does not expose arbitrary SCPI, Python expressions, imports, s
 
 Pause/cancel are cooperative. Delay and retry waits are interruptible; paused wall time does not consume a Delay budget. A public driver method already executing is not forcibly interrupted from another thread, because that would violate worker/session ownership. Its normal driver timeout/cancellation behavior remains the bound for that operation.
 
-This engine is the planned reuse boundary for later features: A16 consumes recipe-produced values/results for pass/fail evaluation, A18 consumes recipe/result artifacts for evidence bundles, and A25 can reuse the same schema and sequencer without Qt.
+This engine is the reuse boundary for later features: A16 consumes recipe-produced values/results for pass/fail evaluation, A18 consumes recipe/result artifacts plus the A16 decision for evidence bundles, and A25 can reuse the same schema and sequencer without Qt.
+
+## A16 pass/fail evaluation boundary
+
+`dpo4000_utils.rules` is also framework-neutral, but unlike A15 it owns **no instrument lifecycle at all**. It accepts a caller-provided mapping of values and returns a deterministic decision tree.
+
+Supported scalar rules include:
+
+- `>` / `>=` / `<` / `<=`;
+- exact numeric `==` / `!=`;
+- inclusive `inside [low, high]` and complementary `outside`;
+- `abs_delta<=` against a reference/tolerance;
+- `rel_delta<=`, with a zero reference producing `INVALID`.
+
+Logical composition uses three-state `AND` / `OR` / `NOT` semantics. Missing, non-numeric, NaN, Inf, or otherwise unusable inputs produce `INVALID`; such inputs never silently become `PASS`.
+
+A16 result records contain stable rule IDs, the actual numeric value when available, the expected operator/limit mapping, one UTC timestamp shared by the evaluation tree, a reason string, and the nested child results. Rule IDs must be unique and the rule document is bounded by node/depth limits.
+
+`recipe_result_values()` is the A15→A16 adapter. Every completed A15 step is addressable by `step.<index>` and `step.<name>`. A unique step name is also exposed directly, and dataclass/mapping results are flattened with dot-separated keys. Duplicate step names are deliberately not promoted to ambiguous direct keys.
+
+A16 does not evaluate Python expressions, import modules, execute shell commands, own SCPI, or implement sequencing/branching. Sequencing remains A15's responsibility; later branching can consume A16 outcomes without moving control flow into the rule engine.
+
+In DPO4000 Desk, A16 evaluation runs only after an A15 recipe reaches `COMPLETED`. It executes in the GUI-side continuation because the rule engine is local and deterministic; no second worker action or VISA session is created. Failed/cancelled recipes are not reinterpreted as pass/fail rule outcomes.
 
 ## Driver boundary rule
 
@@ -99,9 +133,9 @@ Desktop GUI code must not:
 - implement waveform acquisition/CSV transfer logic;
 - configure raw VISA timeout or line termination itself.
 
-The GUI owns presentation/orchestration concerns: dialogs, destination folders, generated filenames, preview rendering, widget state, preferences, logging, keyboard shortcuts, Automation/Logger/Recipe state projection, and asynchronous worker dispatch.
+The GUI owns presentation/orchestration concerns: dialogs, destination folders, generated filenames, preview rendering, widget state, preferences, logging, keyboard shortcuts, Automation/Logger/Recipe state projection, rule-set editing/result projection, and asynchronous worker dispatch.
 
-`tests/test_gui_driver_boundary.py` protects the public-driver boundary. `tests/test_a14_trigger_gui_contract.py` additionally locks the composed Trigger page to the same rule and verifies the A14 widget/enabled-state contract. A15 adds recipe boundary/integration tests that protect worker-owned scope execution, preflight-before-I/O, canonical navigation, pause timing, and denied transport/raw-probe methods. `tests/test_gui_qt_composition_architecture.py` protects the v0.8 composition boundary: shallow launch MRO, one approved legacy adapter, explicit controller dependencies, and no raw VISA/SCPI ownership in the composition layer. `tests/test_async_scope_action_contract.py` continues to protect the asynchronous state machines introduced in v0.7.
+`tests/test_gui_driver_boundary.py` protects the public-driver boundary. `tests/test_a14_trigger_gui_contract.py` additionally locks the composed Trigger page to the same rule and verifies the A14 widget/enabled-state contract. A15 adds recipe boundary/integration tests that protect worker-owned scope execution, preflight-before-I/O, canonical navigation, pause timing, and denied transport/raw-probe methods. A16 adds rule-operator, invalid-input, logical-composition, schema, recipe-context, and GUI-contract tests. `tests/test_gui_qt_composition_architecture.py` protects the v0.8 composition boundary: shallow launch MRO, one approved legacy adapter, explicit controller dependencies, and no raw VISA/SCPI ownership in the composition layer. `tests/test_async_scope_action_contract.py` continues to protect the asynchronous state machines introduced in v0.7.
 
 ## Session lifecycle
 
@@ -109,7 +143,7 @@ The GUI owns presentation/orchestration concerns: dialogs, destination folders, 
 
 The feature runtime creates one `PersistentScopeSession` lazily. Its dedicated worker thread creates, uses, reconnects, and closes the retained `DPO4054` on that same thread. Requests are serialized using Qt queued connections and completion is delivered back to the GUI through callbacks/signals. v0.8 routes all feature-surface `_run_action()` calls through the composed `ScopeDispatchController` before they enter that runtime.
 
-There is deliberately **no nested `QEventLoop` wait** in the production scope path. Scope submission returns immediately. Code that needs a result supplies `on_success` / `on_error` continuations. The A14 Trigger page follows this rule for trigger and B-trigger readback updates. The A15 Recipe page uses the same continuation boundary; per-step progress is projected back to Qt through signals while execution remains on the scope worker.
+There is deliberately **no nested `QEventLoop` wait** in the production scope path. Scope submission returns immediately. Code that needs a result supplies `on_success` / `on_error` continuations. The A14 Trigger page follows this rule for trigger and B-trigger readback updates. The A15 Recipe page uses the same continuation boundary; per-step progress is projected back to Qt through signals while execution remains on the scope worker. A16 consumes the completed `RecipeResult` in that continuation and performs no instrument call.
 
 `Keep session` defaults to enabled. When disabled for backend compatibility, the same worker/session architecture is used but the retained scope is closed after the operation. Transport errors invalidate the session so a later retry reconnects lazily.
 
@@ -117,9 +151,9 @@ There is deliberately **no nested `QEventLoop` wait** in the production scope pa
 
 ## Page lifecycle
 
-The canonical production layout now exposes eleven pages: Connection, Channels, Measurement, Trigger, Acquisition, Automation, Recipe, Logger, File, Display, and Log. `PageController.ensure_built()` owns the production lazy-build trigger and delegates into the compatibility surface. Migrated builders such as Connection, Trigger, and Recipe are selected by `ComposedFeatureSurface`, so new page behavior is composition-owned without adding another historical window inheritance layer. `PageController.select()` owns navigation state and delegates projection into the current feature surface.
+The canonical production layout exposes eleven pages: Connection, Channels, Measurement, Trigger, Acquisition, Automation, Recipe, Logger, File, Display, and Log. `PageController.ensure_built()` owns the production lazy-build trigger and delegates into the compatibility surface. Migrated builders such as Connection, Trigger, and Recipe are selected by `ComposedFeatureSurface`, so new page behavior is composition-owned without adding another historical window inheritance layer. `PageController.select()` owns navigation state and delegates projection into the current feature surface.
 
-Recipe is inserted between Automation and Logger. Existing shortcuts remain stable; Recipe uses `Ctrl+Shift+6` so the historical Logger/File/Display/Log shortcuts do not move.
+Recipe is inserted between Automation and Logger. Existing shortcuts remain stable; Recipe uses `Ctrl+Shift+6` so the historical Logger/File/Display/Log shortcuts do not move. A16 extends this same Recipe page rather than adding another top-level page, because rules are attached to completed recipe values/results.
 
 This keeps the production page registry explicit while mature page widget implementations are being retired incrementally.
 
@@ -131,7 +165,7 @@ Connection refresh is staged as Core → REF → BUS for fault isolation and fas
 
 The composed top-level window delegates shutdown to `LifecycleController`, which closes the compatibility feature surface. The mature close chain stops Automation and Logger activity, marks cooperative cancellations, closes the retained instrument on its owning worker thread, and tears down the worker safely. Threads are not forcibly terminated while VISA code is running; the configured driver timeout remains the upper bound for a backend operation that cannot cooperate sooner.
 
-Automation fresh-Single workflows additionally use cancellation events and bounded acquisition timeouts. A15 Recipe cancellation uses its own cooperative event/checkpoint path within the serialized worker action.
+Automation fresh-Single workflows additionally use cancellation events and bounded acquisition timeouts. A15 Recipe cancellation uses its own cooperative event/checkpoint path within the serialized worker action. A16 has no asynchronous activity of its own and therefore adds no shutdown/session behavior.
 
 ## Driver calls used by DPO4000 Desk
 
