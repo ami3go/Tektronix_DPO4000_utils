@@ -25,7 +25,6 @@ from ....recipe import (
     RecipeResult,
     RecipeRunState,
     RecipeSequencer,
-    RecipeStep,
     StepResult,
     recipe_from_mapping,
     recipe_to_mapping,
