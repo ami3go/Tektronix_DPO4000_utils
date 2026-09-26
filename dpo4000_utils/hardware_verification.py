@@ -28,13 +28,18 @@ for _name in (
     _core.PUBLIC_METHOD_RISK[_name] = _core.VerificationRisk.READ_ONLY
 _core.PUBLIC_METHOD_RISK["set_trigger_holdoff"] = _core.VerificationRisk.REVERSIBLE
 
-# A16 helpers are pure framework utilities. They are classified as read-only so
-# the strict public-package manifest remains exhaustive without implying that
-# they perform instrument I/O.
+# Framework utilities below perform no oscilloscope I/O. Classifying them as
+# read-only keeps the strict reflected package manifest exhaustive without
+# implying that local JSON/rule/archive work is a hardware operation.
 for _name in (
     "recipe_result_values",
     "rule_set_from_mapping",
     "rule_set_to_mapping",
+    "export_scientific_dataset",
+    "import_scientific_dataset",
+    "infer_scientific_format",
+    "normalize_scientific_format",
+    "scientific_dataset_from_waveforms",
 ):
     _core.PUBLIC_FUNCTION_RISK[_name] = _core.VerificationRisk.READ_ONLY
 
