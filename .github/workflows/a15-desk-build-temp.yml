@@ -67,4 +67,4 @@ jobs:
       - name: Smoke-test packaged binary
         env:
           QT_QPA_PLATFORM: offscreen
-        run: timeout 20s ./dist/DPO4000Desk --startup-check
+        run: timeout 20s ./dist/DPO4000Desk/DPO4000Desk --startup-check
