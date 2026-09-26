@@ -1,13 +1,14 @@
-"""Canonical 10-page desktop layout after inserting the Logger tab."""
+"""Canonical 11-page desktop layout with A15 Recipe and Logger pages."""
 
 from __future__ import annotations
 
 import sys
 
-LOGGER_PAGE_INDEX = 6
-FILE_PAGE_INDEX = 7
-DISPLAY_PAGE_INDEX = 8
-LOG_PAGE_INDEX = 9
+RECIPE_PAGE_INDEX = 6
+LOGGER_PAGE_INDEX = 7
+FILE_PAGE_INDEX = 8
+DISPLAY_PAGE_INDEX = 9
+LOG_PAGE_INDEX = 10
 CONTROL_TAB_TITLES = (
     "Connection",
     "Channels",
@@ -15,6 +16,7 @@ CONTROL_TAB_TITLES = (
     "Trigger",
     "Acquisition",
     "Automation",
+    "Recipe",
     "Logger",
     "File",
     "Display",
@@ -27,25 +29,43 @@ CONTROL_PAGE_BUILDERS = (
     "_build_trigger_tab",
     "_build_acquisition_tab",
     "_build_automation_tab",
+    "_build_recipe_tab",
     "_build_logger_tab",
     "_build_file_tab",
     "_build_display_tab",
     "_build_log_tab",
 )
-PAGE_SHORTCUTS = tuple(
-    [(f"Ctrl+{index + 1}", index, title) for index, title in enumerate(CONTROL_TAB_TITLES[:9])]
-    + [("Ctrl+0", 9, "Log")]
+
+# Preserve every pre-A15 page shortcut. Recipe gets a new non-conflicting shortcut.
+PAGE_SHORTCUTS = (
+    ("Ctrl+1", 0, "Connection"),
+    ("Ctrl+2", 1, "Channels"),
+    ("Ctrl+3", 2, "Measurement"),
+    ("Ctrl+4", 3, "Trigger"),
+    ("Ctrl+5", 4, "Acquisition"),
+    ("Ctrl+6", 5, "Automation"),
+    ("Ctrl+Shift+6", RECIPE_PAGE_INDEX, "Recipe"),
+    ("Ctrl+7", LOGGER_PAGE_INDEX, "Logger"),
+    ("Ctrl+8", FILE_PAGE_INDEX, "File"),
+    ("Ctrl+9", DISPLAY_PAGE_INDEX, "Display"),
+    ("Ctrl+0", LOG_PAGE_INDEX, "Log"),
 )
 
 
 def install_logger_page_layout() -> None:
-    """Patch already-imported layered GUI modules before the final window is constructed.
+    """Patch layered GUI modules before the final production window is constructed.
 
-    Older Automation layers resolve their module globals at call time. Updating all
-    captured FILE_PAGE_INDEX globals here preserves their File-page routing after
-    Logger is inserted before File, without introducing a second navigation stack.
+    Older Automation layers resolve module globals at call time. Updating the
+    captured page lists and File/Display/Log indexes here preserves their routing
+    after A15 Recipe is inserted before Logger without introducing another
+    navigation stack.
     """
-    from . import automation_window, collapsible_window, display_window, titlebar_tabs_window
+    from . import (
+        automation_window,
+        collapsible_window,
+        display_window,
+        titlebar_tabs_window,
+    )
 
     display_window.CONTROL_TAB_TITLES = CONTROL_TAB_TITLES
     display_window.CONTROL_PAGE_BUILDERS = CONTROL_PAGE_BUILDERS
@@ -71,7 +91,11 @@ def install_logger_page_layout() -> None:
 
     prefix = "dpo4000_utils.gui_qt.automation"
     for name, module in tuple(sys.modules.items()):
-        if name.startswith(prefix) and module is not None and hasattr(module, "FILE_PAGE_INDEX"):
+        if (
+            name.startswith(prefix)
+            and module is not None
+            and hasattr(module, "FILE_PAGE_INDEX")
+        ):
             setattr(module, "FILE_PAGE_INDEX", FILE_PAGE_INDEX)
 
 
@@ -83,5 +107,6 @@ __all__ = [
     "LOGGER_PAGE_INDEX",
     "LOG_PAGE_INDEX",
     "PAGE_SHORTCUTS",
+    "RECIPE_PAGE_INDEX",
     "install_logger_page_layout",
 ]
