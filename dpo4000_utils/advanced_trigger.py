@@ -137,7 +137,7 @@ class AdvancedTriggerMixin:
         if timeout_value <= 0:
             raise ValueError("timeout_ms must be a positive integer")
 
-        instrument = self.ensure_connected()
+        self.ensure_connected()
         started = time.monotonic()
         with self.temporary_timeout(timeout_value) as scoped:
             # Capability probing is diagnostic by definition. Clear stale status first
@@ -145,10 +145,10 @@ class AdvancedTriggerMixin:
             scoped.write("*CLS")
             try:
                 response = scoped.query(query).strip()
-            except DPOError:
-                raise
             except Exception as exc:
                 if not is_timeout_error(exc):
+                    if isinstance(exc, DPOError):
+                        raise
                     raise transport_exception(exc, f"Probing SCPI capability {query!r}") from exc
 
                 # The DPO4000 family can silently time out on an unsupported query.
@@ -177,11 +177,11 @@ class AdvancedTriggerMixin:
 
             try:
                 esr = _parse_esr(scoped.query("*ESR?"))
-            except DPOError:
-                raise
             except Exception as exc:
                 if is_timeout_error(exc):
                     raise transport_exception(exc, f"Reading *ESR? after capability probe {query!r}") from exc
+                if isinstance(exc, DPOError):
+                    raise
                 raise
 
             supported = esr == 0
