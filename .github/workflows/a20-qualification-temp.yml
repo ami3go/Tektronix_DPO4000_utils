@@ -1,0 +1,54 @@
+name: A20 Hardware Qualification (temporary)
+
+on:
+  push:
+    branches: [a20-measurement-trends]
+
+permissions:
+  contents: read
+
+env:
+  DPO4000_HARDWARE: "1"
+  DPO4000_RESOURCE: "TCPIP0::192.168.0.5::INSTR"
+  DPO4000_EXPECT_IDN: "TEKTRONIX,DPO4054"
+
+jobs:
+  qualification:
+    name: A20 DPO4054 measurement trend qualification
+    if: github.repository == 'ami3go/Tektronix_DPO4000_utils'
+    runs-on: [self-hosted, dpo4000]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .[dev,pyside6]
+      - name: Recheck focused A20 contracts
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          pytest -q tests/test_a20_trend_model.py tests/test_a20_trend_gui_contract.py
+      - name: Capture A20 synthetic scaling candidate
+        run: |
+          python scripts/benchmark_a20_trends.py \
+            --sizes 1000,10000,100000 \
+            --repetitions 3 \
+            --output a20-trend-benchmark.json
+      - name: Run read-only DPO4054 trend integration
+        run: |
+          pytest -q -m hardware \
+            tests/hardware/test_a20_measurement_trend_hardware.py \
+            --junitxml=a20-hardware-junit.xml
+      - name: Upload A20 qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a20-dpo4054-qualification-${{ github.run_id }}
+          path: |
+            a20-trend-benchmark.json
+            a20-hardware-junit.xml
+          if-no-files-found: warn
