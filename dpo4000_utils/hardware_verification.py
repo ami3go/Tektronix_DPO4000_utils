@@ -28,6 +28,16 @@ for _name in (
     _core.PUBLIC_METHOD_RISK[_name] = _core.VerificationRisk.READ_ONLY
 _core.PUBLIC_METHOD_RISK["set_trigger_holdoff"] = _core.VerificationRisk.REVERSIBLE
 
+# A16 helpers are pure framework utilities. They are classified as read-only so
+# the strict public-package manifest remains exhaustive without implying that
+# they perform instrument I/O.
+for _name in (
+    "recipe_result_values",
+    "rule_set_from_mapping",
+    "rule_set_to_mapping",
+):
+    _core.PUBLIC_FUNCTION_RISK[_name] = _core.VerificationRisk.READ_ONLY
+
 PUBLIC_FUNCTION_RISK = _core.PUBLIC_FUNCTION_RISK
 PUBLIC_METHOD_RISK = _core.PUBLIC_METHOD_RISK
 VerificationCase = _core.VerificationCase
