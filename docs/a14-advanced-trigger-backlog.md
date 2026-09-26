@@ -1,406 +1,287 @@
 # A14 Advanced Trigger Backlog
 
-Status: **A14.1-A14.7 implemented** (`TriggerConfig` foundation, PULSE width/runt/timeout,
-LOGIC pattern/setup-hold, VIDEO, B-trigger/sequence — see `dpo4000_utils/control.py`);
-A14.8-A14.9 planned, not implemented.
+Status: **software implementation complete through A14.9; A14.10 qualification harness implemented, live DPO4054 qualification and measured R0-T baseline update pending**.
+
 Parent docs: [`architecture.md`](architecture.md), [`regression-test-plan.md`](regression-test-plan.md)
 
-This document is the authoritative scope/acceptance-criteria backlog for A14, the first
-feature after the R0-F/R0-T baselines in the fixed development order in
-`regression-test-plan.md`. It supplements that plan's regression levels, §14 timing
-requirements, and §15 completion gate, which continue to govern how A14 is regression-tested.
+This document is the authoritative scope and qualification record for A14. It records both what is implemented and what still requires real-hardware evidence. A14 must not be called fully qualified until the live HIL and measured timing-baseline gates at the end of this document pass.
 
-## Current state
+## Current implementation
 
-Trigger support today is edge-trigger-only:
+A14 now has three layers:
 
-- `dpo4000_utils/trigger.py` (`TriggerMixin`) and `control.py`'s `build_edge_trigger_commands()`
-  / `configure_edge_trigger()` only ever write `TRIGGER:A:TYPE EDGE` plus
-  `TRIGGER:A:EDGE:*`/`TRIGGER:A:LEVEL*`/`TRIGGER:A:MODE`.
-- There is no `TriggerConfig` dataclass, unlike `ChannelConfig`/`AcquisitionConfig`/
-  `DisplayConfig`. Edge trigger uses a bespoke keyword-arg builder instead
-  (`build_edge_trigger_commands(*, source, slope, coupling, mode, level)`, `control.py:454`).
-- `control.py:63` has an existing constant,
-  `TRIGGER_TYPES = ("EDGE", "PULSE", "RUNT", "TIMEOUT", "LOGIC", "VIDEO")`, exported in
-  `__all__` but referenced nowhere else in the repo. **It is factually wrong** — see
-  Hardware findings below — and must be corrected as part of A14.1, not reused as-is.
-- The Trigger tab GUI lives in the legacy widget stack (`gui_qt/main_window.py:375`
-  `_build_trigger_tab()`), not yet extracted into `composition/pages/` the way
-  `connection.py` was. It correctly uses only the public driver API today, but
-  `main_window.py` is not in the AST-enforced `QT_BOUNDARY_FILES` list in
-  `tests/test_gui_driver_boundary.py:23-40`, so that compliance isn't machine-checked.
-- Test coverage is thin: SCPI-contract tests for edge trigger only
-  (`tests/test_control.py:199-223`), one injection test (`tests/test_scpi_safety.py:129`),
-  and trigger-state normalize/alias tests (`tests/test_acquisition_state.py:52-90`). No
-  boundary/min-max tests for trigger level; no tests for `get_edge_trigger_configuration()`,
-  `set_edge_trigger_source()`, `rearm_trigger_after_image()`, or `nudge_trigger_level_knob()`.
+1. **Driver/configuration API**
+   - `TriggerConfig` and `configure_trigger()` / `get_trigger_configuration()` cover the verified A-trigger families.
+   - `SequenceTriggerConfig` and `configure_sequence_trigger()` / `get_sequence_trigger_configuration()` cover B-trigger/sequence operation.
+   - `AdvancedTriggerMixin` adds verified holdoff-by-time and bounded SCPI capability probing.
+2. **Production GUI**
+   - `dpo4000_utils/gui_qt/composition/pages/trigger.py` owns the composition-first Advanced Trigger page.
+   - The page uses public driver methods only and follows the asynchronous `_run_action(..., on_success=...)` contract.
+3. **Qualification**
+   - deterministic L0/L1/L2 tests cover validation, SCPI contracts, timeout recovery, and GUI boundary behavior;
+   - opt-in DPO4054 HIL covers holdoff and the known unsupported/hanging B-trigger probe;
+   - `HardwareBaselineCapture` now measures A14 trigger apply/readback and unsupported-probe latency for the next explicit R0-T capture.
 
-## Hardware findings (verified live against DPO4054, firmware v2.68, 2026-09-24)
+No undocumented trigger command is exposed merely because a likely spelling exists. Unmapped features stay unavailable until verified against hardware or the Programmer Manual.
 
-Probed directly against `TCPIP0::192.168.0.5::INSTR` by writing each candidate value and
-reading `*ESR?` (0 = accepted, 32 = command error) plus the readback query. State was fully
-restored afterward (confirmed via a field-by-field `TRIGGER:A?` diff against the pre-probe
-baseline).
+## Verified hardware findings
 
-**`TRIGGER:A:TYPE`** accepts exactly: `EDGE`, `LOGIC`, `PULSE`, `VIDEO`, `BUS`. Writing `RUNT`,
-`TIMEOUT`, `TRANSITION`, `WINDOW`, or `SETHOLD` as a top-level type is rejected (`*ESR?` bit
-for command error). **This means the existing `TRIGGER_TYPES` constant is wrong**: it includes
-`RUNT`/`TIMEOUT` (which aren't top-level types) and omits `BUS` (which is).
+The trigger command research below was performed live against a DPO4054 running firmware v2.68 on 2026-09-24. Candidate writes were checked with `*ESR?`, read back where possible, and the original setup was restored after probing.
 
-**`TRIGGER:A:PULSE:CLASS`** (meaningful only when `TYPE=PULSE`) accepts: `WIDTH`, `RUNT`,
-`TIMEOUT`, `TRANSITION`. Rejects `WINDOW`, `GLITCH`, `SETHOLD`. So on this firmware,
-runt/timeout/transition triggers are **pulse-class sub-selections**, not independent trigger
-types — A14.3 (Runt) and A14.5 (Timeout) below are implemented as `TRIGGER:A:TYPE PULSE` +
-`TRIGGER:A:PULSE:CLASS {RUNT|TIMEOUT}`, not as separate `TYPE` values.
+### A-trigger type selector
 
-**`TRIGGER:A:LOGIC:CLASS`** (meaningful only when `TYPE=LOGIC`) accepts the literal value
-`LOGIC` (the instrument's default/pattern-style class, echoed back abbreviated as `LOGI`) and
-`SETHOLD`. `PATTERN`, `STATE`, and `TIMEOUT` as class names are rejected — those are not this
-instrument's actual keywords for logic-class sub-selection, despite being common Tektronix
-trigger terminology elsewhere.
+`TRIGGER:A:TYPE` accepts:
 
-Field layout for both classes is now mapped and implemented (`dpo4000_utils/control.py`):
-for `LOGIC` (pattern) — `TRIGGER:A:LOGIC:FUNCTION {AND|OR|NAND|NOR}`,
-`TRIGGER:A:LOGIC:INPUT:CH{1-4} {HIGH|LOW|X}` (`DONTCARE` is rejected; the literal token is
-`X`), `TRIGGER:A:LOGIC:INPUT:CLOCK:SOURCE {CH1-4|NONE}`,
-`TRIGGER:A:LOGIC:INPUT:CLOCK:EDGE {RISE|FALL}`, and — oddly namespaced differently from every
-other `LOGIC` leaf — `TRIGGER:A:LOGIC:PATTERN:WHEN {TRUE|FALSE|LESSTHAN|MORETHAN}` (no
-associated time-limit leaf could be found for the `LESSTHAN`/`MORETHAN` comparators, so those
-values are accepted but any duration qualifier is unimplemented). `TRIGGER:A:LOGIC:THRESHOLD:
-CH{1-4}` also exists (per-channel comparison level) but only the query side was verified; it
-is not yet wired into `TriggerConfig`. For `SETHOLD` — `TRIGGER:A:LOGIC:SETHOLD:CLOCK:SOURCE
-{CH1-4}`, `:CLOCK:EDGE {RISE|FALL}`, `:CLOCK:THRESHOLD <level>`, `:DATA:THRESHOLD <level>`,
-`:SETTIME <time>`, `:HOLDTIME <time>` are all confirmed read+write. `:DATA:SOURCE` (which
-channel is the data line) could not be found under any tried name and remains unmapped — a
-`SETHOLD` config today can only threshold/time-qualify whatever the instrument's current data
-source already is.
+- `EDGE`
+- `LOGIC`
+- `PULSE`
+- `VIDEO`
+- `BUS`
 
-**`TRIGGER:A:VIDEO?`** returns a populated field set (`NTS;ALLL;1;0.0E+0;POS`), now fully
-mapped and implemented (`dpo4000_utils/control.py`): `TRIGGER:A:VIDEO:SOURCE {CH1-4}`,
-`:STANDARD {NTSC|PAL|SECAM}` (`HD720P60`/`HD1080P60` rejected — no HD support on this
-firmware/model), `:LINE <integer>`, `:FIELD {ALLLINES}` (the only value accepted among those
-tried), `:POLARITY {POSITIVE|NEGATIVE}`. A companion `TRIGGER:A:VIDEO:SYNC?` leaf always
-mirrors `:FIELD`'s value and rejects the same candidates, so it looks like an alias and isn't
-exposed as a separate `TriggerConfig` field. The dump's fourth positional value
-(`0.0E+0`, between field and polarity) could not be mapped to any leaf command tried
-(`:DELAY?`, `:HDELAY?` and others all errored) and remains unimplemented.
+`RUNT`, `TIMEOUT`, `TRANSITION`, `WINDOW`, and `SETHOLD` are not top-level trigger types on this firmware. The corrected `TRIGGER_TYPES` model therefore reflects the real selector rather than treating pulse/logic subclasses as independent types.
 
-**`TRIGGER:B:*`** (sequence/B-trigger) is now fully mapped and implemented
-(`dpo4000_utils/control.py`), applied through a separate `SequenceTriggerConfig`/
-`configure_sequence_trigger()` API rather than folded into `TriggerConfig`, since B-trigger
-layers on top of whatever A trigger type is active rather than being a `trigger_type` choice
-of its own: `TRIGGER:B:STATE {ON|OFF}` (top-level enable), `TRIGGER:B:EDGE:SOURCE {CH1-4|
-AUX|LINE}`, `:EDGE:SLOPE {RISE|FALL|EITHER}`, `:EDGE:COUPLING`, `TRIGGER:B:LEVEL`
-(mirroring A's edge fields — `TRIGGER:B:TYPE` only accepts `EDGE`, PULSE/LOGIC/VIDEO all
-rejected, so B-trigger has no type field), `TRIGGER:B:BY {TIME|EVENTS}` (delay mode),
-`TRIGGER:B:TIME` (delay-by-time duration), `TRIGGER:B:EVENTS:COUNT` (delay-by-events count).
+`BUS` is a real top-level selector, but its full A14 trigger-configuration subtree has not been mapped end-to-end, so the A14 GUI does not expose BUS trigger configuration.
 
-**Live-verified constraint, not a bug**: `TRIGGER:B:STATE ON` is rejected (`*ESR?` reports a
-command-execution error, code 16; state readback stays `0`/False) unless A's trigger type is
-already `EDGE`. Reproduced directly: enabling B while A was `VIDEO` failed; switching A back
-to `EDGE` first and retrying the identical `STATE ON` write succeeded immediately. Callers
-must configure A as EDGE before enabling B — documented on `SequenceTriggerConfig` and
-enforced by ordering in the hardware-verification case.
+### Pulse trigger
 
-**`TRIGGER:A:HOLDOFF:VALUE?`** works and returns a time value in seconds (holdoff-by-time is
-supported and readable at the byte level already exercised in `TRIGGER:A?`'s dump).
+`TRIGGER:A:PULSE:CLASS` accepts:
 
-**Firmware quirk — bounded-timeout probing is mandatory, not optional**: `TRIGGER:B:EVENTS:
-MODE?` and `TRIGGER:A:HOLDOFF:BY?` do not return a prompt SCPI error. They **time out
-silently** (`VI_ERROR_TMO`) instead, requiring a full VISA timeout to elapse before the caller
-gets any response at all, and requiring a subsequent `*CLS`/health check before continuing.
-Re-confirmed for `TRIGGER:B:EVENTS:MODE?` specifically during A14.7's own research (reproduced
-cleanly with a 3s bounded timeout, recovered immediately) — this is a genuinely nonexistent
-leaf on this firmware, not a transient issue, and the working leaf for the event count is the
-sibling `TRIGGER:B:EVENTS:COUNT` (confirmed separately, unaffected). Any A14 capability-probe
-code (see A14.10) must treat a timeout the same as "not supported" and must never probe with
-the driver's normal/long operational timeout — use a short, dedicated probe timeout so an
-unsupported command can't stall a real capture/automation run. This directly informs the
-"unsupported-trigger capability probe latency" requirement already named in
-`regression-test-plan.md` §14.
+- `WIDTH`
+- `RUNT`
+- `TIMEOUT`
+- `TRANSITION`
 
-**Net implication for scoping below**: A14.1-A14.7 (type selection, pulse width, runt, logic,
-timeout, video, sequence/B-trigger) are implemented with fully mapped fields, modulo the
-explicitly-noted gaps above (pulse `TRANSITION` class, `SETHOLD` data source, logic pattern
-`LESSTHAN`/`MORETHAN` time qualifier, video's unmapped fourth dump field). A14.8
-(holdoff-by-count, if it exists) still needs its full field layout mapped against real
-hardware or the Programmer Manual before implementation starts — do not guess field names
-for it.
+The delivered A14 surface implements WIDTH, RUNT, and TIMEOUT. TRANSITION remains deliberately hidden because its full field layout was not mapped and qualified.
+
+Verified delivered leaves include:
+
+- source;
+- WIDTH polarity, comparator, low limit, high limit;
+- RUNT polarity, comparator, low/high time limits, high/low thresholds;
+- TIMEOUT polarity and timeout duration.
+
+### Logic trigger
+
+`TRIGGER:A:LOGIC:CLASS` accepts `LOGIC` and `SETHOLD`.
+
+Delivered LOGIC/pattern fields include:
+
+- function `AND|OR|NAND|NOR`;
+- CH1-CH4 input states `HIGH|LOW|X`;
+- clock source `CH1-CH4|NONE`;
+- clock edge `RISE|FALL`;
+- pattern condition `TRUE|FALSE|LESSTHAN|MORETHAN`.
+
+Delivered SETHOLD fields include:
+
+- clock source `CH1-CH4`;
+- clock edge;
+- clock threshold;
+- data threshold;
+- setup time;
+- hold time.
+
+The SETHOLD data-source leaf and a duration qualifier for pattern `LESSTHAN`/`MORETHAN` remain unmapped and are not guessed.
+
+### Video trigger
+
+Verified/delivered fields include:
+
+- source `CH1-CH4`;
+- standard `NTSC|PAL|SECAM`;
+- line;
+- field `ALLLINES`;
+- polarity `POSITIVE|NEGATIVE`.
+
+A fourth positional field visible in the aggregate `TRIGGER:A:VIDEO?` response could not be mapped to a verified leaf and remains unimplemented.
+
+### Sequence / B-trigger
+
+B-trigger is a separate layer over A-trigger and therefore uses `SequenceTriggerConfig` instead of a `TriggerConfig.trigger_type` value.
+
+Verified/delivered leaves include:
+
+- `TRIGGER:B:STATE`;
+- B edge source, slope, coupling, level;
+- `TRIGGER:B:BY {TIME|EVENTS}`;
+- `TRIGGER:B:TIME`;
+- `TRIGGER:B:EVENTS:COUNT`.
+
+**Live constraint:** enabling B-trigger is rejected unless A-trigger is already EDGE. The GUI documents this, and HIL ordering restores/configures A=EDGE before enabling B.
+
+### Holdoff
+
+`TRIGGER:A:HOLDOFF:VALUE` / `TRIGGER:A:HOLDOFF:VALUE?` is verified as holdoff-by-time in seconds and is now exposed through:
+
+- `set_trigger_holdoff()`;
+- `get_trigger_holdoff()`;
+- optional `holdoff=` on `configure_trigger()`;
+- `holdoff` in `get_trigger_configuration()`.
+
+Holdoff input is validated before any I/O. Negative, non-finite, malformed, or injected values are rejected with zero VISA writes.
+
+A holdoff-by-count/event API is **not** exposed. `TRIGGER:A:HOLDOFF:BY?` is known to time out silently on this firmware, and no verified count-mode leaf has been found. A future count implementation requires a separate hardware/manual verification pass.
+
+### Firmware timeout quirk
+
+The DPO4054 does not always return a prompt SCPI error for unsupported queries. At least these candidates were observed to time out silently:
+
+- `TRIGGER:B:EVENTS:MODE?`
+- `TRIGGER:A:HOLDOFF:BY?`
+
+Therefore exploratory capability detection must never inherit the normal operational VISA timeout.
+
+`AdvancedTriggerMixin.probe_scpi_query()` implements the required policy:
+
+1. validate a single argument-free query before I/O;
+2. temporarily cap the active VISA timeout (default 500 ms);
+3. clear stale status before probing;
+4. treat a timeout as unsupported rather than as evidence that the whole session is dead;
+5. recover with `*CLS` and a bounded `*IDN?` health check;
+6. for prompt responses, sample `*ESR?` so a command error is still reported as unsupported;
+7. restore the exact previous VISA timeout on every exit path;
+8. never expand an already-shorter active timeout.
+
+Non-timeout transport failures remain real transport failures and are not disguised as unsupported capabilities.
 
 ## Feature matrix
 
-| ID | Feature | SCPI foundation | Verification status | Priority |
-|---|---|---|---|---|
-| A14.1 | Trigger type selection & `TriggerConfig` dataclass | `TRIGGER:A:TYPE` | **Implemented** | Very high (blocks all others) |
-| A14.2 | Pulse width trigger | `TRIGGER:A:TYPE PULSE`, `:PULSE:CLASS WIDTH` | **Implemented** | High |
-| A14.3 | Runt trigger | `:PULSE:CLASS RUNT` | **Implemented** | High |
-| A14.4 | Logic trigger | `TRIGGER:A:TYPE LOGIC`, `:LOGIC:CLASS` | **Implemented** (`LOGIC`/`SETHOLD` classes; `SETHOLD` data-source leaf and pattern time-qualifier unmapped) | Medium |
-| A14.5 | Timeout trigger | `:PULSE:CLASS TIMEOUT` | **Implemented** | Medium |
-| A14.6 | Video trigger | `TRIGGER:A:TYPE VIDEO` | **Implemented** (fourth dump field unmapped) | Low |
-| A14.7 | Sequence / B-trigger (A-then-B) | `TRIGGER:B:*` | **Implemented** (requires A=EDGE to enable) | Medium |
-| A14.8 | Trigger holdoff | `TRIGGER:A:HOLDOFF:VALUE` | Holdoff-by-time confirmed; holdoff-by-count/other modes unconfirmed | Medium |
-| A14.9 | Trigger tab GUI integration + boundary enforcement | n/a (GUI/architecture) | n/a | High |
-| A14.10 | HIL/regression qualification tie-in | n/a | n/a | Essential (gates completion) |
+| ID | Feature | Foundation | Current status |
+|---|---|---|---|
+| A14.1 | Trigger type selection and `TriggerConfig` | `TRIGGER:A:TYPE` | **Implemented and tested** |
+| A14.2 | Pulse width | `TYPE PULSE`, `PULSE:CLASS WIDTH` | **Implemented and tested** |
+| A14.3 | Runt | `PULSE:CLASS RUNT` | **Implemented and tested** |
+| A14.4 | Logic / setup-hold | `TYPE LOGIC`, `LOGIC:CLASS` | **Implemented for verified fields; unmapped leaves intentionally omitted** |
+| A14.5 | Timeout | `PULSE:CLASS TIMEOUT` | **Implemented and tested** |
+| A14.6 | Video | `TYPE VIDEO` | **Implemented for verified fields; unmapped fourth aggregate field omitted** |
+| A14.7 | Sequence / B-trigger | `TRIGGER:B:*` | **Implemented and tested; A must be EDGE to enable B** |
+| A14.8 | Trigger holdoff | `TRIGGER:A:HOLDOFF:VALUE` | **Holdoff-by-time implemented; unverified count mode intentionally not exposed** |
+| A14.9 | Trigger GUI integration | composition Trigger page | **Implemented with GUI contract + boundary tests** |
+| A14.10 | HIL/regression qualification | bounded probe + HIL + R0-T capture | **Harness implemented; live HIL and measured baseline evidence pending** |
 
-## Requirement details and acceptance criteria
+## Delivered API behavior
 
-### A14.1 — Trigger type selection & `TriggerConfig` dataclass
+### A-trigger configuration
 
-This is the foundation every other A14 sub-feature extends. Mirror the `ChannelConfig`
-pattern (`control.py:138-150` dataclass; `control.py:70-89` fields/queries tuple+dict;
-`control.py:293-335` command/query builders; `control.py:576-586` mixin methods) rather than
-extending the existing bespoke `configure_edge_trigger(**kwargs)` signature.
+`TriggerConfig` follows the existing configuration-object pattern: optional fields mean "do not touch this field", and structural validation occurs before VISA I/O. Existing edge-trigger convenience methods remain compatible.
 
-Behavior:
+The supported A14 GUI surface is intentionally narrower than the raw `TRIGGER:A:TYPE` enum:
 
-- Replace the wrong `TRIGGER_TYPES` constant with the verified set
-  `("EDGE", "LOGIC", "PULSE", "VIDEO", "BUS")`. `BUS` trigger overlaps with the existing
-  `BusMixin` capability-gated serial-bus support (`dpo4000_utils/bus.py`) — A14 should reuse
-  `get_available_bus_slots()`/licensing detection rather than re-implementing it, and should
-  explicitly scope whether `TRIGGER:A:TYPE BUS` is in A14's initial delivery or deferred; it
-  depends on already-capability-gated hardware the way decoded BUS transaction export does
-  (`architecture.md:129`).
-- New `TriggerConfig` dataclass (`frozen=True`, all fields `| None = None` except a required
-  `trigger_type` or similar discriminator) with fields common to every type (source, slope
-  where applicable, coupling, mode, level) plus nested/optional fields for type-specific
-  parameters, following the existing `None`-means-"don't touch this field" convention.
-- `build_trigger_config_commands(config)` / `build_trigger_config_queries()` mirroring
-  `build_channel_config_commands`/`build_channel_config_queries`, going through the existing
-  `normalize_*`/`format_scpi_number`/`normalize_scpi_enum` validators — this is also where
-  SCPI-injection protection lives (mirror `tests/test_scpi_safety.py` coverage).
-- `configure_trigger(config)` / `get_trigger_configuration()` mixin methods added to
-  `TriggerMixin`, additive to (not replacing) the existing `configure_edge_trigger()` so
-  existing callers/tests keep working; existing `configure_edge_trigger()` becomes a thin
-  compatibility wrapper around `configure_trigger(TriggerConfig(trigger_type="EDGE", ...))`
-  once the design is stable.
-- Validate `trigger_type` against the confirmed real enum, not the old constant, before any
-  I/O — mirror the existing structural-vs-capability-validation split in
-  `regression-test-plan.md` §3.3.
+- EDGE;
+- PULSE: WIDTH, RUNT, TIMEOUT;
+- LOGIC: LOGIC, SETHOLD;
+- VIDEO.
 
-Acceptance:
+BUS and PULSE/TRANSITION stay hidden until their field-level configuration paths are qualified.
 
-- Boundary/enum matrix (plan §3.1/3.2) for `trigger_type` and every new field: legal values
-  accept, illegal/injected/malformed values reject with zero VISA writes.
-- Exact-SCPI-contract tests (L1) for each accepted type's command sequence, mirroring
-  `tests/test_control.py:199-223`'s style.
-- `get_trigger_configuration()` round-trips a configured type back to normalized values
-  without depending on `repr()` (plan §3.4).
-- Existing edge-trigger tests/behavior (`configure_edge_trigger`, `set_trigger_level`,
-  `get_trigger_level`, `get_edge_trigger_configuration`, `set_edge_trigger_source`,
-  `rearm_trigger_after_image`, `nudge_trigger_level_knob`) remain unchanged per plan §15.1.
+### Holdoff-by-time
 
-### A14.2 — Pulse width trigger — **Implemented**
+`configure_trigger(config, holdoff=...)` validates the holdoff before applying the trigger config. This preserves the zero-I/O-on-invalid-input contract: an invalid holdoff cannot leave a partially applied trigger configuration.
 
-`TRIGGER:A:TYPE PULSE` + `TRIGGER:A:PULSE:CLASS WIDTH`, `:PULSE:SOURCE {CH1-4|AUX|LINE}`,
-`:WIDTH:POLARITY {POSITIVE|NEGATIVE}`, `:WIDTH:WHEN {LESSTHAN|MORETHAN|EQUAL|UNEQUAL|WITHIN|
-OUTSIDE}`, `:WIDTH:LOWLIMIT`/`:WIDTH:HIGHLIMIT` (time). `TriggerConfig` fields:
-`pulse_class="WIDTH"`, `pulse_polarity`, `pulse_when`, `pulse_low_limit`, `pulse_high_limit`.
+`set_trigger_holdoff(value, verify=True)` writes the verified leaf and optionally reads it back. `get_trigger_configuration()` includes the holdoff readback.
 
-Acceptance: L0-L1 boundary/injection/exact-contract tests in `tests/test_control.py` and
-`tests/test_scpi_safety.py`; fake-VISA round-trip in `tests/test_trigger_config.py`; live
-round-trip exercised by `hardware_verification_core.py`'s `trigger-config-write` case.
+### B-trigger
 
-### A14.3 — Runt trigger — **Implemented**
+B-trigger is configured independently from A-trigger. TIME enables the delay-duration field; EVENTS enables the event-count field. GUI controls mirror that relationship.
 
-`TRIGGER:A:PULSE:CLASS RUNT`, `:RUNT:POLARITY {POSITIVE|NEGATIVE|EITHER}`,
-`:RUNT:WHEN {OCCURS|LESSTHAN|MORETHAN|EQUAL|UNEQUAL}`, `:RUNT:THRESHOLD:HIGH`/`:LOW`
-(amplitude), `:RUNT:LOWLIMIT`/`:RUNT:HIGHLIMIT` (time). `TriggerConfig` fields:
-`pulse_class="RUNT"`, `pulse_polarity`, `pulse_when`, `pulse_threshold_high`,
-`pulse_threshold_low`, `pulse_low_limit`, `pulse_high_limit`.
+## GUI integration decision
 
-Acceptance: same pattern as A14.2.
+A14.9 chose the composition-first route rather than adding more behavior to the legacy Trigger page.
 
-### A14.4 — Logic trigger — **Implemented** (LOGIC and SETHOLD classes)
+`composition/pages/trigger.py` provides:
 
-`TRIGGER:A:TYPE LOGIC` + `TRIGGER:A:LOGIC:CLASS {LOGIC|SETHOLD}`. For `LOGIC` (pattern):
-`:LOGIC:FUNCTION {AND|OR|NAND|NOR}`, `:LOGIC:INPUT:CH{1-4} {HIGH|LOW|X}`,
-`:LOGIC:INPUT:CLOCK:SOURCE {CH1-4|NONE}`, `:LOGIC:INPUT:CLOCK:EDGE {RISE|FALL}`,
-`:LOGIC:PATTERN:WHEN {TRUE|FALSE|LESSTHAN|MORETHAN}` (namespaced under `:PATTERN:` unlike
-every other `LOGIC` leaf here — verified, not a typo). For `SETHOLD`:
-`:LOGIC:SETHOLD:CLOCK:SOURCE {CH1-4}`, `:CLOCK:EDGE {RISE|FALL}`, `:CLOCK:THRESHOLD`,
-`:DATA:THRESHOLD`, `:SETTIME`, `:HOLDTIME`. `TriggerConfig` fields: `logic_class`,
-`logic_function`, `logic_input_ch1`..`logic_input_ch4`, `logic_clock_source` (shared leaf name,
-different SCPI path per class), `logic_clock_edge`, `logic_when`, `logic_clock_threshold`,
-`logic_data_threshold`, `logic_setup_time`, `logic_hold_time`.
+- A-trigger type selection;
+- type-specific stacked controls;
+- trigger mode;
+- optional holdoff-by-time;
+- sequence/B-trigger controls;
+- readback projection;
+- dynamic enable/disable relationships for pulse, logic, and B-delay modes.
 
-Known gaps, not guessed around: `SETHOLD`'s data-source leaf (which channel is the "data"
-line) could not be found under any tried name and is not settable; `LOGIC` pattern's
-`LESSTHAN`/`MORETHAN` comparators accept no associated time-limit field (none found);
-`TRIGGER:A:LOGIC:THRESHOLD:CH{1-4}` (per-channel pattern comparison level) is confirmed
-readable but write behavior was never tested, so it is not wired into `TriggerConfig`.
+The production compatibility surface routes `_build_trigger_tab()` to this composed page. Existing acquisition, trigger-level, horizontal-position, and image-rearm controls are retained where the mature host exposes them.
 
-Acceptance: explicit test that the pattern-vs-setup/hold class selector round-trips correctly
-(`LOGI`/`SETH` abbreviations observed on this firmware) — see
-`tests/test_trigger_config.py::test_get_trigger_configuration_logic_pattern_reads_class_specific_fields`
-and the `_sethold_` equivalent.
+The page calls only public driver methods. It does not access `.scope`, call raw `.query()`/`.write()`, or configure VISA directly. Readback updates use asynchronous `on_success` continuations instead of consuming `_run_action()` synchronously.
 
-### A14.5 — Timeout trigger — **Implemented**
+## Deterministic test coverage
 
-`TRIGGER:A:PULSE:CLASS TIMEOUT`, `:TIMEOUT:POLARITY {STAYSHIGH|STAYSLOW|EITHER}`,
-`:TIMEOUT:TIME` (duration). `TriggerConfig` fields: `pulse_class="TIMEOUT"`, `pulse_polarity`,
-`pulse_timeout_time`.
+A14-specific tests now include:
 
-Acceptance: same pattern as A14.2. Timeout-value boundary matrix includes the project's
-standard non-finite/injection cases (plan §3.1) since this is a duration field.
+- exact holdoff command/query contracts;
+- finite/non-negative/injection validation;
+- zero I/O when holdoff or capability-query input is invalid;
+- exact EDGE + holdoff command sequence;
+- holdoff set/readback;
+- advanced trigger readback including holdoff;
+- capability-probe validation;
+- temporary timeout capping and exact restoration;
+- proof that a requested probe timeout never expands an already shorter timeout;
+- prompt SCPI error (`*ESR? != 0`) handling;
+- raw timeout and project `DPOTimeoutError` recovery paths;
+- GUI composition routing;
+- GUI public-driver boundary enforcement;
+- A-trigger type/class widget contract;
+- pulse/logic/B-trigger enabled-state relationships;
+- asynchronous GUI dispatch contract.
 
-### A14.6 — Video trigger — **Implemented**
+The public hardware-verification manifest also classifies and exercises the newly added methods, so adding A14 APIs cannot silently bypass the repository's public-API HIL coverage guard.
 
-`TRIGGER:A:TYPE VIDEO`, `:VIDEO:SOURCE {CH1-4}`, `:STANDARD {NTSC|PAL|SECAM}`,
-`:LINE <integer>`, `:FIELD {ALLLINES}`, `:POLARITY {POSITIVE|NEGATIVE}`. `TriggerConfig`
-fields: `video_source`, `video_standard`, `video_line`, `video_field`, `video_polarity`.
+## HIL qualification
 
-Known gap: a fourth field visible in the raw `TRIGGER:A?` dump (between field and polarity)
-could not be mapped to any leaf command tried and remains unimplemented; `:FIELD` only
-accepted `ALLLINES` among the values probed, so specific-line-number field selection (as
-opposed to the separate `:LINE` number itself) may not be exposed via this command path, or
-uses a value this pass didn't try.
+`tests/hardware/test_a14_advanced_trigger_hardware.py` adds opt-in tests for:
 
-Acceptance: same pattern as A14.2 — see
-`tests/test_control.py::test_trigger_config_commands_video` and
-`tests/test_trigger_config.py::test_get_trigger_configuration_video_reads_all_fields`.
+- known-good `TRIGGER:A:HOLDOFF:VALUE?` capability probe;
+- known unsupported/hanging `TRIGGER:B:EVENTS:MODE?` bounded probe and recovery;
+- restoration of the normal VISA timeout;
+- reversible holdoff write/readback when write tests are enabled.
 
-### A14.7 — Sequence / B-trigger (A-then-B) — **Implemented**
+The normal public hardware verifier also exercises holdoff/probe readbacks and reversible holdoff write/readback according to its profile.
 
-`TRIGGER:B:STATE {ON|OFF}` (enable), `TRIGGER:B:EDGE:SOURCE {CH1-4|AUX|LINE}`,
-`:EDGE:SLOPE {RISE|FALL|EITHER}`, `:EDGE:COUPLING`, `TRIGGER:B:LEVEL` (B's own edge
-condition — `TRIGGER:B:TYPE` is EDGE-only, PULSE/LOGIC/VIDEO all rejected), `TRIGGER:B:BY
-{TIME|EVENTS}`, `TRIGGER:B:TIME`, `TRIGGER:B:EVENTS:COUNT`. Applied through a dedicated
-`SequenceTriggerConfig`/`configure_sequence_trigger()`/`get_sequence_trigger_configuration()`
-API, separate from `TriggerConfig`/`configure_trigger()`, since B-trigger layers on top of
-whatever A trigger type is active rather than being a `trigger_type` choice.
+These tests must run against the DPO4054 self-hosted hardware runner before A14 is marked fully qualified.
 
-`TRIGGER:B:EVENTS:MODE?` was re-confirmed to hang (reproduced cleanly with a bounded 3s
-timeout, recovered immediately) rather than being invalid syntax or a transient issue; the
-sibling `TRIGGER:B:EVENTS:COUNT` leaf works and is unaffected.
+## R0-T timing qualification
 
-**Live-verified constraint**: `TRIGGER:B:STATE ON` is rejected (`*ESR?` command-execution
-error; readback stays False) unless A's trigger type is already EDGE — reproduced directly by
-toggling A between VIDEO and EDGE and retrying the identical write. Documented on
-`SequenceTriggerConfig` and enforced by ordering in the hardware-verification case (A is
-restored to EDGE before B is exercised, not after).
+`HardwareBaselineCapture.capture_timing()` now emits these A14 timing operations in addition to the existing baseline set:
 
-Acceptance: same L0-L1 pattern as A14.1 — see
-`tests/test_control.py::test_sequence_trigger_commands_full_config_state_written_last` and
-`tests/test_trigger_config.py::test_get_sequence_trigger_configuration_reads_all_fields_and_normalizes_state`.
+- `trigger_config_apply` — repeated configure of a verified PULSE/WIDTH configuration;
+- `trigger_config_readback` — repeated `get_trigger_configuration()`;
+- `unsupported_trigger_probe` — repeated bounded `TRIGGER:B:EVENTS:MODE?` capability probes.
 
-### A14.8 — Trigger holdoff
+The trigger benchmark snapshots the scope setup, establishes the verified PULSE/WIDTH condition, measures apply/readback separately, and restores the original setup in `finally` before later acquisition timing runs.
 
-Behavior: `TRIGGER:A:HOLDOFF:VALUE` (confirmed working, returns seconds) for holdoff-by-time.
-Whether a holdoff-by-event-count mode exists and its command path is **unconfirmed** — the
-guessed `TRIGGER:A:HOLDOFF:BY?` query timed out rather than erroring, which is exactly the
-ambiguous case A14.10's bounded-probe requirement exists for (can't distinguish "wrong command
-name" from "unsupported but real command" without the manual).
+The unsupported-probe benchmark records the configured dedicated probe timeout, requires every candidate to remain unsupported/recovered, and asserts that the operational VISA timeout is unchanged after every sample.
 
-Acceptance: holdoff-by-time boundary matrix (plan §3.1: near-zero, typical, maximum,
-non-finite/injection). Do not add a by-count mode to `TriggerConfig` until its command path is
-confirmed.
+The existing `single_acquisition` timing remains the regression measurement for arm-to-completion behavior after A14.
 
-### A14.9 — Trigger tab GUI integration + boundary enforcement
+**Important:** `tests/baselines/r0_timing_baseline.json` is not auto-edited with invented numbers. The three new operation values must be captured on the DPO4054, reviewed, and then committed explicitly. Thresholds for the new operations must likewise be chosen from measured evidence rather than copied blindly from unrelated operations.
 
-Behavior: extend the existing Trigger tab (currently `gui_qt/main_window.py:375`
-`_build_trigger_tab()`) to expose type selection and the newly-supported types' fields,
-through `configure_trigger()`/`get_trigger_configuration()` only — never raw SCPI, per
-`architecture.md`'s driver boundary rule.
+The capture and live-comparison CLIs expose `--capability-probe-timeout-ms` (default 500 ms) so the A14 probe benchmark itself cannot inherit the normal long timeout.
 
-Open question for the user (does not block A14.1-A14.8 starting): should A14.9 extend
-`QT_BOUNDARY_FILES` in `tests/test_gui_driver_boundary.py:23-40` to cover `main_window.py`
-as-is, or extract a dedicated `composition/pages/trigger.py` now (the way `connection.py`
-was extracted, per `architecture.md:52-64`'s migration policy) so new trigger-type UI is
-built composition-first rather than added to the legacy file? Either is consistent with the
-migration policy; the second is more work but reduces future migration debt.
+## Deferred / intentionally unimplemented areas
 
-Acceptance: GUI contract snapshot (plan §3.5) — Qt object/property inspection of the extended
-Trigger tab's controls/selector ranges/enabled-disabled relationships, mirroring
-`tests/test_gui_qt_channel_config_metadata.py`'s style. New/extended boundary test proving no
-raw SCPI or `.scope` access was introduced, mirroring
-`tests/test_gui_driver_boundary.py:134-146`.
+These are not A14 regressions; they remain outside the delivered verified surface until separately researched:
 
-### A14.10 — HIL/regression qualification tie-in
+- A-trigger BUS field-level configuration;
+- PULSE/TRANSITION field layout;
+- SETHOLD data-source leaf;
+- LOGIC pattern duration qualifier for LESSTHAN/MORETHAN;
+- VIDEO aggregate fourth-field leaf;
+- holdoff-by-count/event mode.
 
-Behavior: build the bounded-timeout capability-probe helper implied throughout this document
-(short dedicated timeout, treats timeout as "unsupported," never blocks a real run) as a
-reusable driver-level utility, not ad-hoc script code — this is load-bearing for A14.8's
-still-unmapped fields being probed safely later, and is explicitly named in
-`regression-test-plan.md` §14 ("unsupported-trigger capability probe latency").
+Any future research into these paths must use `probe_scpi_query()` or an equivalent bounded mechanism. Direct exploratory queries with the normal operational timeout are prohibited by this A14 qualification policy.
 
-Acceptance, cross-referencing `regression-test-plan.md` §14's existing A14 list:
+## Completion gate
 
-- trigger configuration latency and trigger readback latency baselined (extends
-  `tests/baselines/r0_timing_baseline.json`'s operation set once A14 lands — a deliberate,
-  reviewed baseline update per plan §16, not an automatic regeneration);
-- Single arm → completion timing unaffected by new trigger types (reuse the existing
-  `single_acquisition()`/`is_acquiring()` wait pattern already proven in
-  `baseline_capture.py`/`hardware_verification_core.py`);
-- timeout exactness for the new capability-probe helper itself;
-- unsupported-trigger capability probe latency is bounded and does not expand the driver's
-  normal VISA timeout (plan §14's explicit requirement, now grounded in the hardware
-  quirk found above);
-- applicable DPO4054 functional HIL (extend `tests/hardware/test_scope_api_hardware.py` and/or
-  `scripts/run_hardware_verification.py`'s case set) and read-only/reversible/full profile
-  coverage per `docs/hardware-verification.md`.
+A14 software delivery is complete only if normal CI remains green. Full A14 qualification additionally requires all of the following:
 
-## Delivery phases
+1. verified-real trigger enums/leaf names only;
+2. no guessed SCPI field exposed publicly;
+3. existing edge-trigger behavior remains compatible;
+4. boundary/enum/injection tests pass;
+5. exact SCPI/query contracts pass;
+6. GUI integration and driver-boundary tests pass;
+7. bounded capability-probe behavior and timeout restoration tests pass;
+8. applicable DPO4054 HIL passes on the self-hosted hardware runner;
+9. a fresh measured R0-T baseline is captured and reviewed with `trigger_config_apply`, `trigger_config_readback`, and `unsupported_trigger_probe` values;
+10. architecture and A14 documentation match the shipped surface.
 
-### Phase A — foundation (A14.1) — **done**
-
-`TriggerConfig` dataclass, corrected type enum, `configure_trigger()`/
-`get_trigger_configuration()`, full L0-L2 test coverage. Existing edge-trigger behavior
-remains unchanged (regression invariant, plan §16).
-
-### Phase B — confirmed-selector types (A14.2, A14.3, A14.5) — **done**
-
-Pulse width, runt, timeout — all share the confirmed `TYPE PULSE` + `PULSE:CLASS` selector.
-Field-level SCPI leaf names for each were verified and implemented.
-
-### Phase B.5 — Logic trigger (A14.4) — **done**
-
-Both `LOGIC` (pattern) and `SETHOLD` classes verified and implemented, with the `SETHOLD`
-data-source leaf and the pattern `LESSTHAN`/`MORETHAN` time-qualifier left unmapped (see
-A14.4's acceptance section) rather than guessed.
-
-### Phase B.6 — Video trigger (A14.6) — **done**
-
-Verified and implemented, with the unmapped fourth `TRIGGER:A:VIDEO?` field left out (see
-A14.6's acceptance section) rather than guessed. Live probing during this phase did not hit
-the bounded-timeout hang the earlier PULSE/LOGIC probing did — every candidate resolved
-promptly, whether accepted or rejected.
-
-### Phase B.7 — Sequence / B-trigger (A14.7) — **done**
-
-Verified and implemented as a separate `SequenceTriggerConfig` API. Re-confirmed
-`TRIGGER:B:EVENTS:MODE?` hangs (not invalid syntax) with a bounded 3s timeout — clean
-recovery, no repeat of the original unbounded-timeout incident. Discovered and documented a
-real hardware constraint along the way: B-trigger can only be enabled while A is EDGE type.
-
-### Phase C — capability probing (A14.10)
-
-Build the bounded-timeout probe helper before attempting the remaining unmapped area, so
-A14.8 investigation doesn't repeat the hang this document's own research ran into.
-
-### Phase D — remaining unmapped areas (A14.8)
-
-Holdoff-by-count (if it exists). Requires its own hardware/manual verification pass before
-implementation, per this document's "Hardware findings" section.
-
-### Phase E — GUI + qualification (A14.9, A14.10 completion)
-
-Trigger tab integration, boundary enforcement decision, HIL qualification, baseline update.
-
-## Definition of done
-
-A14 is not complete until, per `regression-test-plan.md` §15's general gate applied here:
-
-1. `TRIGGER_TYPES`/equivalent enum reflects only verified-real values (no repeat of today's
-   wrong constant).
-2. Every delivered sub-feature's SCPI leaf names are confirmed against real hardware or the
-   Programmer Manual — none shipped on a guess.
-3. Existing edge-trigger functional snapshots remain unchanged unless intentionally reviewed.
-4. Boundary/enum/injection tests pass for every new field.
-5. Exact SCPI/query contract tests pass for every delivered type.
-6. GUI integration tests pass; boundary enforcement covers the extended Trigger tab.
-7. The bounded-timeout capability-probe helper exists and is used for every not-yet-confirmed
-   command path rather than assuming SCPI errors return promptly.
-8. Applicable DPO4054 functional HIL passes for every delivered type.
-9. R0-T timing baseline is explicitly, reviewably extended to cover new trigger operations.
-10. Documentation (this file, `architecture.md`'s "Driver calls used" list, feature matrix)
-    is updated to match what actually shipped.
+At the state represented by this branch, items 1-7 and 10 are implemented in code/tests/docs. Items 8-9 remain evidence gates and must not be marked complete without a live hardware run.
