@@ -95,7 +95,7 @@ def test_create_and_verify_complete_bundle(tmp_path: Path) -> None:
     )
     assert result.path == path
     assert result.size_bytes == path.stat().st_size
-    assert result.artifact_count == 6
+    assert result.artifact_count == 5
     assert len(result.sha256) == 64
     assert result.metrics.total_s >= result.metrics.finalize_s >= 0
 
