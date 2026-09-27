@@ -19,12 +19,12 @@ import os
 from pathlib import Path, PurePosixPath
 import sys
 import time
-from typing import Any, Callable, Mapping, Sequence
+from typing import Any, Mapping, Sequence
 from uuid import uuid4
 from zipfile import ZIP_DEFLATED, ZIP_STORED, BadZipFile, ZipFile
 
 from .hardcopy import PNG_SIGNATURE
-from .recipe import RecipeResult, StepResult
+from .recipe import RecipeResult
 from .rules import RuleEvaluation, RuleSetResult
 from .waveform import WaveformData
 
