@@ -1,0 +1,59 @@
+name: A18 Hardware Qualification (temporary)
+
+on:
+  push:
+    branches: [a18-evidence-bundle]
+
+permissions:
+  contents: read
+
+env:
+  DPO4000_HARDWARE: "1"
+  DPO4000_RESOURCE: "TCPIP0::192.168.0.5::INSTR"
+  DPO4000_EXPECT_IDN: "TEKTRONIX,DPO4054"
+  DPO4000_ENABLE_WRITE_TESTS: "1"
+  DPO4000_TIMEOUT_MS: "20000"
+
+jobs:
+  qualification:
+    name: A18 DPO4054 evidence bundle qualification
+    if: github.repository == 'ami3go/Tektronix_DPO4000_utils'
+    runs-on: [self-hosted, dpo4000]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .[dev,pyside6]
+      - name: Recheck focused A18 contracts
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          pytest -q \
+            tests/test_a18_evidence_bundle.py \
+            tests/test_a18_evidence_security.py \
+            tests/test_a18_evidence_gui_contract.py
+      - name: Capture A18 scaling candidate
+        run: |
+          python scripts/benchmark_a18_evidence.py \
+            --sizes 1000,10000,100000,1000000 \
+            --repetitions 3 \
+            --output a18-evidence-benchmark.json
+      - name: Run DPO4054 A18 qualification
+        run: |
+          pytest -q -m hardware \
+            tests/hardware/test_a18_evidence_hardware.py \
+            --junitxml=a18-hardware-junit.xml
+      - name: Upload A18 qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a18-dpo4054-qualification-${{ github.run_id }}
+          path: |
+            a18-evidence-benchmark.json
+            a18-hardware-junit.xml
+          if-no-files-found: warn
