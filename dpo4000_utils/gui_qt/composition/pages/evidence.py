@@ -18,9 +18,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ....evidence import EvidenceBundleResult, create_evidence_bundle
-from ....recipe import RecipeResult
-from ....rules import RuleSetResult
+from ....evidence import EvidenceBundleCancelled, EvidenceBundleResult, create_evidence_bundle
+from ....recipe import RecipeResult, RecipeRunState
+from ....rules import RuleEngine, RuleSetResult, recipe_result_values
+from .recipe import RecipePage
 
 
 def _safe_filename(value: str) -> str:
@@ -114,12 +115,6 @@ class EvidenceBundlePanel(QWidget):
         self.save_button.setEnabled(False)
         self.status_label.setText("Run a recipe to enable evidence capture.")
 
-    def set_recipe_running(self, running: bool) -> None:
-        if running:
-            self.save_button.setEnabled(False)
-        elif self._recipe_result is not None and self._cancel_event is None:
-            self.save_button.setEnabled(True)
-
     def _set_busy(self, busy: bool) -> None:
         self.save_button.setEnabled(not busy and self._recipe_result is not None)
         self.cancel_button.setEnabled(busy)
@@ -153,17 +148,17 @@ class EvidenceBundlePanel(QWidget):
         def execute(scope: Any) -> EvidenceBundleResult:
             identity = scope.query_identity()
             if cancel_event.is_set():
-                raise RuntimeError("Evidence capture cancelled")
+                raise EvidenceBundleCancelled("Evidence capture cancelled")
             screen = scope.read_screen_png() if include_screen else None
             if cancel_event.is_set():
-                raise RuntimeError("Evidence capture cancelled")
+                raise EvidenceBundleCancelled("Evidence capture cancelled")
             waveforms = (
                 scope.read_enabled_waveforms(point_count=point_count)
                 if include_waveforms
                 else None
             )
             if cancel_event.is_set():
-                raise RuntimeError("Evidence capture cancelled")
+                raise EvidenceBundleCancelled("Evidence capture cancelled")
             return create_evidence_bundle(
                 output,
                 recipe_result=recipe_result,
@@ -199,7 +194,10 @@ class EvidenceBundlePanel(QWidget):
     def _evidence_error(self, exc: Exception) -> None:
         self._cancel_event = None
         self._set_busy(False)
-        self.status_label.setText(f"Evidence failed: {exc}")
+        if isinstance(exc, EvidenceBundleCancelled):
+            self.status_label.setText("Evidence capture cancelled; no partial bundle was finalized.")
+        else:
+            self.status_label.setText(f"Evidence failed: {exc}")
 
     def _cancel_clicked(self) -> None:
         if self._cancel_event is None:
@@ -211,4 +209,48 @@ class EvidenceBundlePanel(QWidget):
         )
 
 
-__all__ = ["EvidenceBundlePanel"]
+class RecipeEvidencePage(RecipePage):
+    """A15/A16 Recipe page extended with A18 evidence capture."""
+
+    def __init__(
+        self,
+        *,
+        run_action: Callable[..., Any],
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(run_action=run_action, parent=parent)
+        self.evidence_panel = EvidenceBundlePanel(run_action=run_action, parent=self)
+        layout = self.layout()
+        if layout is None:
+            raise RuntimeError("Recipe page has no layout")
+        layout.addWidget(self.evidence_panel)
+
+    def _run_clicked(self) -> None:
+        was_enabled = self.run_button.isEnabled()
+        super()._run_clicked()
+        if was_enabled and not self.run_button.isEnabled():
+            self.evidence_panel.clear_result()
+
+    def _run_finished(self, result: Any) -> None:
+        rules = self._active_rule_set
+        rule_result: RuleSetResult | None = None
+        if (
+            isinstance(result, RecipeResult)
+            and result.state is RecipeRunState.COMPLETED
+            and rules is not None
+        ):
+            try:
+                rule_result = RuleEngine().evaluate(rules, recipe_result_values(result))
+            except Exception:
+                rule_result = None
+        super()._run_finished(result)
+        if isinstance(result, RecipeResult):
+            self.evidence_panel.set_result(result, rule_result)
+
+
+def build_recipe_page(host: Any) -> QWidget:
+    """Build the production A15/A16/A18 Recipe page at the composition boundary."""
+    return RecipeEvidencePage(run_action=host._run_action, parent=host)
+
+
+__all__ = ["EvidenceBundlePanel", "RecipeEvidencePage", "build_recipe_page"]
