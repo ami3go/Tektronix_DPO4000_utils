@@ -50,7 +50,7 @@ jobs:
       release_tag: ${{ steps.release.outputs.release_tag }}
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Resolve release tag
         id: release
@@ -87,10 +87,10 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
@@ -140,7 +140,7 @@ jobs:
           Compress-Archive -Path dist\DPO4000Desk\* -DestinationPath release-assets\DPO4000Desk-windows.zip -Force
 
       - name: Upload Windows ZIP
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: DPO4000Desk-windows
           path: |
@@ -155,10 +155,10 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
@@ -236,7 +236,7 @@ jobs:
         run: cp release-python-environment.txt release-assets/release-python-environment-linux.txt
 
       - name: Upload Linux release assets
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: DPO4000Desk-linux-packages
           path: |
@@ -261,10 +261,10 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Download release assets
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: release-assets
 
@@ -305,7 +305,7 @@ jobs:
           sbom-path: release-assets/DPO4000Desk-integrity/DPO4000Desk.spdx.json
 
       - name: Upload release integrity metadata
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: DPO4000Desk-integrity
           path: |
@@ -327,10 +327,10 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Download release assets
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: release-assets
 
@@ -339,7 +339,7 @@ jobs:
         run: sha256sum --check DPO4000Desk-integrity/SHA256SUMS
 
       - name: Publish GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.prepare.outputs.release_tag }}
           target_commitish: ${{ github.sha }}
