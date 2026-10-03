@@ -487,6 +487,17 @@ def build_horizontal_position_query() -> str:
     return "HORIZONTAL:POSITION?"
 
 
+def build_horizontal_scale_command(scale_s_per_div: str | float | int) -> str:
+    return (
+        "HORIZONTAL:SCALE "
+        + format_scpi_number(scale_s_per_div, field="Horizontal scale", positive=True)
+    )
+
+
+def build_horizontal_scale_query() -> str:
+    return "HORIZONTAL:SCALE?"
+
+
 def normalize_acquisition_mode(mode: str) -> str:
     return normalize_trigger_choice(mode, ACQUISITION_MODES, field="Acquisition mode")
 
@@ -1067,6 +1078,15 @@ class ControlMixin:
         next_position = current + normalize_horizontal_position(delta)
         self.set_horizontal_position(next_position)
         return next_position
+
+    def set_horizontal_scale(self, scale_s_per_div: str | float | int) -> None:
+        """Set horizontal time scale in seconds/division."""
+        self.ensure_connected().write(build_horizontal_scale_command(scale_s_per_div))
+
+    def get_horizontal_scale(self) -> float:
+        """Read horizontal time scale in seconds/division."""
+        response = self.ensure_connected().query(build_horizontal_scale_query()).strip()
+        return float(response.split()[-1])
 
     def configure_acquisition(self, config: AcquisitionConfig) -> None:
         scope = self.ensure_connected()
