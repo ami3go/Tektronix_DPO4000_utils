@@ -12,7 +12,12 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..milestone_a_window import QtScopeWindow as MilestoneAFeatureWindow
-from .pages import build_connection_page, build_recipe_page, build_trigger_page
+from .pages import (
+    attach_scientific_export_panel,
+    build_connection_page,
+    build_recipe_page,
+    build_trigger_page,
+)
 
 
 class ComposedFeatureSurface(MilestoneAFeatureWindow):
@@ -27,8 +32,13 @@ class ComposedFeatureSurface(MilestoneAFeatureWindow):
         return build_trigger_page(self)
 
     def _build_recipe_tab(self):
-        """Use the native composed A15 Test Recipe / Sequencer page."""
+        """Use the native composed A15/A16 Recipe + Rules page."""
         return build_recipe_page(self)
+
+    def _build_file_tab(self):
+        """Preserve the mature File page and attach the composed A21 exporter."""
+        page = super()._build_file_tab()
+        return attach_scientific_export_panel(self, page)
 
     def _build_logger_tab(self):
         """Build the legacy Logger page atomically from the composition boundary.
