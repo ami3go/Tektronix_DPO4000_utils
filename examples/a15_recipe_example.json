@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "name": "A15 basic acquisition recipe",
+  "steps": [
+    {
+      "kind": "call",
+      "name": "Configure CH1",
+      "method": "configure_channel",
+      "args": [
+        {
+          "channel": 1,
+          "display": true,
+          "scale": 0.5,
+          "coupling": "DC"
+        }
+      ],
+      "kwargs": {},
+      "retry": {
+        "attempts": 1,
+        "delay_s": 0.0,
+        "backoff": 1.0,
+        "max_delay_s": null
+      }
+    },
+    {
+      "kind": "delay",
+      "name": "Settle",
+      "seconds": 0.25
+    },
+    {
+      "kind": "call",
+      "name": "Read trigger configuration",
+      "method": "get_trigger_configuration",
+      "args": [],
+      "kwargs": {},
+      "retry": {
+        "attempts": 2,
+        "delay_s": 0.1,
+        "backoff": 2.0,
+        "max_delay_s": 0.5
+      }
+    }
+  ]
+}
