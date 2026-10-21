@@ -1,9 +1,9 @@
 """R0-F/R0-T baseline capture against one connected DPO4000-family oscilloscope.
 
 This module produces the functional and timing/performance baseline data required
-by ``docs/regression-test-plan.md`` before A14 work begins. It only uses the public
-DPO4054 driver API and follows the same reversible capture/act/restore discipline
-as :mod:`dpo4000_utils.hardware_verification_core`.
+by ``docs/regression-test-plan.md``. It only uses the public DPO4054 driver API and
+follows the same reversible capture/act/restore discipline as
+:mod:`dpo4000_utils.hardware_verification_core`.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from importlib import metadata
 from pathlib import Path
 from typing import Any, Callable
 
-from .control import ChannelConfig, bool_from_scope_response
+from .control import ChannelConfig, TriggerConfig, bool_from_scope_response
 from .errors import DPOError
 from .instrument import DPO4054
 from .settings import apply_setup_string, build_scope_settings_payload
@@ -122,6 +122,7 @@ class BaselineConfig:
     waveform_sizes: tuple[int, ...] = (1_000, 10_000, 100_000, 1_000_000, 10_000_000)
     connection_settle_delay_s: float = 2.0
     connection_warmup_max_wait_s: float = 60.0
+    capability_probe_timeout_ms: int = 500
 
 
 class HardwareBaselineCapture:
@@ -226,12 +227,16 @@ class HardwareBaselineCapture:
         # (re)fetched only after it returns.
         connection_stats = distribution(self._time_connection_cycle())
         scope = self._require_scope()
+        trigger_stats = self._time_advanced_trigger(scope)
         return {
             "connection": connection_stats,
             "channel_apply": distribution(self._time_channel_apply(scope)),
             "measurement_refresh": distribution(
                 _time_repeated(scope.get_all_measurement_setups, self.config.reps_standard)
             ),
+            "trigger_config_apply": trigger_stats["apply"],
+            "trigger_config_readback": trigger_stats["readback"],
+            "unsupported_trigger_probe": self._time_unsupported_trigger_probe(scope),
             "single_acquisition": distribution(self._time_single_acquisition(scope)),
             "png_capture": distribution(self._time_png_capture(scope)),
             "csv_export": distribution(self._time_csv_export(scope)),
@@ -309,6 +314,71 @@ class HardwareBaselineCapture:
             scope.get_channel_configuration(channel)
 
         return _time_repeated(_round_trip, self.config.reps_standard)
+
+    def _time_advanced_trigger(self, scope: DPO4054) -> dict[str, dict[str, float | int]]:
+        """Time A14 configure/readback while restoring the exact pre-test setup.
+
+        The representative PULSE/WIDTH configuration is one of the live-verified A14
+        paths.  An initial untimed apply establishes that state, then apply and
+        readback are measured separately.  The setup snapshot is restored even if a
+        timing sample fails, so this benchmark cannot strand later acquisition tests
+        behind an unlikely trigger condition.
+        """
+        instrument = scope.ensure_connected()
+        baseline = build_scope_settings_payload(instrument)
+        holdoff = scope.get_trigger_holdoff()
+        config = TriggerConfig(
+            trigger_type="PULSE",
+            pulse_class="WIDTH",
+            source=f"CH{self.config.test_channel}",
+            pulse_polarity="POSITIVE",
+            pulse_when="LESSTHAN",
+            pulse_low_limit="8e-9",
+            pulse_high_limit="12e-9",
+        )
+        try:
+            scope.configure_trigger(config, holdoff=holdoff)
+            apply_samples = _time_repeated(
+                lambda: scope.configure_trigger(config, holdoff=holdoff),
+                self.config.reps_standard,
+            )
+            readback_samples = _time_repeated(
+                scope.get_trigger_configuration,
+                self.config.reps_standard,
+            )
+        finally:
+            apply_setup_string(
+                instrument,
+                baseline["setup"],
+                wait_complete=False,
+                check_error=False,
+                restore_delay_s=0.5,
+            )
+        return {
+            "apply": distribution(apply_samples),
+            "readback": distribution(readback_samples),
+        }
+
+    def _time_unsupported_trigger_probe(self, scope: DPO4054) -> dict[str, float | int]:
+        """Measure the known unsupported A14 probe using its dedicated timeout."""
+        instrument = scope.ensure_connected()
+        original_timeout = getattr(instrument, "timeout", None)
+        timeout_ms = int(self.config.capability_probe_timeout_ms)
+        if timeout_ms <= 0:
+            raise ValueError("capability_probe_timeout_ms must be positive")
+
+        def _probe() -> None:
+            result = scope.probe_scpi_query("TRIGGER:B:EVENTS:MODE?", timeout_ms=timeout_ms)
+            if result.supported:
+                raise RuntimeError("Known unsupported TRIGGER:B:EVENTS:MODE? unexpectedly succeeded.")
+            if not result.recovered:
+                raise RuntimeError("Unsupported-trigger capability probe did not recover the session.")
+            if getattr(instrument, "timeout", None) != original_timeout:
+                raise RuntimeError("Capability probe did not restore the original VISA timeout.")
+
+        stats = distribution(_time_repeated(_probe, self.config.reps_heavy))
+        stats["probe_timeout_ms"] = timeout_ms
+        return stats
 
     def _time_single_acquisition(self, scope: DPO4054) -> list[float]:
         def _cycle() -> None:

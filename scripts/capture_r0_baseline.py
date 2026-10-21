@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Capture the R0-F functional and R0-T timing/performance baselines.
 
-See docs/regression-test-plan.md. Both baselines must exist, from a known-good
-commit, before A14 (Advanced Trigger) work begins.
+See docs/regression-test-plan.md. Baseline updates are explicit evidence captures from
+known-good hardware; this script never synthesizes or auto-accepts timing values.
 """
 
 from __future__ import annotations
@@ -19,6 +19,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--resource", required=True, help="VISA resource, e.g. TCPIP0::192.168.0.5::INSTR")
     parser.add_argument("--output-dir", type=Path, default=Path("tests/baselines"))
     parser.add_argument("--timeout-ms", type=int, default=20_000)
+    parser.add_argument(
+        "--capability-probe-timeout-ms",
+        type=int,
+        default=500,
+        help="Dedicated bounded VISA timeout used for unsupported A14 capability probes.",
+    )
     parser.add_argument("--test-channel", type=int, choices=(1, 2, 3, 4), default=1)
     parser.add_argument("--reps-standard", type=int, default=20)
     parser.add_argument("--reps-heavy", type=int, default=5)
@@ -37,6 +43,8 @@ def main() -> int:
     args = build_parser().parse_args()
     if args.timeout_ms <= 0:
         raise SystemExit("--timeout-ms must be positive")
+    if args.capability_probe_timeout_ms <= 0:
+        raise SystemExit("--capability-probe-timeout-ms must be positive")
     for name in ("reps_standard", "reps_heavy", "reps_waveform_large"):
         if getattr(args, name) <= 0:
             raise SystemExit(f"--{name.replace('_', '-')} must be positive")
@@ -48,6 +56,7 @@ def main() -> int:
         resource=args.resource,
         output_dir=args.output_dir,
         timeout_ms=args.timeout_ms,
+        capability_probe_timeout_ms=args.capability_probe_timeout_ms,
         test_channel=args.test_channel,
         reps_standard=args.reps_standard,
         reps_heavy=args.reps_heavy,
@@ -58,6 +67,7 @@ def main() -> int:
     print("DPO4000 R0-F/R0-T baseline capture")
     print(f"  resource: {config.resource}")
     print(f"  output directory: {config.output_dir}")
+    print(f"  A14 capability probe timeout: {config.capability_probe_timeout_ms} ms")
 
     capture = HardwareBaselineCapture(config)
     capture.connect()

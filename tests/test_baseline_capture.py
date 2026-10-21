@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from dpo4000_utils.advanced_trigger import CapabilityProbeResult
 from dpo4000_utils.baseline_capture import (
     NOT_YET_COVERED,
     BaselineConfig,
@@ -62,6 +63,8 @@ class FakeScope:
         self.record_length = 1_000
         self.acquiring = False
         self._instrument = FakeInstrument()
+        self.trigger_configure_calls = 0
+        self.probe_calls: list[tuple[str, int]] = []
 
     def connect(self) -> None:
         self.connect_calls += 1
@@ -101,6 +104,24 @@ class FakeScope:
 
     def get_edge_trigger_configuration(self):
         return {"source": "CH1"}
+
+    def get_trigger_configuration(self):
+        return {"trigger_type": "PULSE", "pulse_class": "WIDTH", "holdoff": 1e-6}
+
+    def configure_trigger(self, config, *, holdoff=None) -> None:
+        self.trigger_configure_calls += 1
+
+    def get_trigger_holdoff(self):
+        return 1e-6
+
+    def probe_scpi_query(self, command: str, *, timeout_ms: int = 500):
+        self.probe_calls.append((command, timeout_ms))
+        return CapabilityProbeResult(
+            query=command,
+            supported=False,
+            timed_out=True,
+            recovered=True,
+        )
 
     def get_trigger_level(self, channel=None):
         return 0.0
@@ -180,7 +201,12 @@ def test_capture_timing_smoke(tmp_path, monkeypatch):
     _fake_setup_round_trip(monkeypatch)
     monkeypatch.setattr("dpo4000_utils.baseline_capture.DPO4054", FakeScope)
     capture = HardwareBaselineCapture(
-        _config(tmp_path, waveform_sizes=(100, 1_000), connection_settle_delay_s=0.0)
+        _config(
+            tmp_path,
+            waveform_sizes=(100, 1_000),
+            connection_settle_delay_s=0.0,
+            capability_probe_timeout_ms=125,
+        )
     )
     capture.scope = FakeScope("FAKE::INSTR")
 
@@ -190,10 +216,14 @@ def test_capture_timing_smoke(tmp_path, monkeypatch):
         "connection",
         "channel_apply",
         "measurement_refresh",
+        "trigger_config_apply",
+        "trigger_config_readback",
+        "unsupported_trigger_probe",
         "single_acquisition",
         "png_capture",
         "csv_export",
     ):
         assert result[key]["sample_count"] > 0
+    assert result["unsupported_trigger_probe"]["probe_timeout_ms"] == 125
     assert set(result["waveform_acquisition"]) == {"100", "1000"}
     assert result["not_yet_covered"] == list(NOT_YET_COVERED)
