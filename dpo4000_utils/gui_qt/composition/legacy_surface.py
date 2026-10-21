@@ -13,6 +13,7 @@ from pathlib import Path
 
 from ..milestone_a_window import QtScopeWindow as MilestoneAFeatureWindow
 from .pages import (
+    attach_measurement_trend_panel,
     attach_scientific_export_panel,
     build_connection_page,
     build_recipe_page,
@@ -26,6 +27,11 @@ class ComposedFeatureSurface(MilestoneAFeatureWindow):
     def _build_connection_tab(self):
         """Use the native composed Connection page in the production surface."""
         return build_connection_page(self)
+
+    def _build_measurement_tab(self):
+        """Preserve measurement management and attach the composed A20 dashboard."""
+        page = super()._build_measurement_tab()
+        return attach_measurement_trend_panel(self, page)
 
     def _build_trigger_tab(self):
         """Use the native composed A14 Advanced Trigger page."""
