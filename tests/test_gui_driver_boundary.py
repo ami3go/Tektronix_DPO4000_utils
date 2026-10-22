@@ -68,7 +68,7 @@ def test_desktop_entrypoint_uses_composition_production_window():
     assert "MilestoneAFeatureWindow" not in window
     assert "MilestoneAFeatureWindow" in legacy
     assert 'dpo4000-desk = "dpo4000_utils.gui_qt.runner:main"' in pyproject
-    assert 'version = "0.8.0"' in pyproject
+    assert 'version = "0.9.0rc1"' in pyproject
     assert "dpo4000-gui" not in pyproject
 
 
