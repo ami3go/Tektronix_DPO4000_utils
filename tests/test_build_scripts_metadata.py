@@ -80,7 +80,7 @@ def test_release_workflow_builds_desktop_assets():
     assert "APP_NAME: DPO4000Desk" in workflow
     assert "DPO4000Desk-windows.zip" in workflow
     assert "scripts/package_linux_release.sh" in workflow
-    assert "softprops/action-gh-release@v2" in workflow
+    assert "softprops/action-gh-release@v3" in workflow
     assert "docs/releases/${{ needs.prepare.outputs.release_tag }}.md" in workflow
 
 
