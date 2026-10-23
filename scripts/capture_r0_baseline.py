@@ -9,9 +9,40 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 
 from dpo4000_utils.baseline_capture import BaselineConfig, HardwareBaselineCapture, build_baseline_header
+
+
+def _write_new_baseline(destination: Path, payload: dict) -> None:
+    """Publish a complete snapshot only when no baseline exists.
+
+    A temporary file is flushed and synced before an exclusive hard-link create.
+    Neither ordinary execution nor a race with another capture may replace a
+    previously approved reference snapshot.
+    """
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if destination.exists():
+        raise FileExistsError(f"Refusing to overwrite existing baseline: {destination}")
+    with NamedTemporaryFile(
+        mode="w", encoding="utf-8", dir=destination.parent,
+        prefix=f".{destination.name}.", suffix=".tmp", delete=False,
+    ) as handle:
+        temp = Path(handle.name)
+        try:
+            json.dump(payload, handle, indent=2, sort_keys=True, allow_nan=False)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        except BaseException:
+            temp.unlink(missing_ok=True)
+            raise
+    try:
+        os.link(temp, destination)  # fails atomically if destination now exists
+    finally:
+        temp.unlink(missing_ok=True)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -52,6 +83,21 @@ def main() -> int:
     if any(size <= 0 for size in waveform_sizes):
         raise SystemExit("--waveform-sizes entries must be positive")
 
+    # Do this before any physical connection or configuration changes.
+    requested_paths = [
+        args.output_dir / filename
+        for selected, filename in (
+            (not args.skip_functional, "r0_functional_baseline.json"),
+            (not args.skip_timing, "r0_timing_baseline.json"),
+        )
+        if selected
+    ]
+    if not requested_paths:
+        raise SystemExit("At least one baseline type must be selected")
+    for path in requested_paths:
+        if path.exists():
+            raise SystemExit(f"Baseline already exists; no overwrite permitted: {path}")
+
     config = BaselineConfig(
         resource=args.resource,
         output_dir=args.output_dir,
@@ -80,7 +126,7 @@ def main() -> int:
             print("\nCapturing R0-F functional baseline...")
             functional = {**build_baseline_header(config.resource, idn), **capture.capture_functional()}
             functional_path = config.output_dir / "r0_functional_baseline.json"
-            functional_path.write_text(json.dumps(functional, indent=2, sort_keys=True), encoding="utf-8")
+            _write_new_baseline(functional_path, functional)
             print(f"  wrote {functional_path}")
 
         if not args.skip_timing:
@@ -92,7 +138,7 @@ def main() -> int:
                 "operations": timing_data,
             }
             timing_path = config.output_dir / "r0_timing_baseline.json"
-            timing_path.write_text(json.dumps(timing, indent=2, sort_keys=True), encoding="utf-8")
+            _write_new_baseline(timing_path, timing)
             print(f"  wrote {timing_path}")
     finally:
         capture.disconnect()
