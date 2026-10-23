@@ -1,6 +1,6 @@
 # A16 Pass/Fail Rule Engine
 
-Status: **implementation in progress on `a16-pass-fail-rules`**
+Status: **implemented and merged to `main`**
 
 A16 is the deterministic decision layer after A15 Test Recipe / Sequencer. It evaluates numeric measurements, recipe step results, and calculated scalar values without owning instrument I/O or control flow.
 

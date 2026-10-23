@@ -1,6 +1,6 @@
 # DPO4000 Code Audit Remediation Task
 
-Status: **Planned**  
+Status: **Phases 1–6 delivered through v0.8.0**  
 Audit baseline: **v0.5.0**  
 Repository: `ami3go/Tektronix_DPO4000_utils`  
 Primary objective: move the driver and DPO4000 Desk from good engineering/lab quality to a production-grade implementation suitable for long-running automated test use.

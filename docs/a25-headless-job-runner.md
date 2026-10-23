@@ -1,6 +1,6 @@
 # A25 Headless Job Runner
 
-Status: implementation on `a25-headless-job-runner`.
+Status: **implemented and merged to `main`**
 
 A25 exposes the existing A15/A16/A21 stack as a non-Qt command-line job runner suitable for Linux, CI, lab automation, and unattended execution.
 
