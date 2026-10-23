@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QScrollArea,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -316,11 +317,19 @@ class MeasurementTrendPanel(QGroupBox):
 
 def attach_measurement_trend_panel(host: Any, page: QWidget) -> QWidget:
     """Attach A20 trend controls to the mature Measurement page."""
-    layout = page.layout()
+    # A scroll-area page's own layout() is its internal viewport layout; attach to
+    # the scrolled body instead so the panel stacks with the other cards.
+    body = page.widget() if isinstance(page, QScrollArea) else page
+    layout = body.layout()
     if layout is None:
-        layout = QVBoxLayout(page)
-    panel = MeasurementTrendPanel(run_action=host._run_action, parent=page)
-    layout.addWidget(panel)
+        layout = QVBoxLayout(body)
+    panel = MeasurementTrendPanel(run_action=host._run_action, parent=body)
+    panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+    last = layout.count() - 1
+    if last >= 0 and layout.itemAt(last).spacerItem() is not None:
+        layout.insertWidget(last, panel)
+    else:
+        layout.addWidget(panel)
     return page
 
 
