@@ -47,6 +47,7 @@ from .scientific_export import (
     ScientificExportResult,
     ScientificFormat,
     export_scientific_dataset,
+    infer_scientific_format,
     normalize_scientific_format,
 )
 from .session import scope_session
@@ -117,19 +118,27 @@ class JobConfig:
                 or self.scientific_points <= 0
             ):
                 raise JobValidationError("scientific_points must be a positive integer or None")
+        if not isinstance(self.scientific_compressed, bool):
+            raise JobValidationError("scientific_compressed must be a boolean")
         if self.scientific_export_path is not None:
             if self.validate_only:
                 raise JobValidationError("scientific export is not available in validate-only mode")
-            selected = (
-                normalize_scientific_format(self.scientific_format)
-                if self.scientific_format is not None
-                else None
-            )
-            if selected is not None:
-                object.__setattr__(self, "scientific_format", selected)
-        elif self.scientific_format is not None or self.scientific_points is not None:
+            try:
+                selected = (
+                    normalize_scientific_format(self.scientific_format)
+                    if self.scientific_format is not None
+                    else infer_scientific_format(self.scientific_export_path)
+                )
+            except ScientificExportError as exc:
+                raise JobValidationError(str(exc)) from exc
+            object.__setattr__(self, "scientific_format", selected)
+        elif (
+            self.scientific_format is not None
+            or self.scientific_points is not None
+            or self.scientific_compressed
+        ):
             raise JobValidationError(
-                "scientific format/points require scientific_export_path"
+                "scientific format/points/compressed require scientific_export_path"
             )
 
 
@@ -165,21 +174,27 @@ def _no_duplicate_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 
 def load_json_mapping(path: str | Path, *, label: str) -> Mapping[str, Any]:
     source = Path(path)
+    # Bounded binary read also protects against files enlarged after a stat call.
     try:
-        size = source.stat().st_size
-    except OSError as exc:
-        raise JobValidationError(f"could not stat {label} file {source}: {exc}") from exc
-    if size > MAX_JOB_JSON_BYTES:
-        raise JobValidationError(
-            f"{label} file is {size:,} bytes; maximum is {MAX_JOB_JSON_BYTES:,}"
-        )
-    try:
-        text = source.read_text(encoding="utf-8")
+        with source.open("rb") as handle:
+            raw = handle.read(MAX_JOB_JSON_BYTES + 1)
     except OSError as exc:
         raise JobValidationError(f"could not read {label} file {source}: {exc}") from exc
+    if len(raw) > MAX_JOB_JSON_BYTES:
+        raise JobValidationError(
+            f"{label} file exceeds maximum of {MAX_JOB_JSON_BYTES:,} bytes"
+        )
+
+    def reject_constant(token: str) -> None:
+        raise JobValidationError(f"non-standard JSON numeric constant: {token}")
+
     try:
-        value = json.loads(text, object_pairs_hook=_no_duplicate_object)
-    except (json.JSONDecodeError, JobValidationError) as exc:
+        value = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=_no_duplicate_object,
+            parse_constant=reject_constant,
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError, JobValidationError) as exc:
         raise JobValidationError(f"invalid {label} JSON: {exc}") from exc
     if not isinstance(value, Mapping):
         raise JobValidationError(f"{label} JSON must contain an object at the top level")
@@ -254,7 +269,7 @@ def write_job_report(path: str | Path, result: JobResult) -> Path:
     temp = Path(handle.name)
     try:
         with handle:
-            json.dump(job_result_to_mapping(result), handle, indent=2, sort_keys=True)
+            json.dump(job_result_to_mapping(result), handle, indent=2, sort_keys=True, allow_nan=False)
             handle.write("\n")
             handle.flush()
             os.fsync(handle.fileno())
@@ -284,6 +299,7 @@ class HeadlessJobRunner:
         self._validation_target_factory = validation_target_factory
         self._cancel_requested = threading.Event()
         self._sequencer: RecipeSequencer | None = None
+        self._run_lock = threading.Lock()
 
     def cancel(self) -> None:
         self._cancel_requested.set()
@@ -338,6 +354,25 @@ class HeadlessJobRunner:
         )
 
     def run(self, config: JobConfig) -> JobResult:
+        """Run at most one job at a time on this runner instance."""
+        if not self._run_lock.acquire(blocking=False):
+            now = datetime.now(timezone.utc)
+            return JobResult(
+                exit_code=JobExitCode.RUNTIME_ERROR,
+                status="runtime_error",
+                message="runner is already executing a job",
+                started_at=now,
+                finished_at=now,
+                duration_s=0.0,
+                resource=config.resource,
+                validation_only=config.validate_only,
+            )
+        try:
+            return self._run_exclusive(config)
+        finally:
+            self._run_lock.release()
+
+    def _run_exclusive(self, config: JobConfig) -> JobResult:
         started_at = datetime.now(timezone.utc)
         started_perf = time.perf_counter()
         identity: str | None = None
@@ -394,10 +429,22 @@ class HeadlessJobRunner:
                     )
 
                 self._sequencer = RecipeSequencer(scope)
-                recipe_result = self._sequencer.run(recipe)
+
+                def request_cancel_before_step(_index: int, _step: Any) -> None:
+                    # A15 resets its own cancellation event on run(). The
+                    # runner-owned event closes that pre-start cancellation race.
+                    if self._cancel_requested.is_set():
+                        self._sequencer.cancel()
+
+                recipe_result = self._sequencer.run(
+                    recipe, on_step_start=request_cancel_before_step
+                )
                 self._sequencer = None
 
-                if recipe_result.state is RecipeRunState.CANCELLED:
+                if (
+                    recipe_result.state is RecipeRunState.CANCELLED
+                    or self._cancel_requested.is_set()
+                ):
                     return self._result(
                         started_at=started_at,
                         started_perf=started_perf,
@@ -447,7 +494,9 @@ class HeadlessJobRunner:
                             },
                             compressed=config.scientific_compressed,
                         )
-                    except ScientificExportError as exc:
+                    except Exception as exc:
+                        # A21 acquisition, filesystem and serializer errors are
+                        # all export failures, not DUT rule failures.
                         return self._result(
                             started_at=started_at,
                             started_perf=started_perf,
@@ -461,6 +510,21 @@ class HeadlessJobRunner:
                             rule_result=rule_result,
                         )
 
+            if self._cancel_requested.is_set():
+                return self._result(
+                    started_at=started_at,
+                    started_perf=started_perf,
+                    config=config,
+                    exit_code=JobExitCode.CANCELLED,
+                    status="cancelled",
+                    message="Job cancelled after active operation returned",
+                    identity=identity,
+                    recipe_name=recipe.name,
+                    recipe_result=recipe_result,
+                    rule_result=rule_result,
+                    scientific_export=scientific_result,
+                )
+
             if rule_result is not None:
                 if rule_result.status is RuleStatus.FAIL:
                     return self._result(
@@ -468,7 +532,7 @@ class HeadlessJobRunner:
                         started_perf=started_perf,
                         config=config,
                         exit_code=JobExitCode.RULE_FAILED,
-                        status="fail",
+                        status="rule_failed",
                         message="A16 rule set evaluated to FAIL",
                         identity=identity,
                         recipe_name=recipe.name,
@@ -482,7 +546,7 @@ class HeadlessJobRunner:
                         started_perf=started_perf,
                         config=config,
                         exit_code=JobExitCode.RULE_INVALID,
-                        status="invalid",
+                        status="rule_invalid",
                         message="A16 rule set evaluated to INVALID",
                         identity=identity,
                         recipe_name=recipe.name,
