@@ -43,6 +43,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
+        "--authorize-reversible-writes", action="store_true",
+        help="Required for --resource: live R0 comparison changes and restores scope setup.",
+    )
+    parser.add_argument(
         "--candidate-timing",
         type=Path,
         help="Path to an already-captured timing JSON (required with --candidate-functional).",
@@ -139,6 +143,11 @@ def _identity_differences(
 
 def main() -> int:
     args = build_parser().parse_args()
+    if args.resource and not args.authorize_reversible_writes:
+        raise SystemExit(
+            "Live R0 comparison issues physical configuration writes; "
+            "explicit --authorize-reversible-writes is mandatory."
+        )
     if args.candidate_functional and not args.candidate_timing:
         raise SystemExit("--candidate-timing is required when --candidate-functional is given")
     if args.timeout_ms <= 0:
