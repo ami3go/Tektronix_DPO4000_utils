@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 
+from scripts.validate_soak_report import validate_soak_report
+
 from scripts.capture_r0_baseline import _write_new_baseline
 from scripts.compare_r0_baseline import _identity_differences
 from scripts.run_hardware_soak import (
@@ -15,6 +17,16 @@ from scripts.run_hardware_soak import (
     _lock_path,
     _write_report,
 )
+
+
+def _soak_args() -> argparse.Namespace:
+    return argparse.Namespace(
+        duration_hours=24.0, interval_seconds=10.0,
+        resource="USB0::SCOPE::INSTR", max_failures=10,
+        max_rss_growth_mib=256.0, max_python_growth_mib=64.0,
+        max_fd_growth=8, max_thread_growth=4,
+        max_cycle_latency_s=60.0, max_latency_drift_factor=3.0,
+    )
 
 
 def _baseline(resource: str, idn: str = "TEKTRONIX,DPO4054,SERIAL,FW") -> dict:
@@ -66,10 +78,7 @@ def test_soak_resource_lock_prevents_concurrent_runner(monkeypatch, tmp_path: Pa
 
 
 def test_soak_report_is_machine_readable_and_tracks_identity(tmp_path: Path) -> None:
-    args = argparse.Namespace(
-        duration_hours=24.0, interval_seconds=10.0,
-        resource="USB0::SCOPE::INSTR",
-    )
+    args = _soak_args()
     sample = SoakSample(
         timestamp="2026-10-23T00:00:00+00:00",
         elapsed_s=86400.0, cycle=1,
@@ -94,7 +103,7 @@ def test_soak_report_is_machine_readable_and_tracks_identity(tmp_path: Path) -> 
 
 
 def test_soak_running_checkpoint_cannot_claim_pass(tmp_path: Path) -> None:
-    args = argparse.Namespace(duration_hours=24.0, interval_seconds=10.0, resource="USB0::INSTR")
+    args = _soak_args()
     _write_report(
         tmp_path, args=args, samples=[], failures=[], reconnects=0,
         cleanup_errors=[], started_at="2026-10-23T00:00:00+00:00",
@@ -104,3 +113,25 @@ def test_soak_running_checkpoint_cannot_claim_pass(tmp_path: Path) -> None:
     data = json.loads((tmp_path / "soak_report.json").read_text(encoding="utf-8"))
     assert data["summary"]["status"] == "RUNNING"
     assert data["summary"]["run_state"] != "FINAL"
+
+
+def test_soak_validator_rejects_running_checkpoint(tmp_path: Path) -> None:
+    args = _soak_args()
+    _write_report(
+        tmp_path, args=args, samples=[], failures=[], reconnects=0,
+        cleanup_errors=[], started_at="2026-10-23T00:00:00+00:00",
+        elapsed_s=3600, passed=False, reasons=["unfinished"],
+        status="RUNNING", run_state="RUNNING",
+    )
+    problems, hashes = validate_soak_report(tmp_path)
+    assert hashes["json"] and hashes["markdown"]
+    assert any("not finalized" in p.lower() for p in problems)
+    assert any("shorter" in p.lower() for p in problems)
+
+
+def test_soak_validator_rejects_truncated_evidence(tmp_path: Path) -> None:
+    (tmp_path / "soak_report.json").write_text('{"summary":', encoding="utf-8")
+    (tmp_path / "soak_report.md").write_text("# DPO4000 hardware soak qualification\n",
+                                                encoding="utf-8")
+    problems, _ = validate_soak_report(tmp_path)
+    assert any("Invalid JSON" in p for p in problems)
