@@ -26,23 +26,21 @@ def _write_new_baseline(destination: Path, payload: dict) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.exists():
         raise FileExistsError(f"Refusing to overwrite existing baseline: {destination}")
-    with NamedTemporaryFile(
-        mode="w", encoding="utf-8", dir=destination.parent,
-        prefix=f".{destination.name}.", suffix=".tmp", delete=False,
-    ) as handle:
-        temp = Path(handle.name)
-        try:
+    temp: Path | None = None
+    try:
+        with NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=destination.parent,
+            prefix=f".{destination.name}.", suffix=".tmp", delete=False,
+        ) as handle:
+            temp = Path(handle.name)
             json.dump(payload, handle, indent=2, sort_keys=True, allow_nan=False)
             handle.write("\n")
             handle.flush()
             os.fsync(handle.fileno())
-        except BaseException:
-            temp.unlink(missing_ok=True)
-            raise
-    try:
-        os.link(temp, destination)  # fails atomically if destination now exists
+        os.link(temp, destination)  # exclusive: existing snapshots are never replaced
     finally:
-        temp.unlink(missing_ok=True)
+        if temp is not None:
+            temp.unlink(missing_ok=True)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -65,6 +63,10 @@ def build_parser() -> argparse.ArgumentParser:
         default="1000,10000,100000,1000000,10000000",
         help="Comma-separated point counts for the waveform-scaling sweep.",
     )
+    parser.add_argument(
+        "--authorize-reversible-writes", action="store_true",
+        help="Explicit bench permission: R0 capture configures trigger/channel/acquisition/setup.",
+    )
     parser.add_argument("--skip-functional", action="store_true")
     parser.add_argument("--skip-timing", action="store_true")
     return parser
@@ -72,6 +74,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = build_parser().parse_args()
+    if not args.authorize_reversible_writes:
+        raise SystemExit(
+            "R0 capture performs physical configuration writes. "
+            "Supply --authorize-reversible-writes only on an approved disposable setup."
+        )
     if args.timeout_ms <= 0:
         raise SystemExit("--timeout-ms must be positive")
     if args.capability_probe_timeout_ms <= 0:
