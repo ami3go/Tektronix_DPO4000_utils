@@ -57,7 +57,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--test-channel", type=int, choices=(1, 2, 3, 4), default=1)
     parser.add_argument("--reps-standard", type=int, default=20)
     parser.add_argument("--reps-heavy", type=int, default=5)
-    parser.add_argument("--reps-waveform-large", type=int, default=2)
+    parser.add_argument("--reps-waveform-large", type=int, default=5)
     parser.add_argument(
         "--waveform-sizes",
         default="1000,10000,100000,1000000,10000000",
