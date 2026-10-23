@@ -158,22 +158,20 @@ def _git_commit() -> str | None:
 
 def _write_atomic_text(destination: Path, content: str) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
-    with NamedTemporaryFile(
-        mode="w", encoding="utf-8", dir=destination.parent,
-        prefix=f".{destination.name}.", suffix=".tmp", delete=False,
-    ) as handle:
-        temp_path = Path(handle.name)
-        try:
+    temp_path: Path | None = None
+    try:
+        with NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=destination.parent,
+            prefix=f".{destination.name}.", suffix=".tmp", delete=False,
+        ) as handle:
+            temp_path = Path(handle.name)
             handle.write(content)
             handle.flush()
             os.fsync(handle.fileno())
-        except BaseException:
-            temp_path.unlink(missing_ok=True)
-            raise
-    try:
         os.replace(temp_path, destination)
     finally:
-        temp_path.unlink(missing_ok=True)
+        if temp_path is not None:
+            temp_path.unlink(missing_ok=True)
 
 
 def _lock_path(resource: str) -> Path:
