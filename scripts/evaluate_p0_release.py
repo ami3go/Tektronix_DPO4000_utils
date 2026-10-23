@@ -174,6 +174,10 @@ def evaluate(root: Path, *, commit: str) -> dict:
 
     def soak() -> list[str]:
         path = root / "soak"
+        if not (path / "soak_report.json").is_file():
+            raise FileNotFoundError(path / "soak_report.json")
+        if not (path / "soak_report.md").is_file():
+            raise FileNotFoundError(path / "soak_report.md")
         problems, digests = validate_soak_report(
             path, min_hours=24.0, expected_commit=commit
         )
