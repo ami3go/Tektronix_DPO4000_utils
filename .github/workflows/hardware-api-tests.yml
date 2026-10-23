@@ -20,6 +20,16 @@ on:
           - reversible
           - full
         default: read-only
+      authorized_reversible:
+        description: "Bench owner explicitly authorizes reversible instrument writes"
+        type: boolean
+        required: true
+        default: false
+      authorized_disruptive:
+        description: "Separate physical bench approval for full/disruptive profile"
+        type: boolean
+        required: true
+        default: false
       test_channel:
         description: "Analog channel used by qualification checks"
         required: true
@@ -69,6 +79,26 @@ jobs:
       DPO4000_WAVEFORM_POINTS: ${{ inputs.waveform_points }}
 
     steps:
+      - name: Verify profile-specific bench authorization
+        shell: bash
+        env:
+          PROFILE: ${{ inputs.profile }}
+          REVERSIBLE: ${{ inputs.authorized_reversible }}
+          DISRUPTIVE: ${{ inputs.authorized_disruptive }}
+          REF_OVERWRITE: ${{ inputs.allow_reference_overwrite }}
+        run: |
+          if [[ "$PROFILE" != "read-only" && "$REVERSIBLE" != "true" ]]; then
+            echo "::error::Reversible configuration writes require explicit authorization."
+            exit 1
+          fi
+          if [[ "$PROFILE" == "full" && "$DISRUPTIVE" != "true" ]]; then
+            echo "::error::Full/disruptive profile requires a separate authorization."
+            exit 1
+          fi
+          if [[ "$REF_OVERWRITE" == "true" && "$PROFILE" != "full" ]]; then
+            echo "::error::REF overwrite requires separately authorized full profile."
+            exit 1
+          fi
       - name: Check out repository
         uses: actions/checkout@v7
 
