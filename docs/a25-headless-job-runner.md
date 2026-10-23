@@ -1,6 +1,6 @@
 # A25 Headless Job Runner
 
-Status: **implemented and merged to `main`**
+Status: **A25 baseline on `main`; headless safety hardening pending draft PR verification**
 
 A25 exposes the existing A15/A16/A21 stack as a non-Qt command-line job runner suitable for Linux, CI, lab automation, and unattended execution.
 
@@ -14,7 +14,20 @@ dpo4000-job \
   --report result.json
 ```
 
-`DPO4000_RESOURCE` may supply the resource when `--resource` is omitted.
+The command is installed by `python -m pip install -e .[dev]`, without PySide6.
+No GUI or Qt application is created, and A25 never sends arbitrary user-authored SCPI.
+
+Precedence for each supported environment setting is **CLI > environment > default**:
+
+| CLI flag | Environment variable | Default |
+|---|---|---|
+| `--resource` | `DPO4000_RESOURCE` | none (mandatory for execution) |
+| `--expect-idn` | `DPO4000_EXPECT_IDN` | none |
+| `--timeout-ms` | `DPO4000_TIMEOUT_MS` | 20000 ms |
+
+An explicitly supplied CLI value overrides a malformed environment value.
+Malformed `DPO4000_TIMEOUT_MS` is a validation error (exit 2) when used.
+The allowed timeout range is 1..600000 ms.
 
 Validation without VISA:
 
@@ -43,13 +56,17 @@ Recipe and rule files:
 
 - must be UTF-8 JSON objects;
 - are limited to 10 MB each;
-- reject duplicate JSON keys;
+- reject duplicate JSON keys, invalid UTF-8 and nonstandard `NaN`/`Infinity` literals;
+- bound bytes read (including files changed concurrently) rather than relying on `stat()`;
+- reject report/export paths that overlap input files or each other;
 - use the existing A15/A16 versioned schemas;
 - are fully loaded and preflighted before instrument I/O.
 
 The runner refuses an execution job without a VISA resource. `--validate-only` is the only mode where a resource is optional.
 
-Timeout range: 1..600000 ms.
+Output file collisions and invalid or incomplete export options are rejected
+before the first VISA session opens. No `eval`, arbitrary private methods,
+raw SCPI, shell execution or dynamic imports are exposed by A25.
 
 ## Exit codes
 
@@ -64,7 +81,14 @@ Timeout range: 1..600000 ms.
 | 7 | requested A21 export failed |
 | 130 | cancelled / Ctrl-C |
 
-This separation is intended for shell scripts and CI systems that must distinguish DUT failure from an infrastructure/validation error.
+Machine report status vocabulary: `pass`, `completed` (recipe without rules),
+`validated` (validation-only), `validation_error`, `runtime_error`,
+`recipe_failed`, `rule_failed`, `rule_invalid`, `export_error`, `cancelled`.
+A16's `PASS`/`FAIL`/`INVALID` decision is separately captured in `rule_result.status`.
+
+The classification separates DUT limit failures from infrastructure errors.
+An explicit report-write failure returns code 3 even if evaluation previously
+succeeded or failed; it does not leave a partially replaced destination.
 
 ## Identity gate
 
@@ -100,6 +124,12 @@ Options:
 - `--export-points N`
 - `--export-compressed`
 
+Any format, point count, or compression option without `--export` is rejected.
+Unsupported output extensions without `--export-format` are rejected before VISA.
+Scientific export errors use code 7; A21 owns the serializer and atomic data output.
+An export error after rule evaluation takes precedence over the rule outcome
+because the requested job output is incomplete.
+
 The export metadata includes scope identity, recipe name, and A16 result when rules are active.
 
 ## Result report
@@ -112,7 +142,12 @@ Report schema identifier:
 dpo4000-headless-job
 ```
 
-Schema version: `1`.
+Schema version: `1` (keys `version` and backwards-compatible `schema_version`).
+
+The output uses a same-directory temporary file, flush, `fsync`,
+and atomic `os.replace`, cleaning the temporary file when replacement fails.
+Numerically non-finite step values are serialized as strings, never invalid
+JSON `NaN`/`Infinity` tokens.
 
 The report includes:
 
@@ -135,6 +170,11 @@ First `SIGINT` requests cooperative cancellation through the active `RecipeSeque
 A second `SIGINT` raises `KeyboardInterrupt` so an operator can force termination if the backend itself is stuck outside the expected timeout contract.
 
 Cancellation exits with code 130. Session cleanup still runs through `scope_session()`.
+Cancelling while a driver operation is active prevents later recipe calls after
+that operation returns. A given `HeadlessJobRunner` permits only one active
+job; a simultaneous `run()` returns code 3 without opening a second session.
+A cancelled runner instance remains cancelled: construct a new instance to
+start a fresh job.
 
 ## Performance qualification
 
@@ -144,7 +184,11 @@ Cancellation exits with code 130. Session cleanup still runs through `scope_sess
 - complete headless job duration;
 - direct A15 sequencer duration;
 - headless orchestration overhead;
-- steps/second.
+- steps/second;
+- median/p95 validation, total fake-job, direct A15, and atomic report-write latency.
+
+Run `python scripts/benchmark_a25_job_runner.py --steps 1,100,1000 --repetitions 5 --output a25-benchmark.json`.
+Numbers from hosted CI are smoke measurements, not physical instrument timing.
 
 Shared-runner numbers are smoke evidence only. Controlled qualification must additionally measure the regression-plan requirements:
 
@@ -168,6 +212,32 @@ The focused DPO4054 test is read-only:
 6. close the session.
 
 No trigger/acquisition configuration write permission is required.
+A dedicated opt-in workflow `.github/workflows/a25-headless-hil.yml`
+runs on `[self-hosted, dpo4000]`, uses an installed CLI, validates the report,
+runs the API test, performs a subsequent read-only identity query to prove
+release of the session, and uploads benchmark/report/JUnit artifacts.
+**Hardware qualification is PENDING until that workflow actually runs successfully.**
+
+## Unattended systemd example
+
+Use an account with appropriately restricted VISA and output-path permissions.
+The scope configuration is not changed by the service itself; recipe calls may
+change instrument state, so use only reviewed recipes.
+
+```ini
+[Unit]
+Description=DPO4000 read-only test
+After=network-online.target
+
+[Service]
+Type=oneshot
+Environment=DPO4000_RESOURCE=TCPIP0::192.168.0.5::INSTR
+Environment=DPO4000_EXPECT_IDN=TEKTRONIX,DPO4054
+ExecStart=/opt/dpo4000-venv/bin/dpo4000-job --recipe /opt/jobs/holdoff.json --rules /opt/jobs/holdoff-rules.json --report /var/lib/dpo4000/last-run.json
+```
+
+For CI/Robot Framework, classify the process exit code rather than parsing stdout.
+A read-only validation preflight can run before physical HIL without VISA access.
 
 ## Definition of done
 
