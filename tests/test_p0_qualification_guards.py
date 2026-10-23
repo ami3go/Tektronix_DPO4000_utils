@@ -40,6 +40,7 @@ def _soak_args() -> argparse.Namespace:
         max_rss_growth_mib=256.0, max_python_growth_mib=64.0,
         max_fd_growth=8, max_thread_growth=4,
         max_cycle_latency_s=60.0, max_latency_drift_factor=3.0,
+        max_missed_deadlines=10,
     )
 
 
