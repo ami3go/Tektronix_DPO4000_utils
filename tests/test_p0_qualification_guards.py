@@ -2,21 +2,35 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 from pathlib import Path
+import sys
 
 import pytest
 
-from scripts.validate_soak_report import validate_soak_report
 
-from scripts.capture_r0_baseline import _write_new_baseline
-from scripts.compare_r0_baseline import _identity_differences
-from scripts.run_hardware_soak import (
-    SoakSample,
-    _acquire_lock,
-    _lock_path,
-    _write_report,
-)
+def _load_script(name: str):
+    """Load an uninstalled script without relying on checkout sys.path."""
+    path = Path(__file__).resolve().parents[1] / "scripts" / f"{name}.py"
+    spec = importlib.util.spec_from_file_location(f"p0_test_{name}", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+baseline_script = _load_script("capture_r0_baseline")
+comparison_script = _load_script("compare_r0_baseline")
+soak_script = _load_script("run_hardware_soak")
+validator_script = _load_script("validate_soak_report")
+_write_new_baseline = baseline_script._write_new_baseline
+_identity_differences = comparison_script._identity_differences
+SoakSample = soak_script.SoakSample
+_acquire_lock = soak_script._acquire_lock
+_write_report = soak_script._write_report
+validate_soak_report = validator_script.validate_soak_report
 
 
 def _soak_args() -> argparse.Namespace:
@@ -67,7 +81,7 @@ def test_r0_transport_and_instrument_identity_fail_closed(
 
 
 def test_soak_resource_lock_prevents_concurrent_runner(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setattr("scripts.run_hardware_soak._lock_path", lambda _r: tmp_path / "scope.lock")
+    monkeypatch.setattr(soak_script, "_lock_path", lambda _r: tmp_path / "scope.lock")
     lock = _acquire_lock("USB0::SCOPE::INSTR")
     try:
         with pytest.raises(FileExistsError):
