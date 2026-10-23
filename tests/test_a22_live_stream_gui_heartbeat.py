@@ -1,7 +1,6 @@
 """10-second offscreen Qt heartbeat while A22 synthetic worker acquisition is active."""
 from __future__ import annotations
 
-import statistics
 import time
 from array import array
 from concurrent.futures import ThreadPoolExecutor
