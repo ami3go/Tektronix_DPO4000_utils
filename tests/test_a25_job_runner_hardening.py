@@ -123,7 +123,7 @@ def test_json_parser_accepts_literal_escaped_backslash(tmp_path: Path) -> None:
     # A literal backslash followed by "ud800" is valid JSON Unicode text.
     path = tmp_path / "valid-escape.json"
     path.write_bytes(b'{"x":"\\\\ud800"}')
-    assert load_json_mapping(path, label="recipe") == {"x": r"\\ud800"}
+    assert load_json_mapping(path, label="recipe") == {"x": r"\ud800"}
 
 
 def test_bounded_loader_rejects_oversize_even_without_stat(tmp_path: Path) -> None:
