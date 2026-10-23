@@ -238,6 +238,7 @@ def _json_safe(value: Any) -> Any:
 def job_result_to_mapping(result: JobResult) -> dict[str, Any]:
     return {
         "schema": "dpo4000-headless-job",
+        "version": 1,
         "schema_version": 1,
         "exit_code": int(result.exit_code),
         "status": result.status,
@@ -384,6 +385,16 @@ class HeadlessJobRunner:
         try:
             recipe, rules = load_job_inputs(config)
             self._preflight(recipe, config)
+            if self._cancel_requested.is_set():
+                return self._result(
+                    started_at=started_at,
+                    started_perf=started_perf,
+                    config=config,
+                    exit_code=JobExitCode.CANCELLED,
+                    status="cancelled",
+                    message="Job cancelled during validation",
+                    recipe_name=recipe.name,
+                )
             if config.validate_only:
                 return self._result(
                     started_at=started_at,
@@ -625,12 +636,20 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--resource",
         default=os.getenv("DPO4000_RESOURCE"),
-        help="VISA resource (or DPO4000_RESOURCE environment variable)",
+        help="VISA resource (CLI > DPO4000_RESOURCE > no default)",
     )
     parser.add_argument("--report", type=Path, help="atomic JSON result report path")
     parser.add_argument("--validate-only", action="store_true", help="validate without opening VISA")
-    parser.add_argument("--timeout-ms", type=int, default=DEFAULT_JOB_TIMEOUT_MS)
-    parser.add_argument("--expect-idn", help="required case-insensitive substring of *IDN?")
+    parser.add_argument(
+        "--timeout-ms",
+        type=int,
+        default=None,
+        help="VISA timeout in ms (CLI > DPO4000_TIMEOUT_MS > 20000; range 1..600000)",
+    )
+    parser.add_argument(
+        "--expect-idn",
+        help="required case-insensitive *IDN? substring (CLI > DPO4000_EXPECT_IDN)",
+    )
     parser.add_argument("--export", dest="scientific_export_path", type=Path)
     parser.add_argument("--export-format", choices=("npz", "dpoz"))
     parser.add_argument("--export-points", type=int, dest="scientific_points")
@@ -643,21 +662,58 @@ def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
     try:
+        timeout_ms = args.timeout_ms
+        if timeout_ms is None:
+            timeout_env = os.getenv("DPO4000_TIMEOUT_MS")
+            if timeout_env is None:
+                timeout_ms = DEFAULT_JOB_TIMEOUT_MS
+            else:
+                try:
+                    timeout_ms = int(timeout_env)
+                except ValueError as exc:
+                    raise JobValidationError(
+                        "DPO4000_TIMEOUT_MS must be a decimal integer"
+                    ) from exc
+        expect_idn = (
+            args.expect_idn
+            if args.expect_idn is not None
+            else os.getenv("DPO4000_EXPECT_IDN")
+        )
         config = JobConfig(
             recipe_path=args.recipe,
             resource=args.resource,
             rules_path=args.rules,
             report_path=args.report,
             validate_only=args.validate_only,
-            timeout_ms=args.timeout_ms,
-            expect_idn=args.expect_idn,
+            timeout_ms=timeout_ms,
+            expect_idn=expect_idn,
             scientific_export_path=args.scientific_export_path,
             scientific_format=args.export_format,
             scientific_points=args.scientific_points,
             scientific_compressed=args.scientific_compressed,
         )
     except (JobValidationError, ScientificExportError) as exc:
-        parser.error(str(exc))
+        now = datetime.now(timezone.utc)
+        invalid = JobResult(
+            exit_code=JobExitCode.VALIDATION_ERROR,
+            status="validation_error",
+            message=str(exc),
+            started_at=now,
+            finished_at=now,
+            duration_s=0.0,
+            resource=args.resource,
+            validation_only=args.validate_only,
+        )
+        if args.report is not None:
+            try:
+                write_job_report(args.report, invalid)
+            except OSError as report_exc:
+                if not args.quiet:
+                    print(f"Could not write report: {report_exc}", file=sys.stderr)
+                return int(JobExitCode.RUNTIME_ERROR)
+        if not args.quiet:
+            print(json.dumps(job_result_to_mapping(invalid), sort_keys=True))
+        return int(JobExitCode.VALIDATION_ERROR)
 
     runner = HeadlessJobRunner()
     interrupt_count = 0
@@ -685,8 +741,9 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as exc:
             if not args.quiet:
                 print(f"Could not write report: {exc}", file=sys.stderr)
-            if result.exit_code is JobExitCode.SUCCESS:
-                return int(JobExitCode.RUNTIME_ERROR)
+            # An explicitly requested report is part of the job contract.
+            # Its failure must not masquerade as a DUT PASS/FAIL.
+            return int(JobExitCode.RUNTIME_ERROR)
 
     if not args.quiet:
         print(json.dumps(job_result_to_mapping(result), sort_keys=True))
