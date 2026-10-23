@@ -260,7 +260,7 @@ def main() -> int:
         "status": result["overall"], "gates": result["gates"],
     })
     lines = ["# DPO4054 P0 release qualification", "",
-             f"Commit: \`{result['commit_sha']}\`", "",
+             f"Commit: `{result['commit_sha']}`", "",
              f"Overall: **{result['overall']}**", ""]
     for name, gate in result["gates"].items():
         lines.append(f"## {name}: {gate['state']}")
