@@ -208,3 +208,44 @@ Before merging/publishing stable v0.9.0, inspect retained outputs from the
 setup restoration evidence and obtain independent qualified engineering
 review. Never infer a hardware PASS from an offline unit test, released
 package, PR description or successful action without an actual scope.
+
+
+## Offline final release manifest
+
+After all independently captured artifacts have been deposited under the
+same exact-commit `qualification_reports/` root, run:
+
+```bash
+python scripts/evaluate_p0_release.py \
+  --root qualification_reports \
+  --expected-commit "$(git rev-parse HEAD)"
+```
+
+This deterministic, **offline/no-VISA** validator writes
+`qualification_reports/manifest.json`, `summary.json`, and `summary.md`
+with per-gate PASS/FAIL/BLOCKED, evidence SHA-256 digests and a nonzero exit
+for incomplete qualification. Missing evidence is **BLOCKED**, not PASS.
+The input manifest contract requires:
+
+- `software/ci.json`: schema version 1, exact commit, each Python 3.10–3.13,
+  Ruff, PySide6, CodeQL, and Windows/Linux packaging job PASS plus run URLs.
+- `hardware/qualification.json`: schema version 1, exact commit, actual
+  DPO4054 IDN, independently verified setup restoration and a `cases` array
+  mapping each required feature family to its measured supporting artifact.
+  A hardware SKIP must have capability-absent evidence and an explicit reason.
+- `performance/{usb,tcpip}/baseline/r0_{functional,timing}_baseline.json`:
+  immutable, separately approved real-device R0 references. Each candidate
+  folder has a `comparison_report.json` and raw
+  `r0_candidate_{functional,timing}.json` with matching SHA-256.
+- `soak/soak_report.{json,md}`: one uninterrupted continuous 24-hour
+  physical run, validated with the separate soak validator.
+- `a25/qualification.json`, `hardware-cli-report.json` and
+  `hardware-junit.xml`: installed CLI and second-session evidence from
+  the dedicated authorized workflow, plus independent review status.
+- `review.json`: exact combined candidate commit, named reviewer,
+  `status=APPROVED`, `critical_open=0`, `high_open=0`.
+
+This tool validates **integrity, structure, gate completeness and traceability**.
+It cannot independently attest that a scope, measurement, signature or approval
+is authentic. Human bench evidence review and independent engineering signoff
+are mandatory. Do not fabricate these input files to obtain a PASS.
