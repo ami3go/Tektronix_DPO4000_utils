@@ -136,14 +136,20 @@ def validate_soak_report(
         reasons.append("Missing or negative missed-deadline count")
     if not _finite_nonnegative(interval) or interval == 0:
         reasons.append("Invalid scheduled interval")
-    elif type(expected_cycles) is not int or expected_cycles != math.ceil(
-        duration * 3600.0 / interval
-    ) if _finite_nonnegative(duration) else True:
-        reasons.append("Inconsistent expected cycle count")
+    elif _finite_nonnegative(duration):
+        if type(expected_cycles) is not int or expected_cycles != math.ceil(
+            duration * 3600.0 / interval
+        ):
+            reasons.append("Inconsistent expected cycle count")
     limits = summary.get("acceptance_limits")
     if not isinstance(limits, dict):
         reasons.append("Acceptance limits not retained")
     else:
+        max_missed = limits.get("max_missed_deadlines")
+        if not _finite_nonnegative(max_missed) or (
+            type(missed) is int and missed > max_missed
+        ):
+            reasons.append("Missed periodic deadlines exceed retained limit")
         if not _finite_nonnegative(limits.get("max_failures")) or (
             len(failures) > limits.get("max_failures", -1)
         ):
