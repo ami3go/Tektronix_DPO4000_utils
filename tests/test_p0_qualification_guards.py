@@ -150,3 +150,25 @@ def test_soak_validator_rejects_truncated_evidence(tmp_path: Path) -> None:
                                                 encoding="utf-8")
     problems, _ = validate_soak_report(tmp_path)
     assert any("Invalid JSON" in p for p in problems)
+
+
+
+def test_release_gate_manifest_missing_evidence_is_blocked(tmp_path: Path) -> None:
+    """The release evaluator must emit an auditable non-PASS manifest offline."""
+    import subprocess
+
+    script = Path(__file__).resolve().parents[1] / "scripts/evaluate_p0_release.py"
+    checkout = Path(__file__).resolve().parents[1]
+    command = [
+        sys.executable, str(script), "--root", str(tmp_path),
+        "--expected-commit", "a" * 40,
+    ]
+    completed = subprocess.run(
+        command, cwd=checkout, capture_output=True, text=True, timeout=15, check=False,
+    )
+    assert completed.returncode != 0, completed.stdout + completed.stderr
+    result = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))
+    assert result["overall"] == "BLOCKED"
+    assert all(gate["state"] != "PASS" for gate in result["gates"].values())
+    assert (tmp_path / "summary.md").exists()
+    assert (tmp_path / "summary.json").exists()
