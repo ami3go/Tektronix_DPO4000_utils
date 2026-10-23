@@ -74,6 +74,7 @@ Then reversible:
 python scripts/run_hardware_verification.py \
   --resource 'USB0::0x0699::0x0401::C011280::INSTR' \
   --profile reversible \
+  --authorize-reversible-writes \
   --test-channel 1 \
   --waveform-points 1000
 ```
@@ -84,6 +85,8 @@ Finally, only when disruptive behavior is acceptable:
 python scripts/run_hardware_verification.py \
   --resource 'USB0::0x0699::0x0401::C011280::INSTR' \
   --profile full \
+  --authorize-reversible-writes \
+  --authorize-disruptive-tests \
   --test-channel 1 \
   --waveform-points 1000
 ```
@@ -94,6 +97,8 @@ To qualify a disposable REF4 as well:
 python scripts/run_hardware_verification.py \
   --resource 'USB0::0x0699::0x0401::C011280::INSTR' \
   --profile full \
+  --authorize-reversible-writes \
+  --authorize-disruptive-tests \
   --allow-reference-overwrite \
   --reference-destination 4
 ```
@@ -160,3 +165,17 @@ Exit codes for the API verifier remain:
 - `.github/workflows/hardware-soak.yml` runs long-duration soak qualification manually.
 
 Both require a self-hosted machine with the physical scope/VISA stack. GitHub-hosted runners cannot establish this evidence.
+
+## P0 authorization and evidence (v0.9 release gate)
+
+The direct verifier and manual workflow now enforce explicit authorization
+flags for write-capable profiles:
+
+- `--authorize-reversible-writes` for `reversible` or `full`;
+- `--authorize-disruptive-tests` as an additional approval for `full`;
+- `--reference-destination N` has **no implicit default** when REF overwrite
+  is requested; an explicitly disposable REF slot must be nominated.
+
+Do not infer physical qualification from hosted CI. For the complete
+transport-separated performance and 24-hour soak runbook, see
+`docs/p0-qualification-runbook.md`.
