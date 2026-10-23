@@ -11,13 +11,19 @@ from __future__ import annotations
 
 import argparse
 import ctypes
+import hashlib
 import json
+import math
 import os
 import platform
+import signal
+import statistics
+import subprocess
 import sys
 import threading
 import time
 import tracemalloc
+from tempfile import NamedTemporaryFile
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -139,6 +145,58 @@ def _safe_disconnect(scope: DPO4054 | None) -> str | None:
     return None
 
 
+def _git_commit() -> str | None:
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True, text=True, check=True, timeout=3,
+        )
+        return result.stdout.strip() or None
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def _write_atomic_text(destination: Path, content: str) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with NamedTemporaryFile(
+        mode="w", encoding="utf-8", dir=destination.parent,
+        prefix=f".{destination.name}.", suffix=".tmp", delete=False,
+    ) as handle:
+        temp_path = Path(handle.name)
+        try:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        except BaseException:
+            temp_path.unlink(missing_ok=True)
+            raise
+    try:
+        os.replace(temp_path, destination)
+    finally:
+        temp_path.unlink(missing_ok=True)
+
+
+def _lock_path(resource: str) -> Path:
+    # Lock across output directories and processes on the same physical host.
+    import tempfile
+    digest = hashlib.sha256(resource.encode("utf-8")).hexdigest()[:24]
+    return Path(tempfile.gettempdir()) / f"dpo4000-soak-{digest}.lock"
+
+
+def _acquire_lock(resource: str) -> Path:
+    path = _lock_path(resource)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(f"pid={os.getpid()} resource={resource} started={_utc_now()}\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+    except BaseException:
+        path.unlink(missing_ok=True)
+        raise
+    return path
+
+
 def _mib(value: int | None) -> str:
     return "n/a" if value is None else f"{value / (1024 * 1024):.2f}"
 
@@ -155,19 +213,45 @@ def _write_report(
     elapsed_s: float,
     passed: bool,
     reasons: list[str],
+    status: str | None = None,
+    baseline_identity: str | None = None,
+    final_identity: str | None = None,
+    run_state: str = "FINAL",
 ) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     rss_values = [sample.rss_bytes for sample in samples if sample.rss_bytes is not None]
     py_values = [sample.python_current_bytes for sample in samples]
     fd_values = [sample.fd_count for sample in samples if sample.fd_count is not None]
+    latencies = sorted(sample.cycle_duration_s for sample in samples)
+    def percentile(q: float) -> float | None:
+        if not latencies:
+            return None
+        position = (len(latencies) - 1) * q
+        low = int(position)
+        high = min(low + 1, len(latencies) - 1)
+        return latencies[low] + (latencies[high] - latencies[low]) * (position - low)
+
     summary = {
-        "status": "PASS" if passed else "FAIL",
+        "schema_version": 2,
+        "run_state": run_state,
+        "status": status or ("PASS" if passed else "FAIL"),
         "started_at": started_at,
         "finished_at": _utc_now(),
         "elapsed_s": elapsed_s,
         "requested_duration_hours": args.duration_hours,
         "interval_seconds": args.interval_seconds,
         "resource": args.resource,
+        "baseline_identity": baseline_identity,
+        "final_identity": final_identity,
+        "commit_sha": os.environ.get("GITHUB_SHA") or _git_commit(),
+        "cycle_latency_p50_s": percentile(0.50),
+        "cycle_latency_p95_s": percentile(0.95),
+        "cycle_latency_p99_s": percentile(0.99) if len(samples) >= 100 else None,
+        "cycle_latency_max_s": max(latencies) if latencies else None,
+        "thread_start": samples[0].thread_count if samples else None,
+        "thread_end": samples[-1].thread_count if samples else None,
+        "thread_peak": max((sample.thread_count for sample in samples), default=None),
+        "fd_peak": max((sample.fd_count for sample in samples if sample.fd_count is not None), default=None),
         "cycles": len(samples) + len(failures),
         "successful_samples": len(samples),
         "failures": len(failures),
@@ -190,9 +274,9 @@ def _write_report(
         "samples": [asdict(sample) for sample in samples],
         "failures": [asdict(failure) for failure in failures],
     }
-    (output_dir / "soak_report.json").write_text(
-        json.dumps(payload, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
+    _write_atomic_text(
+        output_dir / "soak_report.json",
+        json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n",
     )
 
     lines = [
@@ -229,7 +313,7 @@ def _write_report(
     if cleanup_errors:
         lines.extend(["", "## Cleanup diagnostics", ""])
         lines.extend(f"- {error}" for error in cleanup_errors)
-    (output_dir / "soak_report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    _write_atomic_text(output_dir / "soak_report.md", "\n".join(lines) + "\n")
 
 
 def parse_args() -> argparse.Namespace:
@@ -242,6 +326,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-rss-growth-mib", type=float, default=256.0)
     parser.add_argument("--max-python-growth-mib", type=float, default=64.0)
     parser.add_argument("--max-fd-growth", type=int, default=8)
+    parser.add_argument("--max-thread-growth", type=int, default=4)
+    parser.add_argument("--checkpoint-seconds", type=float, default=60.0)
+    parser.add_argument("--max-cycle-latency-s", type=float, default=60.0)
+    parser.add_argument("--max-latency-drift-factor", type=float, default=3.0)
     parser.add_argument(
         "--output-dir",
         type=Path,
