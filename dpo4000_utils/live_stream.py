@@ -228,6 +228,12 @@ class LiveStreamEngine:
         self._pending = None
         self._sequence = 0
         self._started_at = self._clock()
+        # Per-run counters reset even if a stopped prior generation still owns
+        # the physical transfer; its eventual callback cannot count here.
+        self._acquired = self._rendered = self._replaced = 0
+        self._skipped = self._errors = self._samples = self._bytes = 0
+        self._latencies.clear()
+        self._latest_acquisition = 0.0
         self.last_error = None
         return self.generation
 
