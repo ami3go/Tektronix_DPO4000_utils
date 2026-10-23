@@ -138,6 +138,27 @@ def test_invalid_recipe_never_opens_session(tmp_path: Path, method: str) -> None
     assert (recorder.opened, recorder.closed) == (0, 0)
 
 
+def test_report_cannot_overwrite_recipe_or_rules(tmp_path: Path) -> None:
+    recipe = _recipe(tmp_path)
+    with pytest.raises(JobValidationError, match="must not replace"):
+        JobConfig(recipe_path=recipe, resource="FAKE::INSTR", report_path=recipe)
+    with pytest.raises(JobValidationError, match="must not replace"):
+        JobConfig(
+            recipe_path=recipe, resource="FAKE::INSTR",
+            scientific_export_path=recipe, scientific_format="dpoz",
+        )
+
+
+def test_report_and_export_must_not_share_destination(tmp_path: Path) -> None:
+    recipe = _recipe(tmp_path)
+    export = tmp_path / "output.dpoz"
+    with pytest.raises(JobValidationError, match="distinct"):
+        JobConfig(
+            recipe_path=recipe, resource="FAKE::INSTR",
+            report_path=export, scientific_export_path=export,
+        )
+
+
 def test_invalid_export_suffix_never_opens_session(tmp_path: Path) -> None:
     recorder = Recorder()
     with pytest.raises(JobValidationError):
