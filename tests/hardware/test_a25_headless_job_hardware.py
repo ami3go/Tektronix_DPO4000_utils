@@ -15,6 +15,8 @@ from dpo4000_utils.job_runner import (
     write_job_report,
 )
 
+from dpo4000_utils.session import scope_session
+
 _TRUE_VALUES = {"1", "true", "yes", "on"}
 
 
@@ -90,3 +92,14 @@ def test_a25_read_only_recipe_rule_and_report(tmp_path: Path) -> None:
     assert payload["schema"] == "dpo4000-headless-job"
     assert payload["exit_code"] == 0
     assert payload["status"] == "pass"
+
+    # Independently prove that A25 released the VISA resource. Reopen only to
+    # issue a read-only identity query; no scope configuration is modified.
+    with scope_session(
+        resource,
+        timeout_ms=int(os.getenv("DPO4000_TIMEOUT_MS", "20000")),
+    ) as scope:
+        followup_idn = scope.query_identity()
+    assert os.getenv("DPO4000_EXPECT_IDN", "TEKTRONIX,DPO4054").lower() in (
+        followup_idn.lower()
+    )
