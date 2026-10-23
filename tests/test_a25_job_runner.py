@@ -185,7 +185,7 @@ def test_completed_recipe_returns_success_and_closes_session(tmp_path: Path) -> 
     ("operator", "limit", "exit_code", "status"),
     [
         (">=", 4.9, JobExitCode.SUCCESS, "pass"),
-        (">", 5.1, JobExitCode.RULE_FAILED, "fail"),
+        (">", 5.1, JobExitCode.RULE_FAILED, "rule_failed"),
     ],
 )
 def test_rule_status_maps_to_stable_exit_codes(
@@ -229,7 +229,7 @@ def test_missing_rule_input_returns_invalid_exit_code(tmp_path: Path) -> None:
         JobConfig(recipe_path=recipe, rules_path=rules, resource="FAKE::INSTR")
     )
     assert result.exit_code is JobExitCode.RULE_INVALID
-    assert result.status == "invalid"
+    assert result.status == "rule_invalid"
 
 
 def test_recipe_failure_has_distinct_exit_code(tmp_path: Path) -> None:
