@@ -12,6 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..milestone_a_window import QtScopeWindow as MilestoneAFeatureWindow
+from .pages.live_waveform import attach_live_waveform_panel
 from .pages import (
     attach_measurement_trend_panel,
     attach_scientific_export_panel,
@@ -24,6 +25,31 @@ from .pages import (
 class ComposedFeatureSurface(MilestoneAFeatureWindow):
     """Compatibility surface whose migrated pages are owned by composition."""
 
+    def _run_action(
+        self, description, callback, *, on_success=None, on_error=None,
+        retain_session: bool = False,
+    ):
+        # Centralized instrument lease: A22 permits only its own worker reads.
+        # Local pure-data operations do not call this gateway and remain available.
+        if getattr(self, "_composition_live_lease", False) and not str(
+            description
+        ).startswith("A22 live waveform snapshot"):
+            error = RuntimeError("A22 owns the instrument; Stop live streaming first")
+            self.statusBar().showMessage(str(error))
+            if on_error is not None:
+                on_error(error)
+            return None
+        return super()._run_action(
+            description, callback, on_success=on_success,
+            on_error=on_error, retain_session=retain_session,
+        )
+
+    def closeEvent(self, event):  # noqa: N802 - Qt convention.
+        panel = getattr(self, "_composition_live_stream_panel", None)
+        if panel is not None:
+            panel.shutdown()  # Stop scheduling before serialized session shutdown.
+        super().closeEvent(event)
+
     def _build_connection_tab(self):
         """Use the native composed Connection page in the production surface."""
         return build_connection_page(self)
@@ -31,7 +57,7 @@ class ComposedFeatureSurface(MilestoneAFeatureWindow):
     def _build_measurement_tab(self):
         """Preserve measurement management and attach the composed A20 dashboard."""
         page = super()._build_measurement_tab()
-        return attach_measurement_trend_panel(self, page)
+        return attach_live_waveform_panel(self, attach_measurement_trend_panel(self, page))
 
     def _build_trigger_tab(self):
         """Use the native composed A14 Advanced Trigger page."""
