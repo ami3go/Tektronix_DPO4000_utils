@@ -18,7 +18,6 @@ from dpo4000_utils.baseline_compare import (
     diff_functional,
     diff_timing,
     load_thresholds,
-    regression_exit_code,
 )
 
 
@@ -105,6 +104,39 @@ def _capture_candidate_live(args: argparse.Namespace, output_dir: Path) -> tuple
     return functional, timing
 
 
+def _resource_family(document: dict) -> str:
+    resource = str(document.get("resource") or "")
+    return resource.split("::", 1)[0].upper()
+
+
+def _identity_differences(
+    baseline_functional: dict,
+    baseline_timing: dict,
+    candidate_functional: dict,
+    candidate_timing: dict,
+) -> list[str]:
+    """Reject cross-transport/cross-instrument baseline comparisons."""
+    issues: list[str] = []
+    documents = {
+        "baseline functional": baseline_functional,
+        "baseline timing": baseline_timing,
+        "candidate functional": candidate_functional,
+        "candidate timing": candidate_timing,
+    }
+    transports = {name: _resource_family(doc) for name, doc in documents.items()}
+    if not all(value and (value.startswith("USB") or value.startswith("TCPIP"))
+               for value in transports.values()):
+        issues.append(f"Missing or unsupported VISA transport metadata: {transports}")
+    elif len(set(transports.values())) != 1:
+        issues.append(f"Transport mismatch: {transports}")
+    idns = {name: doc.get("idn") for name, doc in documents.items()}
+    if not all(isinstance(value, str) and value.strip() for value in idns.values()):
+        issues.append(f"Missing scope identity: {idns}")
+    elif len(set(idns.values())) != 1:
+        issues.append(f"Scope identity mismatch: {idns}")
+    return issues
+
+
 def main() -> int:
     args = build_parser().parse_args()
     if args.candidate_functional and not args.candidate_timing:
@@ -139,6 +171,9 @@ def main() -> int:
             args.candidate_functional, args.candidate_timing
         )
 
+    identity_issues = _identity_differences(
+        baseline_functional, baseline_timing, candidate_functional, candidate_timing
+    )
     functional_diffs = diff_functional(baseline_functional, candidate_functional)
     timing_regressions, new_operations, missing_operations = diff_timing(
         baseline_timing.get("operations", {}),
@@ -148,6 +183,8 @@ def main() -> int:
     regressed = [r for r in timing_regressions if r.regressed]
 
     report = {
+        "status": "NOT_EVALUATED",
+        "identity_issues": identity_issues,
         "baseline_dir": str(args.baseline_dir),
         "thresholds_file": str(args.thresholds),
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -156,10 +193,20 @@ def main() -> int:
         "new_operations": new_operations,
         "missing_operations": missing_operations,
     }
+    exit_code = int(bool(
+        identity_issues or missing_operations or functional_diffs
+        or any(result.regressed for result in timing_regressions)
+    ))
+    report["status"] = "FAIL" if exit_code else "PASS"
+    report["failure_reasons"] = (
+        identity_issues
+        + ([f"Missing candidate timing operations: {missing_operations}"] if missing_operations else [])
+    )
     report_path = output_dir / "comparison_report.json"
     report_path.write_text(json.dumps(report, indent=2, sort_keys=True, default=str), encoding="utf-8")
 
     print("\nComparison summary")
+    print(f"  identity/transport issues: {identity_issues}")
     print(f"  functional diffs: {len(functional_diffs)}")
     for diff in functional_diffs:
         print(f"    [{diff.kind}] {diff.path}: baseline={diff.baseline!r} candidate={diff.candidate!r}")
@@ -174,10 +221,10 @@ def main() -> int:
     if new_operations:
         print(f"  new operations (candidate only, informational): {new_operations}")
     if missing_operations:
-        print(f"  missing operations (baseline only, informational): {missing_operations}")
+        print(f"  missing operations (FAIL): {missing_operations}")
     print(f"  report: {report_path}")
 
-    return regression_exit_code(functional_diffs, timing_regressions)
+    return exit_code
 
 
 if __name__ == "__main__":
