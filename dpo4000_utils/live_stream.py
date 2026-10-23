@@ -168,6 +168,8 @@ def capture_frame(
     end = clock()
     if not isinstance(waveform, WaveformData) or not waveform.sample_count:
         raise ValueError("Scope returned an empty or malformed WaveformData")
+    if waveform.sample_count > MAX_POINTS:
+        raise ValueError("Scope returned more than A22's 1,000,000-sample retention limit")
     if waveform.source != config.source:
         raise ValueError("Scope returned the wrong waveform source")
     render_start = clock()
