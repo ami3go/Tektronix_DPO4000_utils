@@ -113,6 +113,21 @@ def _resource_family(document: dict) -> str:
     return resource.split("::", 1)[0].upper()
 
 
+def _operation_names(operations: dict) -> set[str]:
+    names: set[str] = set()
+    for name, value in operations.items():
+        if name == "not_yet_covered":
+            continue
+        if name == "waveform_acquisition" and isinstance(value, dict):
+            names.update(
+                f"waveform_acquisition.{size}" for size, stats in value.items()
+                if isinstance(stats, dict) and "p95" in stats
+            )
+        elif isinstance(value, dict) and "p95" in value:
+            names.add(name)
+    return names
+
+
 def _identity_differences(
     baseline_functional: dict,
     baseline_timing: dict,
@@ -190,10 +205,24 @@ def main() -> int:
         thresholds,
     )
     regressed = [r for r in timing_regressions if r.regressed]
+    # Never report success for operations silently omitted by a threshold file.
+    baseline_ops = baseline_timing.get("operations", {})
+    candidate_ops = candidate_timing.get("operations", {})
+    compared_names = {entry.operation for entry in timing_regressions}
+    unthresholded_operations = sorted(
+        _operation_names(baseline_ops) & _operation_names(candidate_ops)
+        - compared_names
+    )
+    missing_coverage = sorted(
+        set(baseline_ops.get("not_yet_covered", []))
+        | set(candidate_ops.get("not_yet_covered", []))
+    )
 
     report = {
         "status": "NOT_EVALUATED",
         "identity_issues": identity_issues,
+        "unthresholded_operations": unthresholded_operations,
+        "known_coverage_gaps": missing_coverage,
         "baseline_dir": str(args.baseline_dir),
         "thresholds_file": str(args.thresholds),
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -204,18 +233,25 @@ def main() -> int:
     }
     exit_code = int(bool(
         identity_issues or missing_operations or functional_diffs
+        or unthresholded_operations or missing_coverage
         or any(result.regressed for result in timing_regressions)
     ))
     report["status"] = "FAIL" if exit_code else "PASS"
     report["failure_reasons"] = (
         identity_issues
         + ([f"Missing candidate timing operations: {missing_operations}"] if missing_operations else [])
+        + ([f"Unthresholded timing operations: {unthresholded_operations}"]
+           if unthresholded_operations else [])
+        + ([f"Unqualified timing coverage: {missing_coverage}"]
+           if missing_coverage else [])
     )
     report_path = output_dir / "comparison_report.json"
     report_path.write_text(json.dumps(report, indent=2, sort_keys=True, default=str), encoding="utf-8")
 
     print("\nComparison summary")
     print(f"  identity/transport issues: {identity_issues}")
+    print(f"  timing metrics lacking acceptance thresholds: {unthresholded_operations}")
+    print(f"  remaining coverage gaps: {missing_coverage}")
     print(f"  functional diffs: {len(functional_diffs)}")
     for diff in functional_diffs:
         print(f"    [{diff.kind}] {diff.path}: baseline={diff.baseline!r} candidate={diff.candidate!r}")
