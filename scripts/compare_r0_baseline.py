@@ -8,10 +8,13 @@ updating the baseline stays a separate, explicit scripts/capture_r0_baseline.py 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import os
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 
 from dpo4000_utils.baseline_capture import BaselineConfig, HardwareBaselineCapture, build_baseline_header
 from dpo4000_utils.baseline_compare import (
@@ -19,6 +22,27 @@ from dpo4000_utils.baseline_compare import (
     diff_timing,
     load_thresholds,
 )
+
+
+def _atomic_json(destination: Path, payload: dict) -> str:
+    """Durably publish raw observations/report and return SHA-256 of bytes."""
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    data = (json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n").encode("utf-8")
+    temp: Path | None = None
+    try:
+        with NamedTemporaryFile(
+            mode="wb", dir=destination.parent,
+            prefix=f".{destination.name}.", suffix=".tmp", delete=False,
+        ) as handle:
+            temp = Path(handle.name)
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp, destination)
+    finally:
+        if temp is not None:
+            temp.unlink(missing_ok=True)
+    return hashlib.sha256(data).hexdigest()
 
 
 def default_output_dir() -> Path:
@@ -171,6 +195,8 @@ def main() -> int:
         raise SystemExit("--capability-probe-timeout-ms must be positive")
 
     output_dir = args.output_dir or default_output_dir()
+    if output_dir.resolve() == args.baseline_dir.resolve():
+        raise SystemExit("Candidate output must not overwrite the approved baseline directory")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     baseline_functional = json.loads(
@@ -194,6 +220,13 @@ def main() -> int:
         candidate_functional, candidate_timing = _load_candidate_from_files(
             args.candidate_functional, args.candidate_timing
         )
+
+    # Retain the actual raw candidate R0-F/R0-T samples for independent audit
+    # before reducing them into comparisons. Never overwrite approved baselines.
+    functional_candidate_path = output_dir / "r0_candidate_functional.json"
+    timing_candidate_path = output_dir / "r0_candidate_timing.json"
+    functional_candidate_hash = _atomic_json(functional_candidate_path, candidate_functional)
+    timing_candidate_hash = _atomic_json(timing_candidate_path, candidate_timing)
 
     identity_issues = _identity_differences(
         baseline_functional, baseline_timing, candidate_functional, candidate_timing
@@ -220,6 +253,8 @@ def main() -> int:
 
     report = {
         "status": "NOT_EVALUATED",
+        "candidate_functional_sha256": functional_candidate_hash,
+        "candidate_timing_sha256": timing_candidate_hash,
         "identity_issues": identity_issues,
         "unthresholded_operations": unthresholded_operations,
         "known_coverage_gaps": missing_coverage,
@@ -246,7 +281,7 @@ def main() -> int:
            if missing_coverage else [])
     )
     report_path = output_dir / "comparison_report.json"
-    report_path.write_text(json.dumps(report, indent=2, sort_keys=True, default=str), encoding="utf-8")
+    _atomic_json(report_path, report)
 
     print("\nComparison summary")
     print(f"  identity/transport issues: {identity_issues}")
@@ -267,6 +302,8 @@ def main() -> int:
         print(f"  new operations (candidate only, informational): {new_operations}")
     if missing_operations:
         print(f"  missing operations (FAIL): {missing_operations}")
+    print(f"  raw candidate functional: {functional_candidate_path}")
+    print(f"  raw candidate timing: {timing_candidate_path}")
     print(f"  report: {report_path}")
 
     return exit_code
