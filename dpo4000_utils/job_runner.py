@@ -210,13 +210,36 @@ def load_json_mapping(path: str | Path, *, label: str) -> Mapping[str, Any]:
     def reject_constant(token: str) -> None:
         raise JobValidationError(f"non-standard JSON numeric constant: {token}")
 
+    def bounded_int(token: str) -> int:
+        if len(token) > 128:
+            raise JobValidationError("JSON integer literal is excessively long")
+        return int(token)
+
+    def finite_float(token: str) -> float:
+        number = float(token)
+        if not math.isfinite(number):
+            raise JobValidationError("JSON number is not finite")
+        return number
+
     try:
         value = json.loads(
             raw.decode("utf-8"),
             object_pairs_hook=_no_duplicate_object,
             parse_constant=reject_constant,
+            parse_int=bounded_int,
+            parse_float=finite_float,
         )
-    except (UnicodeDecodeError, json.JSONDecodeError, JobValidationError) as exc:
+        # Python's JSON parser accepts escaped lone UTF-16 surrogates. Do not
+        # allow ill-formed Unicode keys/values to reach the driver or report.
+        json.dumps(value, ensure_ascii=False).encode("utf-8")
+    except (
+        UnicodeDecodeError,
+        UnicodeEncodeError,
+        json.JSONDecodeError,
+        JobValidationError,
+        RecursionError,
+        ValueError,
+    ) as exc:
         raise JobValidationError(f"invalid {label} JSON: {exc}") from exc
     if not isinstance(value, Mapping):
         raise JobValidationError(f"{label} JSON must contain an object at the top level")
