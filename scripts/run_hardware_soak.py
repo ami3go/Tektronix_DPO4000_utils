@@ -217,6 +217,7 @@ def _write_report(
     baseline_identity: str | None = None,
     final_identity: str | None = None,
     run_state: str = "FINAL",
+    missed_deadlines: int = 0,
 ) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     rss_values = [sample.rss_bytes for sample in samples if sample.rss_bytes is not None]
@@ -240,6 +241,8 @@ def _write_report(
         "elapsed_s": elapsed_s,
         "requested_duration_hours": args.duration_hours,
         "interval_seconds": args.interval_seconds,
+        "expected_cycles": math.ceil(args.duration_hours * 3600.0 / args.interval_seconds),
+        "missed_deadlines": missed_deadlines,
         "resource": args.resource,
         "baseline_identity": baseline_identity,
         "final_identity": final_identity,
@@ -252,6 +255,7 @@ def _write_report(
             "max_thread_growth": args.max_thread_growth,
             "max_cycle_latency_s": args.max_cycle_latency_s,
             "max_latency_drift_factor": args.max_latency_drift_factor,
+            "max_missed_deadlines": args.max_missed_deadlines,
         },
         "cycle_latency_p50_s": percentile(0.50),
         "cycle_latency_p95_s": percentile(0.95),
@@ -303,6 +307,8 @@ def _write_report(
         f"- Successful samples: {len(samples)}",
         f"- Failed cycles: {len(failures)}",
         f"- Reconnects: {reconnects}",
+        f"- Expected scheduled cycles: {summary['expected_cycles']}",
+        f"- Missed deadlines: {missed_deadlines}",
         f"- RSS start/end/peak MiB: {_mib(summary['rss_start_bytes'])} / "
         f"{_mib(summary['rss_end_bytes'])} / {_mib(summary['rss_peak_bytes'])}",
         f"- Python traced start/end/peak MiB: {_mib(summary['python_start_bytes'])} / "
@@ -336,6 +342,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-python-growth-mib", type=float, default=64.0)
     parser.add_argument("--max-fd-growth", type=int, default=8)
     parser.add_argument("--max-thread-growth", type=int, default=4)
+    parser.add_argument("--max-missed-deadlines", type=int, default=10)
     parser.add_argument("--checkpoint-seconds", type=float, default=60.0)
     parser.add_argument("--max-cycle-latency-s", type=float, default=60.0)
     parser.add_argument("--max-latency-drift-factor", type=float, default=3.0)
@@ -360,7 +367,10 @@ def main() -> int:
         value = getattr(args, key)
         if not math.isfinite(value) or value <= 0:
             raise SystemExit(f"--{key.replace('_', '-')} must be finite and positive")
-    if args.max_failures < 0 or args.max_fd_growth < 0 or args.max_thread_growth < 0:
+    if (
+        args.max_failures < 0 or args.max_fd_growth < 0
+        or args.max_thread_growth < 0 or args.max_missed_deadlines < 0
+    ):
         raise SystemExit("Resource growth and failure limits cannot be negative")
 
     # A second qualification process must not concurrently use this resource.
@@ -386,6 +396,8 @@ def main() -> int:
     final_identity: str | None = None
     baseline_setup: tuple[int, int, int] | None = None
     next_checkpoint = started + args.checkpoint_seconds
+    next_cycle_deadline = started
+    missed_deadlines = 0
     previous_handlers: dict[int, Any] = {}
     tracemalloc.start()
 
@@ -484,7 +496,7 @@ def main() -> int:
                         started_at=started_at, elapsed_s=now - started,
                         passed=False, reasons=["Qualification still running"],
                         status="RUNNING", baseline_identity=baseline_identity,
-                        run_state="RUNNING",
+                        run_state="RUNNING", missed_deadlines=missed_deadlines,
                     )
                     print(
                         f"{_utc_now()} soak progress: {now - started:.1f}/{required_s:.1f}s "
@@ -494,9 +506,16 @@ def main() -> int:
                     )
                     next_checkpoint = now + args.checkpoint_seconds
 
-                remaining = deadline - time.monotonic()
+                # Absolute monotonic scheduling: skipped periods are counted;
+                # no work+sleep drift and no unbounded catch-up queue.
+                next_cycle_deadline += args.interval_seconds
+                now = time.monotonic()
+                while next_cycle_deadline < now and next_cycle_deadline < deadline:
+                    missed_deadlines += 1
+                    next_cycle_deadline += args.interval_seconds
+                remaining = min(deadline, next_cycle_deadline) - now
                 if remaining > 0 and not interrupted:
-                    time.sleep(min(args.interval_seconds, remaining))
+                    time.sleep(remaining)
         except BaseException as exc:
             fatal_errors.append(f"Fatal run exception: {type(exc).__name__}: {exc}")
         finally:
@@ -539,6 +558,11 @@ def main() -> int:
             reasons.append(
                 f"Failures {len(failures)} exceeded configured maximum {args.max_failures}"
             )
+        if missed_deadlines > args.max_missed_deadlines:
+            reasons.append(
+                f"Missed {missed_deadlines} periodic deadlines; "
+                f"limit is {args.max_missed_deadlines}"
+            )
         if not samples:
             reasons.append("No successful hardware samples were recorded")
         if cleanup_errors:
@@ -575,6 +599,7 @@ def main() -> int:
                 started_at=started_at, elapsed_s=elapsed_s,
                 passed=passed, reasons=reasons, status=status,
                 baseline_identity=baseline_identity, final_identity=final_identity,
+                missed_deadlines=missed_deadlines,
             )
         except BaseException as exc:
             print(f"Soak evidence finalization failed: {type(exc).__name__}: {exc}", file=sys.stderr)
