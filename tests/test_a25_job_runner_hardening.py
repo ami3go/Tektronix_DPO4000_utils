@@ -107,7 +107,7 @@ def test_strict_json_rejects_malformed_content(tmp_path: Path, document: bytes) 
         b'{"x": 1e999}',
         b'{"x": ' + b'9' * 129 + b'}',
         b'{"nested":' + b'[' * 4000 + b'0' + b']' * 4000 + b'}',
-        b'{"x":"\\\\ud800"}',
+        b'{"x":"\\ud800"}',
     ],
 )
 def test_json_parser_rejects_numeric_unicode_and_nesting_bombs(
@@ -117,6 +117,13 @@ def test_json_parser_rejects_numeric_unicode_and_nesting_bombs(
     path.write_bytes(document)
     with pytest.raises(JobValidationError, match="invalid recipe JSON"):
         load_json_mapping(path, label="recipe")
+
+
+def test_json_parser_accepts_literal_escaped_backslash(tmp_path: Path) -> None:
+    # A literal backslash followed by "ud800" is valid JSON Unicode text.
+    path = tmp_path / "valid-escape.json"
+    path.write_bytes(b'{"x":"\\\\ud800"}')
+    assert load_json_mapping(path, label="recipe") == {"x": r"\\ud800"}
 
 
 def test_bounded_loader_rejects_oversize_even_without_stat(tmp_path: Path) -> None:
