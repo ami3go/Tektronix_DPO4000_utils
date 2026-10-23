@@ -35,6 +35,9 @@ jobs:
       - name: Install core package without Qt
         run: python -m pip install -e ".[dev]"
 
+      - name: Prepare evidence directory
+        run: mkdir -p a25-evidence
+
       - name: Focused software regression
         run: pytest -q tests/test_a25_job_runner.py tests/test_a25_job_runner_errors.py tests/test_a25_job_runner_hardening.py --junitxml=a25-evidence/software-junit.xml
 
