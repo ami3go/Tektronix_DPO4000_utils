@@ -15,7 +15,7 @@ import statistics
 from tempfile import TemporaryDirectory
 import time
 
-from dpo4000_utils.job_runner import HeadlessJobRunner, JobConfig, JobExitCode
+from dpo4000_utils.job_runner import HeadlessJobRunner, JobConfig, JobExitCode, write_job_report
 from dpo4000_utils.recipe import RecipeSequencer, recipe_from_mapping
 
 
@@ -51,13 +51,19 @@ def _recipe_document(step_count: int) -> dict[str, object]:
     }
 
 
-def _median_duration(callback, repetitions: int) -> float:
+def _duration_stats(callback, repetitions: int) -> dict[str, float]:
     durations: list[float] = []
     for _ in range(repetitions):
         started = time.perf_counter()
         callback()
         durations.append(time.perf_counter() - started)
-    return statistics.median(durations)
+    return {
+        "median_s": statistics.median(durations),
+        "p95_s": (
+            statistics.quantiles(durations, n=100, method="inclusive")[94]
+            if repetitions >= 2 else durations[0]
+        ),
+    }
 
 
 def benchmark(step_count: int, repetitions: int) -> dict[str, float | int]:
@@ -74,25 +80,38 @@ def benchmark(step_count: int, repetitions: int) -> dict[str, float | int]:
         validate_config = JobConfig(recipe_path=recipe_path, validate_only=True)
         run_config = JobConfig(recipe_path=recipe_path, resource="FAKE::INSTR")
 
-        validation_median = _median_duration(
+        validation = _duration_stats(
             lambda: _require_success(runner.run(validate_config)), repetitions
         )
-        job_median = _median_duration(
+        complete = _duration_stats(
             lambda: _require_success(runner.run(run_config)), repetitions
         )
-        direct_median = _median_duration(
+        direct = _duration_stats(
             lambda: _require_recipe_success(RecipeSequencer(FakeScope()).run(recipe)),
             repetitions,
+        )
+        successful = runner.run(run_config)
+        _require_success(successful)
+        report_file = Path(directory) / "report.json"
+        reporting = _duration_stats(
+            lambda: write_job_report(report_file, successful), repetitions
         )
 
     return {
         "step_count": step_count,
         "repetitions": repetitions,
-        "validation_median_s": validation_median,
-        "job_median_s": job_median,
-        "direct_sequencer_median_s": direct_median,
-        "job_overhead_s": max(0.0, job_median - direct_median),
-        "job_steps_per_second": step_count / job_median if job_median > 0 else 0.0,
+        "validation_median_s": validation["median_s"],
+        "validation_p95_s": validation["p95_s"],
+        "job_median_s": complete["median_s"],
+        "job_p95_s": complete["p95_s"],
+        "direct_sequencer_median_s": direct["median_s"],
+        "direct_sequencer_p95_s": direct["p95_s"],
+        "report_write_median_s": reporting["median_s"],
+        "report_write_p95_s": reporting["p95_s"],
+        "job_overhead_s": complete["median_s"] - direct["median_s"],
+        "job_steps_per_second": (
+            step_count / complete["median_s"] if complete["median_s"] > 0 else 0.0
+        ),
     }
 
 
