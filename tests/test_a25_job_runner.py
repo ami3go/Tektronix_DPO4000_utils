@@ -363,3 +363,44 @@ def test_cli_validate_only_uses_real_driver_signature_without_visa(
     output = json.loads(capsys.readouterr().out)
     assert output["status"] == "validated"
     assert output["resource"] is None
+
+
+def test_optional_npz_export_reuses_a21_and_round_trips(tmp_path: Path) -> None:
+    recorder = SessionRecorder()
+    export_path = tmp_path / "waveforms.npz"
+    result = _runner(recorder).run(
+        JobConfig(
+            recipe_path=_recipe(tmp_path / "recipe.json"),
+            resource="FAKE::INSTR",
+            scientific_export_path=export_path,
+            scientific_points=3,
+            scientific_compressed=True,
+        )
+    )
+    assert result.exit_code is JobExitCode.SUCCESS
+    assert result.scientific_export is not None
+    assert recorder.open_count == recorder.close_count == 1
+    imported = import_scientific_dataset(export_path)
+    assert imported.dataset.by_source()["CH1"].samples.tolist() == [100, 200, 300]
+    assert imported.dataset.metadata["recipe"] == "headless test"
+
+
+def test_report_contains_version_and_valid_json_for_nonfinite_measurement(
+    tmp_path: Path,
+) -> None:
+    class NonFiniteScope(FakeScope):
+        def read_value(self, value: float = 5.0) -> float:
+            return float("nan")
+
+    recorder = SessionRecorder(NonFiniteScope())
+    result = _runner(recorder).run(
+        JobConfig(recipe_path=_recipe(tmp_path / "recipe.json"), resource="FAKE::INSTR")
+    )
+    assert result.exit_code is JobExitCode.SUCCESS
+    report = tmp_path / "nonfinite.json"
+    write_job_report(report, result)
+    raw = report.read_text(encoding="utf-8")
+    assert "NaN" not in raw and "Infinity" not in raw
+    payload = json.loads(raw, parse_constant=lambda token: (_ for _ in ()).throw(ValueError(token)))
+    assert payload["version"] == payload["schema_version"] == 1
+    assert payload["recipe_result"]["steps"][0]["value"] == "nan"
