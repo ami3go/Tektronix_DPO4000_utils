@@ -123,6 +123,7 @@ def main() -> int:
     print(f"  A14 capability probe timeout: {config.capability_probe_timeout_ms} ms")
 
     capture = HardwareBaselineCapture(config)
+    results: list[tuple[Path, dict]] = []
     capture.connect()
     try:
         assert capture.scope is not None
@@ -132,9 +133,7 @@ def main() -> int:
         if not args.skip_functional:
             print("\nCapturing R0-F functional baseline...")
             functional = {**build_baseline_header(config.resource, idn), **capture.capture_functional()}
-            functional_path = config.output_dir / "r0_functional_baseline.json"
-            _write_new_baseline(functional_path, functional)
-            print(f"  wrote {functional_path}")
+            results.append((config.output_dir / "r0_functional_baseline.json", functional))
 
         if not args.skip_timing:
             print("\nCapturing R0-T timing baseline (this touches the scope repeatedly)...")
@@ -144,11 +143,15 @@ def main() -> int:
                 "transport": config.resource.split("::")[0],
                 "operations": timing_data,
             }
-            timing_path = config.output_dir / "r0_timing_baseline.json"
-            _write_new_baseline(timing_path, timing)
-            print(f"  wrote {timing_path}")
+            results.append((config.output_dir / "r0_timing_baseline.json", timing))
     finally:
         capture.disconnect()
+
+    # Do not leave a seemingly approved functional baseline behind if the
+    # hardware timing capture failed. Publish only after both stages complete.
+    for path, payload in results:
+        _write_new_baseline(path, payload)
+        print(f"  wrote {path}")
 
     print("\nDone.")
     return 0
