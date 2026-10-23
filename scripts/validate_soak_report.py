@@ -99,7 +99,11 @@ def validate_soak_report(
     cycles = []
     latencies = []
     elapsed_samples = []
-    for record in [*samples, *failures]:
+    ordered_records = sorted(
+        [*samples, *failures],
+        key=lambda item: item.get("cycle", -1) if isinstance(item, dict) else -1,
+    )
+    for record in ordered_records:
         if not isinstance(record, dict) or type(record.get("cycle")) is not int:
             reasons.append("Malformed cycle entry")
             continue
