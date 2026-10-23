@@ -210,7 +210,7 @@ def main() -> int:
     candidate_ops = candidate_timing.get("operations", {})
     compared_names = {entry.operation for entry in timing_regressions}
     unthresholded_operations = sorted(
-        _operation_names(baseline_ops) & _operation_names(candidate_ops)
+        (_operation_names(baseline_ops) & _operation_names(candidate_ops))
         - compared_names
     )
     missing_coverage = sorted(
