@@ -117,3 +117,13 @@ def test_minmax_pure_python_fallback_preserves_spikes(monkeypatch):
     assert (2203 in indices) and (8507 in indices)
     assert len(indices) <= 200
     assert indices[0] == 0 and indices[-1] == 9999
+
+
+def test_full_record_above_retention_limit_is_rejected():
+    class OversizedFake:
+        def read_channel_waveform_data(self, channel, *, point_count):
+            assert channel == 1 and point_count is None
+            return waveform([0] * 1_000_001)
+
+    with pytest.raises(ValueError, match="retention limit"):
+        capture_frame(OversizedFake(), StreamConfig(point_count=None), 1, 1)
