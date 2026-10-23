@@ -74,6 +74,9 @@ def test_a22_synthetic_qt_heartbeat(monkeypatch):
         pool.submit(run)
 
     panel = LiveWaveformPanel(host=host, run_action=dispatch)
+    panel.resize(900, 600)
+    panel.show()  # exercise paintEvent, not only offscreen timers
+    app.processEvents()
     panel.start()
     heartbeat = qtcore.QTimer()
     heartbeat.setInterval(50)
