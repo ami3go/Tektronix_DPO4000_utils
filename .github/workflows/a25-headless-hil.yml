@@ -1,0 +1,118 @@
+name: A25 Read-Only DPO4054 Qualification
+
+on:
+  workflow_dispatch:
+    inputs:
+      visa_resource:
+        description: "Confirmed DPO4054 VISA resource (read-only qualification)"
+        required: true
+        type: string
+      expected_idn:
+        description: "Expected *IDN? substring"
+        required: true
+        default: "TEKTRONIX,DPO4054"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  a25-hil:
+    name: A25 installed CLI and API (read-only)
+    runs-on: [self-hosted, dpo4000]
+    timeout-minutes: 25
+    env:
+      DPO4000_HARDWARE: "1"
+      DPO4000_RESOURCE: ${{ inputs.visa_resource }}
+      DPO4000_EXPECT_IDN: ${{ inputs.expected_idn }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install core package without Qt
+        run: python -m pip install -e ".[dev]"
+
+      - name: Focused software regression
+        run: pytest -q tests/test_a25_job_runner.py tests/test_a25_job_runner_errors.py tests/test_a25_job_runner_hardening.py --junitxml=a25-evidence/software-junit.xml
+
+      - name: Prepare strictly read-only recipe and rules
+        run: |
+          mkdir -p a25-evidence
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          recipe = {
+              "version": 1,
+              "name": "A25 read-only holdoff",
+              "steps": [
+                  {"kind": "call", "name": "HOLDOFF", "method": "get_trigger_holdoff"}
+              ],
+          }
+          rules = {
+              "version": 1,
+              "name": "Holdoff nonnegative",
+              "root": {
+                  "type": "compare",
+                  "id": "holdoff_nonnegative",
+                  "input": "HOLDOFF",
+                  "operator": ">=",
+                  "value": 0.0,
+              },
+          }
+          for name, data in (("recipe", recipe), ("rules", rules)):
+              Path("a25-evidence/" + name + ".json").write_text(
+                  json.dumps(data, indent=2) + "\n", encoding="utf-8"
+              )
+          PY
+
+      - name: Installed CLI validate-only (no VISA access)
+        run: |
+          dpo4000-job --recipe a25-evidence/recipe.json \
+            --rules a25-evidence/rules.json --validate-only \
+            --report a25-evidence/validation.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          v = json.loads(Path("a25-evidence/validation.json").read_text())
+          assert v["exit_code"] == 0 and v["validation_only"] is True
+          PY
+
+      - name: Synthetic overhead benchmark
+        run: python scripts/benchmark_a25_job_runner.py --steps 1,100,1000 --repetitions 5 --output a25-evidence/benchmark.json
+
+      - name: Installed CLI DPO4054 HIL read-only query
+        run: |
+          dpo4000-job --recipe a25-evidence/recipe.json \
+            --rules a25-evidence/rules.json \
+            --resource "$DPO4000_RESOURCE" \
+            --expect-idn "$DPO4000_EXPECT_IDN" \
+            --report a25-evidence/hardware-cli-report.json
+
+      - name: Independently verify CLI report
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path("a25-evidence/hardware-cli-report.json").read_text())
+          assert data["schema"] == "dpo4000-headless-job"
+          assert data["version"] == 1
+          assert data["exit_code"] == 0 and data["status"] == "pass"
+          assert data["recipe_result"]["state"] == "completed"
+          assert data["rule_result"]["status"] == "PASS"
+          assert float(data["recipe_result"]["steps"][0]["value"]) >= 0
+          PY
+
+      - name: Independent API DPO4054 HIL read-only regression
+        run: pytest -q -m hardware tests/hardware/test_a25_headless_job_hardware.py --junitxml=a25-evidence/hardware-junit.xml
+
+      - name: Upload actual evidence (including failures)
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: a25-read-only-hil-${{ github.run_id }}
+          path: a25-evidence/
+          if-no-files-found: warn
+          retention-days: 90
