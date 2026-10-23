@@ -230,6 +230,8 @@ class LiveWaveformPanel(QGroupBox):
                 self.engine.fail(token, TypeError("Driver returned invalid frame"))
             else:
                 self.engine.complete(token, result)
+            if self._closed:
+                return
             if self.engine.state is StreamState.ERROR:
                 self._host._composition_live_lease = False
             self._schedule()
