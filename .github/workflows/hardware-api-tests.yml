@@ -139,6 +139,12 @@ jobs:
             --reference-destination "${{ inputs.reference_destination }}"
             --output-dir hardware_verification_reports/github-actions
           )
+          if [[ "${{ inputs.authorized_reversible }}" == "true" ]]; then
+            args+=(--authorize-reversible-writes)
+          fi
+          if [[ "${{ inputs.authorized_disruptive }}" == "true" ]]; then
+            args+=(--authorize-disruptive-tests)
+          fi
           if [[ "${{ inputs.allow_reference_overwrite }}" == "true" ]]; then
             args+=(--allow-reference-overwrite)
           fi
