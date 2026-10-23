@@ -17,6 +17,11 @@ from typing import Callable
 
 from .waveform import WaveformData
 
+try:
+    import numpy as _np  # optional speedup; core API works without NumPy
+except ImportError:  # pragma: no cover - exercised in driver-only environments
+    _np = None
+
 MAX_POINTS = 1_000_000
 MAX_FRAME_BUFFER = 8
 
@@ -109,15 +114,25 @@ def minmax_indices(samples: array, budget: int) -> tuple[int, ...]:
     buckets = (budget - 2) // 2
     result = [0]
     interior = size - 2
+    # NumPy is available in the Desk extra and avoids slow Python indexing
+    # over a 1M-sample record. frombuffer is zero-copy for array storage.
+    fast_view = None
+    if _np is not None and samples.typecode in {"b", "B", "h", "H", "i", "I", "f", "d"}:
+        fast_view = _np.frombuffer(samples, dtype=_np.dtype(samples.typecode))
     for bucket in range(buckets):
         lo = 1 + bucket * interior // buckets
         hi = 1 + (bucket + 1) * interior // buckets
-        first_min = first_max = lo
-        for index in range(lo + 1, hi):
-            if samples[index] < samples[first_min]:
-                first_min = index
-            if samples[index] > samples[first_max]:
-                first_max = index
+        if fast_view is not None:
+            subset = fast_view[lo:hi]  # zero-copy view, no full-record copies
+            first_min = lo + int(subset.argmin())
+            first_max = lo + int(subset.argmax())
+        else:
+            first_min = first_max = lo
+            for index in range(lo + 1, hi):
+                if samples[index] < samples[first_min]:
+                    first_min = index
+                if samples[index] > samples[first_max]:
+                    first_max = index
         if first_min == first_max:
             result.append(first_min)
         else:
