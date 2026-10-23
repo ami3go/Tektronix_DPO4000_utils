@@ -101,6 +101,24 @@ def test_strict_json_rejects_malformed_content(tmp_path: Path, document: bytes) 
         load_json_mapping(path, label="recipe")
 
 
+@pytest.mark.parametrize(
+    "document",
+    [
+        b'{"x": 1e999}',
+        b'{"x": ' + b'9' * 129 + b'}',
+        b'{"nested":' + b'[' * 4000 + b'0' + b']' * 4000 + b'}',
+        b'{"x":"\\\\ud800"}',
+    ],
+)
+def test_json_parser_rejects_numeric_unicode_and_nesting_bombs(
+    tmp_path: Path, document: bytes
+) -> None:
+    path = tmp_path / "bomb.json"
+    path.write_bytes(document)
+    with pytest.raises(JobValidationError, match="invalid recipe JSON"):
+        load_json_mapping(path, label="recipe")
+
+
 def test_bounded_loader_rejects_oversize_even_without_stat(tmp_path: Path) -> None:
     from dpo4000_utils.job_runner import MAX_JOB_JSON_BYTES
 
