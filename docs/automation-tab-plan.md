@@ -1,6 +1,6 @@
 # Automation Tab Implementation Plan
 
-Status: **planned, not implemented**  
+Status: **implemented** (design reference; see `automation-feature-backlog.md`)  
 Target planning version: **v0.6.8**
 
 ## 1. Objective

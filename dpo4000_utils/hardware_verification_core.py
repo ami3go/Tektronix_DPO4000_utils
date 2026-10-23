@@ -104,6 +104,8 @@ PUBLIC_METHOD_RISK: dict[str, VerificationRisk] = {
     "get_horizontal_position": VerificationRisk.READ_ONLY,
     "set_horizontal_position": VerificationRisk.REVERSIBLE,
     "nudge_horizontal_position": VerificationRisk.REVERSIBLE,
+    "get_horizontal_scale": VerificationRisk.READ_ONLY,
+    "set_horizontal_scale": VerificationRisk.REVERSIBLE,
     "get_acquisition_setup": VerificationRisk.READ_ONLY,
     "get_acquisition_mode": VerificationRisk.READ_ONLY,
     "get_average_count": VerificationRisk.READ_ONLY,
@@ -391,6 +393,7 @@ class HardwareVerifier:
         scope.get_channel_configuration(self.config.test_channel)
         scope.get_math_configuration()
         scope.get_horizontal_position()
+        scope.get_horizontal_scale()
         scope.get_acquisition_setup()
         scope.get_acquisition_mode()
         scope.get_average_count()
@@ -526,7 +529,14 @@ class HardwareVerifier:
         scope.set_horizontal_position(position)
         result = scope.nudge_horizontal_position(0)
         assert abs(result - position) < 1e-12
-        return "MATH configuration and horizontal set/nudge passed without net horizontal change."
+        scale = scope.get_horizontal_scale()
+        scope.set_horizontal_scale(scale)
+        restored_scale = scope.get_horizontal_scale()
+        assert abs(restored_scale - scale) <= max(1e-15, abs(scale) * 1e-9)
+        return (
+            "MATH configuration and horizontal position/scale set passed without net "
+            "horizontal change."
+        )
 
     def _case_acquisition_write(self) -> str:
         scope = self._require_scope()
@@ -891,6 +901,7 @@ class HardwareVerifier:
                             "get_channel_configuration",
                             "get_math_configuration",
                             "get_horizontal_position",
+                            "get_horizontal_scale",
                             "get_acquisition_setup",
                             "get_acquisition_mode",
                             "get_average_count",
@@ -990,7 +1001,12 @@ class HardwareVerifier:
                         "math-horizontal-write",
                         "MATH and horizontal write API",
                         VerificationRisk.REVERSIBLE,
-                        covers_methods=("configure_math", "set_horizontal_position", "nudge_horizontal_position"),
+                        covers_methods=(
+                            "configure_math",
+                            "set_horizontal_position",
+                            "nudge_horizontal_position",
+                            "set_horizontal_scale",
+                        ),
                     ),
                     self._case_math_horizontal_write,
                 ),

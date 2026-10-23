@@ -1,6 +1,6 @@
 # Logger Tab Implementation Plan
 
-Status: **planned, not implemented**  
+Status: **implemented** (design reference; see `logger-tab-layout.md`)  
 Target planning version: **v0.6.11**
 
 ## 1. Objective

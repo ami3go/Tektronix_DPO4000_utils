@@ -1,5 +1,6 @@
 """Tektronix DPO4000 utility package."""
 
+from .advanced_trigger import CapabilityProbeResult, DEFAULT_CAPABILITY_PROBE_TIMEOUT_MS
 from .bus import BusConfig
 from .connection import (
     build_tcpip_instr_resource,
@@ -32,6 +33,34 @@ from .errors import (
 from .hardcopy import extract_png_bytes, strip_ieee_block_header
 from .reference import ReferenceConfig
 from .instrument import DPO4000Scope, DPO4054
+from .rules import (
+    CompareOperator,
+    LogicOperator,
+    RuleEngine,
+    RuleEvaluation,
+    RuleGroup,
+    RuleSet,
+    RuleSetResult,
+    RuleStatus,
+    RuleValidationError,
+    ScalarRule,
+    recipe_result_values,
+    rule_set_from_mapping,
+    rule_set_to_mapping,
+)
+from .scientific_export import (
+    SCIENTIFIC_SCHEMA_VERSION,
+    ScientificDataset,
+    ScientificExportError,
+    ScientificExportResult,
+    ScientificFormat,
+    ScientificImportResult,
+    export_scientific_dataset,
+    import_scientific_dataset,
+    infer_scientific_format,
+    normalize_scientific_format,
+    scientific_dataset_from_waveforms,
+)
 from .session import scope_session
 from .waveform import (
     WaveformData,
@@ -45,7 +74,10 @@ from .waveform import (
 __all__ = [
     "AcquisitionConfig",
     "BusConfig",
+    "CapabilityProbeResult",
     "ChannelConfig",
+    "CompareOperator",
+    "DEFAULT_CAPABILITY_PROBE_TIMEOUT_MS",
     "DPO4000Scope",
     "DPO4054",
     "DPOCleanupError",
@@ -59,10 +91,25 @@ __all__ = [
     "DPOTransportError",
     "DPOWaveformError",
     "DisplayConfig",
+    "LogicOperator",
     "MathConfig",
     "MeasurementConfig",
     "MeasurementSetup",
     "ReferenceConfig",
+    "RuleEngine",
+    "RuleEvaluation",
+    "RuleGroup",
+    "RuleSet",
+    "RuleSetResult",
+    "RuleStatus",
+    "RuleValidationError",
+    "SCIENTIFIC_SCHEMA_VERSION",
+    "ScalarRule",
+    "ScientificDataset",
+    "ScientificExportError",
+    "ScientificExportResult",
+    "ScientificFormat",
+    "ScientificImportResult",
     "SequenceTriggerConfig",
     "TriggerConfig",
     "WaveformData",
@@ -71,11 +118,19 @@ __all__ = [
     "visaResourceAddr",
     "build_tcpip_instr_resource",
     "build_tcpip_socket_resource",
-    "list_visa_resources",
-    "scope_session",
+    "export_scientific_dataset",
     "extract_png_bytes",
-    "strip_ieee_block_header",
+    "import_scientific_dataset",
+    "infer_scientific_format",
+    "list_visa_resources",
+    "normalize_scientific_format",
     "parse_ascii_curve",
     "read_channel_waveform_data",
     "read_waveform",
+    "recipe_result_values",
+    "rule_set_from_mapping",
+    "rule_set_to_mapping",
+    "scientific_dataset_from_waveforms",
+    "scope_session",
+    "strip_ieee_block_header",
 ]

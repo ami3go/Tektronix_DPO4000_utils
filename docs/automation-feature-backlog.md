@@ -1,6 +1,6 @@
 # Automation Feature Backlog A1-A12
 
-Status: **planned, not implemented**  
+Status: **implemented** (A1–A12 delivered; this document remains the requirements reference)  
 Planning increment: **v0.6.9**  
 Parent design: [`automation-tab-plan.md`](automation-tab-plan.md)
 
