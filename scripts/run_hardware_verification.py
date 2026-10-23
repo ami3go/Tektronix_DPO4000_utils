@@ -48,6 +48,14 @@ def build_parser() -> argparse.ArgumentParser:
             "acquisition/trigger/settings operations."
         ),
     )
+    parser.add_argument(
+        "--authorize-reversible-writes", action="store_true",
+        help="Explicit bench permission for reversible instrument setup modifications.",
+    )
+    parser.add_argument(
+        "--authorize-disruptive-tests", action="store_true",
+        help="Separate explicit approval for full-profile acquisition and settings tests.",
+    )
     parser.add_argument("--timeout-ms", type=int, default=20_000)
     parser.add_argument("--test-channel", type=int, choices=(1, 2, 3, 4), default=1)
     parser.add_argument(
@@ -83,14 +91,28 @@ def build_parser() -> argparse.ArgumentParser:
         "--reference-destination",
         type=int,
         choices=(1, 2, 3, 4),
-        default=4,
-        help="Disposable REF slot used only with --allow-reference-overwrite (default: 4).",
+        default=None,
+        help="Explicitly authorized disposable REF slot; no implicit default.",
     )
     return parser
 
 
 def main() -> int:
     args = build_parser().parse_args()
+    if args.profile in {"reversible", "full"} and not args.authorize_reversible_writes:
+        raise SystemExit(
+            "Reversible instrument setup writes require --authorize-reversible-writes"
+        )
+    if args.profile == "full" and not args.authorize_disruptive_tests:
+        raise SystemExit(
+            "Disruptive full profile requires separate --authorize-disruptive-tests"
+        )
+    if args.allow_reference_overwrite and (
+        args.profile != "full" or args.reference_destination is None
+    ):
+        raise SystemExit(
+            "REF overwrite requires full profile and explicit --reference-destination"
+        )
     if args.timeout_ms <= 0:
         raise SystemExit("--timeout-ms must be positive")
     if args.waveform_points <= 0:
@@ -108,7 +130,7 @@ def main() -> int:
         waveform_points=args.waveform_points,
         artifact_record_length=args.artifact_record_length,
         allow_reference_overwrite=args.allow_reference_overwrite,
-        reference_destination=args.reference_destination,
+        reference_destination=args.reference_destination or 4,
     )
 
     print("DPO4000 real-hardware verification")
