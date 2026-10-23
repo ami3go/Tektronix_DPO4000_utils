@@ -340,128 +340,240 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    if args.interval_seconds <= 0:
-        raise SystemExit("--interval-seconds must be positive")
+    if not math.isfinite(args.interval_seconds) or args.interval_seconds <= 0:
+        raise SystemExit("--interval-seconds must be finite and positive")
     if args.timeout_ms <= 0:
         raise SystemExit("--timeout-ms must be positive")
+    for key in (
+        "max_rss_growth_mib", "max_python_growth_mib", "checkpoint_seconds",
+        "max_cycle_latency_s", "max_latency_drift_factor",
+    ):
+        value = getattr(args, key)
+        if not math.isfinite(value) or value <= 0:
+            raise SystemExit(f"--{key.replace('_', '-')} must be finite and positive")
+    if args.max_failures < 0 or args.max_fd_growth < 0 or args.max_thread_growth < 0:
+        raise SystemExit("Resource growth and failure limits cannot be negative")
+
+    # A second qualification process must not concurrently use this resource.
+    # Stale lock removal is deliberately manual after checking the bench owner.
+    try:
+        lock = _acquire_lock(args.resource)
+    except FileExistsError:
+        print(f"Soak BLOCKED: existing resource lock {_lock_path(args.resource)}", file=sys.stderr)
+        return 1
 
     started_at = _utc_now()
     started = time.monotonic()
-    deadline = started + args.duration_hours * 3600.0
+    required_s = args.duration_hours * 3600.0
+    deadline = started + required_s
     samples: list[SoakSample] = []
     failures: list[SoakFailure] = []
     cleanup_errors: list[str] = []
+    fatal_errors: list[str] = []
+    interrupted: list[str] = []
     reconnects = 0
     scope: DPO4054 | None = None
+    baseline_identity: str | None = None
+    final_identity: str | None = None
+    baseline_setup: tuple[int, int, int] | None = None
+    next_checkpoint = started + args.checkpoint_seconds
+    previous_handlers: dict[int, Any] = {}
     tracemalloc.start()
 
+    def request_stop(signum: int, _frame: Any) -> None:
+        interrupted.append(signal.Signals(signum).name)
+
     try:
-        while time.monotonic() < deadline:
-            cycle = len(samples) + len(failures) + 1
-            cycle_started = time.monotonic()
+        if threading.current_thread() is threading.main_thread():
+            for signum in (signal.SIGINT, signal.SIGTERM):
+                previous_handlers[signum] = signal.getsignal(signum)
+                signal.signal(signum, request_stop)
+
+        try:
+            while time.monotonic() < deadline and not interrupted:
+                cycle = len(samples) + len(failures) + 1
+                cycle_started = time.monotonic()
+                try:
+                    if scope is None:
+                        scope = _connect(args.resource, args.timeout_ms)
+                        if cycle > 1:
+                            reconnects += 1
+                    values = _read_cycle(scope)
+                    identity = str(values["identity"])
+                    setup = (
+                        int(values["record_length"]),
+                        int(values["bus_count"]),
+                        int(values["reference_count"]),
+                    )
+                    if baseline_identity is None:
+                        if "DPO4054" not in identity.upper():
+                            raise RuntimeError(f"Not a DPO4054: {identity!r}")
+                        baseline_identity = identity
+                        baseline_setup = setup
+                    elif identity != baseline_identity:
+                        raise RuntimeError(
+                            f"Instrument identity changed: {baseline_identity!r} -> {identity!r}"
+                        )
+                    elif setup != baseline_setup:
+                        raise RuntimeError(
+                            f"Read-only scope setup drifted: {baseline_setup!r} -> {setup!r}"
+                        )
+
+                    current_py, peak_py = tracemalloc.get_traced_memory()
+                    samples.append(
+                        SoakSample(
+                            timestamp=_utc_now(),
+                            elapsed_s=time.monotonic() - started,
+                            cycle=cycle,
+                            identity=identity,
+                            acquisition_state=str(values["acquisition_state"]),
+                            trigger_state=str(values["trigger_state"]),
+                            record_length=setup[0],
+                            bus_count=setup[1],
+                            reference_count=setup[2],
+                            rss_bytes=_rss_bytes(),
+                            python_current_bytes=current_py,
+                            python_peak_bytes=peak_py,
+                            thread_count=threading.active_count(),
+                            fd_count=_fd_count(),
+                            cycle_duration_s=time.monotonic() - cycle_started,
+                        )
+                    )
+                    if samples[-1].cycle_duration_s > args.max_cycle_latency_s:
+                        fatal_errors.append(
+                            f"Cycle {cycle} latency {samples[-1].cycle_duration_s:.3f}s "
+                            f"exceeded {args.max_cycle_latency_s:g}s"
+                        )
+                        break
+                except Exception as exc:
+                    message = f"{exc.__class__.__name__}: {exc}"
+                    failures.append(
+                        SoakFailure(
+                            timestamp=_utc_now(),
+                            elapsed_s=time.monotonic() - started,
+                            cycle=cycle,
+                            error_type=exc.__class__.__name__,
+                            message=str(exc),
+                        )
+                    )
+                    if "identity changed" in str(exc) or "Not a DPO4054" in str(exc) or (
+                        "scope setup drifted" in str(exc)
+                    ):
+                        fatal_errors.append(message)
+                    cleanup = _safe_disconnect(scope)
+                    if cleanup:
+                        cleanup_errors.append(cleanup)
+                    scope = None
+                    if fatal_errors or len(failures) > args.max_failures:
+                        break
+
+                now = time.monotonic()
+                if now >= next_checkpoint:
+                    _write_report(
+                        args.output_dir, args=args, samples=samples, failures=failures,
+                        reconnects=reconnects, cleanup_errors=cleanup_errors,
+                        started_at=started_at, elapsed_s=now - started,
+                        passed=False, reasons=["Qualification still running"],
+                        status="RUNNING", baseline_identity=baseline_identity,
+                        run_state="RUNNING",
+                    )
+                    print(
+                        f"{_utc_now()} soak progress: {now - started:.1f}/{required_s:.1f}s "
+                        f"success={len(samples)} failures={len(failures)} "
+                        f"reconnects={reconnects}",
+                        flush=True,
+                    )
+                    next_checkpoint = now + args.checkpoint_seconds
+
+                remaining = deadline - time.monotonic()
+                if remaining > 0 and not interrupted:
+                    time.sleep(min(args.interval_seconds, remaining))
+        except BaseException as exc:
+            fatal_errors.append(f"Fatal run exception: {type(exc).__name__}: {exc}")
+        finally:
+            # A final live query is required, even after the duration threshold.
+            # This is not counted as a normal scheduled cycle.
             try:
                 if scope is None:
                     scope = _connect(args.resource, args.timeout_ms)
-                    if cycle > 1:
-                        reconnects += 1
                 values = _read_cycle(scope)
-                current_py, peak_py = tracemalloc.get_traced_memory()
-                samples.append(
-                    SoakSample(
-                        timestamp=_utc_now(),
-                        elapsed_s=time.monotonic() - started,
-                        cycle=cycle,
-                        identity=str(values["identity"]),
-                        acquisition_state=str(values["acquisition_state"]),
-                        trigger_state=str(values["trigger_state"]),
-                        record_length=int(values["record_length"]),
-                        bus_count=int(values["bus_count"]),
-                        reference_count=int(values["reference_count"]),
-                        rss_bytes=_rss_bytes(),
-                        python_current_bytes=current_py,
-                        python_peak_bytes=peak_py,
-                        thread_count=threading.active_count(),
-                        fd_count=_fd_count(),
-                        cycle_duration_s=time.monotonic() - cycle_started,
+                final_identity = str(values["identity"])
+                if baseline_identity is None or final_identity != baseline_identity:
+                    fatal_errors.append(
+                        f"Final identity mismatch: {baseline_identity!r} -> {final_identity!r}"
                     )
+                final_setup = (
+                    int(values["record_length"]),
+                    int(values["bus_count"]),
+                    int(values["reference_count"]),
                 )
-            except Exception as exc:
-                failures.append(
-                    SoakFailure(
-                        timestamp=_utc_now(),
-                        elapsed_s=time.monotonic() - started,
-                        cycle=cycle,
-                        error_type=exc.__class__.__name__,
-                        message=str(exc),
+                if baseline_setup is None or final_setup != baseline_setup:
+                    fatal_errors.append(
+                        f"Final setup mismatch: {baseline_setup!r} -> {final_setup!r}"
                     )
-                )
+            except BaseException as exc:
+                fatal_errors.append(f"Final scope health query failed: {type(exc).__name__}: {exc}")
+            finally:
                 cleanup = _safe_disconnect(scope)
                 if cleanup:
                     cleanup_errors.append(cleanup)
-                scope = None
-                if len(failures) > args.max_failures:
-                    break
+                for signum, previous in previous_handlers.items():
+                    signal.signal(signum, previous)
 
-            remaining = deadline - time.monotonic()
-            if remaining > 0:
-                time.sleep(min(args.interval_seconds, remaining))
+        elapsed_s = time.monotonic() - started
+        reasons = fatal_errors.copy()
+        if interrupted:
+            reasons.append(f"Interrupted by signal: {', '.join(interrupted)}")
+        if elapsed_s < required_s:
+            reasons.append("Run ended before the exact required monotonic duration")
+        if len(failures) > args.max_failures:
+            reasons.append(
+                f"Failures {len(failures)} exceeded configured maximum {args.max_failures}"
+            )
+        if not samples:
+            reasons.append("No successful hardware samples were recorded")
+        if cleanup_errors:
+            reasons.append(f"Instrument session cleanup errors: {cleanup_errors}")
+
+        if samples:
+            start_sample = samples[0]
+            rss_values = [s.rss_bytes for s in samples if s.rss_bytes is not None]
+            if rss_values and rss_values[0] is not None:
+                growth = max(rss_values) - rss_values[0]
+                if growth > args.max_rss_growth_mib * 1024 * 1024:
+                    reasons.append(f"Peak RSS growth {_mib(growth)} MiB exceeds limit")
+            py_growth = max(s.python_current_bytes for s in samples) - start_sample.python_current_bytes
+            if py_growth > args.max_python_growth_mib * 1024 * 1024:
+                reasons.append(f"Peak traced Python growth {_mib(py_growth)} MiB exceeds limit")
+            fd_values = [s.fd_count for s in samples if s.fd_count is not None]
+            if fd_values and max(fd_values) - fd_values[0] > args.max_fd_growth:
+                reasons.append("Peak open file descriptor growth exceeded limit")
+            if max(s.thread_count for s in samples) - start_sample.thread_count > args.max_thread_growth:
+                reasons.append("Peak thread growth exceeded limit")
+            if len(samples) >= 100:
+                quarter = max(10, len(samples) // 4)
+                early = statistics.median(s.cycle_duration_s for s in samples[:quarter])
+                late = statistics.median(s.cycle_duration_s for s in samples[-quarter:])
+                if late > early * args.max_latency_drift_factor and late - early > 0.5:
+                    reasons.append(f"Latency progressively degraded: {early:.3f}s -> {late:.3f}s")
+
+        passed = not reasons
+        status = "INTERRUPTED" if interrupted else ("PASS" if passed else "FAIL")
+        try:
+            _write_report(
+                args.output_dir, args=args, samples=samples, failures=failures,
+                reconnects=reconnects, cleanup_errors=cleanup_errors,
+                started_at=started_at, elapsed_s=elapsed_s,
+                passed=passed, reasons=reasons, status=status,
+                baseline_identity=baseline_identity, final_identity=final_identity,
+            )
+        except BaseException as exc:
+            print(f"Soak evidence finalization failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+            return 1
+        print(f"Hardware soak {status}: {args.output_dir}", flush=True)
+        return 0 if passed else 1
     finally:
-        cleanup = _safe_disconnect(scope)
-        if cleanup:
-            cleanup_errors.append(cleanup)
-
-    elapsed_s = time.monotonic() - started
-    reasons: list[str] = []
-    if elapsed_s + max(args.interval_seconds, 1.0) < args.duration_hours * 3600.0:
-        reasons.append("Run ended before the requested soak duration completed.")
-    if len(failures) > args.max_failures:
-        reasons.append(
-            f"Failures {len(failures)} exceeded configured maximum {args.max_failures}."
-        )
-    if not samples:
-        reasons.append("No successful hardware samples were recorded.")
-
-    if samples:
-        rss_values = [sample.rss_bytes for sample in samples if sample.rss_bytes is not None]
-        if len(rss_values) >= 2:
-            rss_growth = rss_values[-1] - rss_values[0]
-            rss_limit = int(args.max_rss_growth_mib * 1024 * 1024)
-            if rss_growth > rss_limit:
-                reasons.append(
-                    f"RSS grew by {_mib(rss_growth)} MiB, above "
-                    f"{args.max_rss_growth_mib:.2f} MiB limit."
-                )
-
-        py_growth = samples[-1].python_current_bytes - samples[0].python_current_bytes
-        py_limit = int(args.max_python_growth_mib * 1024 * 1024)
-        if py_growth > py_limit:
-            reasons.append(
-                f"Python traced memory grew by {_mib(py_growth)} MiB, above "
-                f"{args.max_python_growth_mib:.2f} MiB limit."
-            )
-
-        fd_values = [sample.fd_count for sample in samples if sample.fd_count is not None]
-        if len(fd_values) >= 2 and fd_values[-1] - fd_values[0] > args.max_fd_growth:
-            reasons.append(
-                f"File descriptor count grew by {fd_values[-1] - fd_values[0]}, above "
-                f"configured limit {args.max_fd_growth}."
-            )
-
-    passed = not reasons
-    _write_report(
-        args.output_dir,
-        args=args,
-        samples=samples,
-        failures=failures,
-        reconnects=reconnects,
-        cleanup_errors=cleanup_errors,
-        started_at=started_at,
-        elapsed_s=elapsed_s,
-        passed=passed,
-        reasons=reasons,
-    )
-    print(f"Hardware soak {'PASS' if passed else 'FAIL'}: {args.output_dir}")
-    return 0 if passed else 1
+        lock.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":
