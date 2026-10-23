@@ -83,6 +83,7 @@ class LiveWaveformPanel(QGroupBox):
         self._run_action = run_action
         self.engine = LiveStreamEngine()
         self._closed = False
+        self._last_actual_points: int | None = None
         self._cadence = QTimer(self)
         self._cadence.setSingleShot(True)
         self._cadence.timeout.connect(self._acquire_if_due)
@@ -176,6 +177,8 @@ class LiveWaveformPanel(QGroupBox):
         except (ValueError, RuntimeError) as exc:
             self.error_label.setText(str(exc))
             return
+        self._last_actual_points = None
+        self.error_label.clear()
         self._host._composition_live_lease = True
         self._render_timer.start()
         self._schedule()
@@ -229,7 +232,8 @@ class LiveWaveformPanel(QGroupBox):
             if not isinstance(result, WaveformFrame):
                 self.engine.fail(token, TypeError("Driver returned invalid frame"))
             else:
-                self.engine.complete(token, result)
+                if self.engine.complete(token, result):
+                    self._last_actual_points = result.waveform.sample_count
             if self._closed:
                 return
             if self.engine.state is StreamState.ERROR:
@@ -267,7 +271,7 @@ class LiveWaveformPanel(QGroupBox):
         stats = self.engine.stats()
         self.stats_label.setText(
             f"Acq {stats.acquisition_fps:.2f} FPS | render {stats.render_fps:.2f} FPS | "
-            f"samples/frame {self.engine.config.point_count or 'full'} | "
+            f"samples/frame {self._last_actual_points or self.engine.config.point_count or 'full'} | "
             f"latest {stats.latest_acquisition_s * 1000:.1f} ms | "
             f"p50/p95/p99 {stats.p50_acquisition_s * 1000:.1f}/"
             f"{stats.p95_acquisition_s * 1000:.1f}/{stats.p99_acquisition_s * 1000:.1f} ms | "
