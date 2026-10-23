@@ -137,6 +137,8 @@ def test_bounded_loader_rejects_oversize_even_without_stat(tmp_path: Path) -> No
         ({"scientific_points": True}, "positive integer"),
         ({"timeout_ms": True}, "integer"),
         ({"timeout_ms": 600001}, "range"),
+        ({"expect_idn": " "}, "non-empty"),
+        ({"expect_idn": True}, "non-empty"),
         ({"scientific_export_path": Path("capture.bad")}, "Cannot infer"),
         ({"scientific_export_path": Path("capture.dpoz"), "scientific_format": "other"}, "Unsupported"),
     ],
