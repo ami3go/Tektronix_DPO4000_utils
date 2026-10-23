@@ -195,6 +195,40 @@ def _no_duplicate_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return result
 
 
+MAX_JOB_JSON_DEPTH = 64
+
+
+def _check_json_depth(raw: bytes) -> None:
+    """Bound JSON collection depth before decoding, independent of Python limits.
+
+    Ignore structural characters in strings and escaped quotes. The subsequent
+    strict JSON parser remains responsible for complete syntax validation.
+    """
+    depth = 0
+    in_string = False
+    escaped = False
+    for byte in raw:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif byte == 0x5C:  # backslash
+                escaped = True
+            elif byte == 0x22:  # quote
+                in_string = False
+        elif byte == 0x22:
+            in_string = True
+        elif byte in (0x7B, 0x5B):  # { [
+            depth += 1
+            if depth > MAX_JOB_JSON_DEPTH:
+                raise JobValidationError(
+                    f"JSON nesting exceeds maximum depth {MAX_JOB_JSON_DEPTH}"
+                )
+        elif byte in (0x7D, 0x5D):  # } ]
+            depth -= 1
+            if depth < 0:
+                raise JobValidationError("unexpected JSON closing delimiter")
+
+
 def load_json_mapping(path: str | Path, *, label: str) -> Mapping[str, Any]:
     source = Path(path)
     # Bounded binary read also protects against files enlarged after a stat call.
@@ -223,6 +257,7 @@ def load_json_mapping(path: str | Path, *, label: str) -> Mapping[str, Any]:
         return number
 
     try:
+        _check_json_depth(raw)
         value = json.loads(
             raw.decode("utf-8"),
             object_pairs_hook=_no_duplicate_object,
