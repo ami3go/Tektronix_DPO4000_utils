@@ -15,6 +15,28 @@
 | Performance | startup, validation-only, direct-vs-headless overhead, large recipe scaling |
 | HIL | read-only DPO4054 holdoff recipe + A16 rule + cleanup |
 
+## Automated evidence paths
+
+| Contract | Test / workflow |
+|---|---|
+| Strict UTF-8, duplicate keys, non-finite and deeply nested JSON, size cap | `tests/test_a25_job_runner_hardening.py` |
+| A15 method/argument validation before I/O | `tests/test_a25_job_runner.py`, `tests/test_a25_job_runner_hardening.py` |
+| Validation-only and no Qt import | `tests/test_a25_job_runner_hardening.py` |
+| A16 PASS/FAIL/INVALID exit mapping | `tests/test_a25_job_runner.py` |
+| One session, concurrent-job rejection, cancellation after blocking call | `tests/test_a25_job_runner_hardening.py` |
+| SIGINT CLI and installed module CLI | `tests/test_a25_job_runner_cli.py`, `.github/workflows/tests.yml` |
+| Report schema/version, Unicode/finite JSON, atomic rollback | `tests/test_a25_job_runner.py`, `tests/test_a25_job_runner_hardening.py` |
+| A21 NPZ and DPOZ round trip, export failure classification | `tests/test_a25_job_runner.py`, `tests/test_a25_job_runner_errors.py` |
+| Median/p95 fake A15 vs A25 and report write | `scripts/benchmark_a25_job_runner.py` |
+| Hosted Python 3.10–3.13, Ruff, full Qt regression | `.github/workflows/tests.yml` |
+| Linux and Windows packaged Desk startup | `.github/workflows/build-gui-executables.yml` |
+| Real installed CLI + API read-only DPO4054 evidence | `.github/workflows/a25-headless-hil.yml` (opt-in, not yet qualified) |
+
+The HIL workflow is manual and requires `[self-hosted, dpo4000]` plus a
+verified VISA resource. A queued job or unexecuted workflow is **PENDING**,
+not a physical PASS. Its initial recipe is only `get_trigger_holdoff`;
+it does not qualify scope-writing recipes.
+
 ## Regression gate
 
 Before A25 is ready to integrate:
