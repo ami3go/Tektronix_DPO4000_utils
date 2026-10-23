@@ -1,0 +1,67 @@
+name: A22 DPO4054 HIL Qualification
+
+# Explicit operator consent required. Never exercise a scope on a PR push.
+on:
+  workflow_dispatch:
+    inputs:
+      visa_resource:
+        description: "Explicit connected DPO4054 VISA address (USB0::... or TCPIP0::...)"
+        required: true
+        type: string
+      expected_idn:
+        description: "Required identity substring"
+        required: true
+        default: "TEKTRONIX,DPO4054"
+        type: string
+      run_seconds:
+        description: "Sustained seconds per selected record size"
+        required: true
+        type: choice
+        options: ["30", "1800", "3600"]
+        default: "30"
+      point_sizes:
+        description: "Short 4-size qualification or 10k-only soak"
+        required: true
+        type: choice
+        options: ["all", "10000"]
+        default: "all"
+      target_hz:
+        description: "Requested Hz (throughput is instrument-limited)"
+        required: true
+        type: choice
+        options: ["1", "2", "5", "10", "20"]
+        default: "5"
+
+permissions:
+  contents: read
+
+jobs:
+  read-only-hil:
+    name: A22 controlled scope snapshot qualification
+    runs-on: [self-hosted, dpo4000]
+    timeout-minutes: 270
+    env:
+      DPO4000_HARDWARE: "1"
+      DPO4000_RESOURCE: ${{ inputs.visa_resource }}
+      DPO4000_EXPECT_IDN: ${{ inputs.expected_idn }}
+      DPO4000_A22_RUN_SECONDS: ${{ inputs.run_seconds }}
+      DPO4000_A22_TARGET_HZ: ${{ inputs.target_hz }}
+      DPO4000_A22_POINT_COUNTS: ${{ inputs.point_sizes == 'all' && '1000,10000,100000,1000000' || inputs.point_sizes }}
+      DPO4000_A22_EVIDENCE_DIR: a22-hardware-evidence
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install read-only HIL test dependencies
+        run: python -m pip install -e .[dev]
+      - name: Validate scope identity, sample counts, cadence and post-stop session
+        run: pytest -q -s -m hardware tests/hardware/test_a22_live_stream_hardware.py
+      - name: Upload actual transport-qualified metrics (not synthetic)
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: a22-dpo4054-real-hardware-${{ github.run_id }}
+          path: a22-hardware-evidence/*.json
+          if-no-files-found: warn
+          retention-days: 90
