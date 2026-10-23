@@ -1,5 +1,37 @@
 # Changelog
 
+## v0.9.0 - Unreleased
+
+### Added
+
+- Added advanced A-trigger and Sequence/B-trigger configuration, including holdoff and
+  bounded capability probing for option-dependent trigger families.
+- Added the A15 validated JSON recipe sequencer with pause, resume, cancellation,
+  retry/backoff, timing capture, and serialized Desk worker integration.
+- Added the A16 deterministic pass/fail rule engine with compound logic and recipe-result
+  inputs.
+- Added A18 atomic evidence bundles with integrity verification and Desk integration.
+- Added the A20 bounded measurement trend dashboard with decimation and backpressure.
+- Added A21 lossless NPZ and portable DPOZ scientific export/import with exact waveform
+  round trips and safe archive validation.
+- Added the A25 `dpo4000-job` headless recipe runner with deterministic reports and exit
+  semantics.
+- Added the reviewed R0 functional/timing regression framework, batch runner, performance
+  gates, GUI-responsiveness coverage, and transport-specific hardware baseline tooling.
+
+### Fixed
+
+- Improved fast single-acquisition synchronization using the scope `BUSY?` state.
+- Fixed full-waveform transfer behavior after the DPO4054 record length shrinks.
+- Extended horizontal scale, advanced-trigger, scientific-export, evidence, trend, and
+  headless-runner validation across fake-instrument and real-hardware test layers.
+
+### Changed
+
+- Release builds use the refreshed pinned Python dependency set verified on 2026-10-22.
+- Package version prepared as `0.9.0rc1`; it will become `0.9.0` only after the retained
+  DPO4054 HIL, transport timing, and 24-hour soak evidence passes review.
+
 ## v0.6.1 - 2026-08-28
 
 ### Fixed

@@ -14,6 +14,8 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QScrollArea,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -150,11 +152,20 @@ class ScientificExportPanel(QGroupBox):
 
 def attach_scientific_export_panel(host: Any, page: QWidget) -> QWidget:
     """Attach A21 controls to the mature File page without replacing its features."""
-    layout = page.layout()
+    # The File page is a QScrollArea: its own layout() is the internal viewport
+    # layout, so adding the panel there overlays the cards. Use the scrolled body.
+    body = page.widget() if isinstance(page, QScrollArea) else page
+    layout = body.layout()
     if layout is None:
-        layout = QVBoxLayout(page)
-    panel = ScientificExportPanel(run_action=host._run_action, parent=page)
-    layout.addWidget(panel)
+        layout = QVBoxLayout(body)
+    panel = ScientificExportPanel(run_action=host._run_action, parent=body)
+    panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+    # Insert before the trailing stretch so the panel stacks under the last card.
+    last = layout.count() - 1
+    if last >= 0 and layout.itemAt(last).spacerItem() is not None:
+        layout.insertWidget(last, panel)
+    else:
+        layout.addWidget(panel)
     return page
 
 
