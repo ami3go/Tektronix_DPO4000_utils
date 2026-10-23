@@ -129,6 +129,17 @@ def validate_soak_report(
             reasons.append("Nonfinite or negative cycle latency")
         else:
             latencies.append(latency)
+    missed = summary.get("missed_deadlines")
+    expected_cycles = summary.get("expected_cycles")
+    interval = summary.get("interval_seconds")
+    if type(missed) is not int or missed < 0:
+        reasons.append("Missing or negative missed-deadline count")
+    if not _finite_nonnegative(interval) or interval == 0:
+        reasons.append("Invalid scheduled interval")
+    elif type(expected_cycles) is not int or expected_cycles != math.ceil(
+        duration * 3600.0 / interval
+    ) if _finite_nonnegative(duration) else True:
+        reasons.append("Inconsistent expected cycle count")
     limits = summary.get("acceptance_limits")
     if not isinstance(limits, dict):
         reasons.append("Acceptance limits not retained")
