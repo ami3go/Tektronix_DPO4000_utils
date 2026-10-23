@@ -110,8 +110,9 @@ class JobConfig:
         if not self.validate_only and not self.resource:
             raise JobValidationError("resource is required unless --validate-only is used")
         if self.expect_idn is not None:
-            text = str(self.expect_idn).strip()
-            object.__setattr__(self, "expect_idn", text or None)
+            if not isinstance(self.expect_idn, str) or not self.expect_idn.strip():
+                raise JobValidationError("expect_idn must be a non-empty string")
+            object.__setattr__(self, "expect_idn", self.expect_idn.strip())
         if self.scientific_points is not None:
             if (
                 isinstance(self.scientific_points, bool)
