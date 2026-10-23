@@ -43,6 +43,11 @@ def scope():
 @pytest.mark.hardware
 @pytest.mark.parametrize("point_count", [1_000, 10_000, 100_000, 1_000_000])
 def test_a22_read_only_sustained_snapshots(scope, point_count):
+    selected = os.getenv("DPO4000_A22_POINT_COUNTS", "").strip()
+    if selected:
+        allowed = {int(v.strip()) for v in selected.split(",")}
+        if point_count not in allowed:
+            pytest.skip(f"A22 HIL point_count={point_count} excluded by opt-in selection")
     seconds = max(1, int(os.getenv("DPO4000_A22_RUN_SECONDS", "30")))
     target_hz = float(os.getenv("DPO4000_A22_TARGET_HZ", "5"))
     config = StreamConfig(point_count=point_count, target_hz=target_hz)
