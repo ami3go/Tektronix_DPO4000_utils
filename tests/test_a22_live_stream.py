@@ -105,3 +105,15 @@ def test_invalid_state_transitions():
     assert engine.state is StreamState.STARTING
     engine.stop()
     assert engine.state is StreamState.IDLE
+
+
+def test_minmax_pure_python_fallback_preserves_spikes(monkeypatch):
+    import dpo4000_utils.live_stream as stream
+
+    monkeypatch.setattr(stream, "_np", None)
+    samples = array("h", [0]) * 10_000
+    samples[2203], samples[8507] = 32767, -32768
+    indices = minmax_indices(samples, 200)
+    assert (2203 in indices) and (8507 in indices)
+    assert len(indices) <= 200
+    assert indices[0] == 0 and indices[-1] == 9999
