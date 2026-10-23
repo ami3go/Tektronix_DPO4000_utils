@@ -49,7 +49,8 @@ def test_a22_read_only_sustained_snapshots(scope, point_count):
     engine = LiveStreamEngine()
     generation = engine.start(config)
     deadline = time.monotonic() + seconds
-    observed = []
+    previous_timestamp = None
+    frames_observed = 0
     max_in_flight = 0
     while time.monotonic() < deadline:
         delay = engine.due_in()
@@ -72,13 +73,14 @@ def test_a22_read_only_sustained_snapshots(scope, point_count):
         assert frame.waveform.preamble.record_point_count == point_count
         assert frame.waveform.preamble.x_increment > 0
         assert frame.generation == generation
-        assert frame.sequence == len(observed) + 1
-        if observed:
-            assert frame.acquired_monotonic_s >= observed[-1].acquired_monotonic_s
-        observed.append(frame)
+        assert frame.sequence == frames_observed + 1
+        if previous_timestamp is not None:
+            assert frame.acquired_monotonic_s >= previous_timestamp
+        previous_timestamp = frame.acquired_monotonic_s
+        frames_observed += 1
         engine.take_latest()
         assert engine.pending_frames <= 1
-    assert max_in_flight == 1 and observed
+    assert max_in_flight == 1 and frames_observed > 0
     result = engine.stats()
     engine.stop()
     assert engine.state is StreamState.IDLE and not engine.in_flight
