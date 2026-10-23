@@ -83,7 +83,7 @@ timers and invalidates generations before normal serialized session teardown.
 
 ### Plot and memory
 
-The render budget can be 500/1k/2k/5k/10k. Extrema and endpoints are preserved.
+The render budget can be 500/1k/2k/5k/10k. Extrema and endpoints are preserved. When the scientific/PySide6 extra provides NumPy, min/max buckets are computed over zero-copy array views; a GUI-independent pure-Python fallback remains available.
 The plot auto-scales both axes and paints only bounded prepared points on resize.
 
 At 1M points with 16-bit samples, raw storage is about 2 MB per frame.
@@ -98,7 +98,7 @@ is constructed.
 ### Limitations and deferred
 
 - CH2–CH4 are selectable but require physical qualification.
-- 1k/10k/100k/1M and Full depend on the scope's configured record length.
+- 1k/10k/100k/1M and Full depend on the scope's configured record length. A Full transfer returning more than 1M samples is rejected before A22 retains/renders it; the driver's transient read allocation may still temporarily exceed the nominal 2MB/frame limit. Prefer explicit 1M or fewer on large-memory instruments.
 - `Maximum` uses the 100 Hz software scheduling bound, not a guaranteed rate.
 - Automatic reconnect, multi-channel aligned concurrent acquisition,
   stream recording/A18 evidence-per-frame and WebSocket publishing are deferred.
