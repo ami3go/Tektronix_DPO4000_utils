@@ -1,6 +1,6 @@
 # A20 Measurement Trend Dashboard
 
-Status: implementation on `a20-measurement-trends`.
+Status: **implemented and merged to `main`**
 
 A20 adds bounded-memory live measurement trending without moving instrument I/O into the Qt GUI thread.
 
