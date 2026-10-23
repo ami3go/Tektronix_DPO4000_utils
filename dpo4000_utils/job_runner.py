@@ -43,6 +43,7 @@ from .rules import (
     rule_set_from_mapping,
 )
 from .scientific_export import (
+    MAX_SCIENTIFIC_SAMPLES,
     ScientificExportError,
     ScientificExportResult,
     ScientificFormat,
@@ -116,8 +117,11 @@ class JobConfig:
                 isinstance(self.scientific_points, bool)
                 or not isinstance(self.scientific_points, int)
                 or self.scientific_points <= 0
+                or self.scientific_points > MAX_SCIENTIFIC_SAMPLES
             ):
-                raise JobValidationError("scientific_points must be a positive integer or None")
+                raise JobValidationError(
+                    f"scientific_points must be a positive integer <= {MAX_SCIENTIFIC_SAMPLES}"
+                )
         if not isinstance(self.scientific_compressed, bool):
             raise JobValidationError("scientific_compressed must be a boolean")
         if self.scientific_export_path is not None:
@@ -140,6 +144,24 @@ class JobConfig:
             raise JobValidationError(
                 "scientific format/points/compressed require scientific_export_path"
             )
+
+        # Explicitly requested report/export destinations must never replace
+        # the job's input recipe/rules or one another, including symlink aliases.
+        input_paths = [
+            path for path in (self.recipe_path, self.rules_path) if path is not None
+        ]
+        output_paths = [
+            path for path in (self.report_path, self.scientific_export_path) if path is not None
+        ]
+        try:
+            input_resolved = {path.resolve() for path in input_paths}
+            output_resolved = [path.resolve() for path in output_paths]
+        except (OSError, RuntimeError) as exc:
+            raise JobValidationError(f"cannot resolve job file paths: {exc}") from exc
+        if any(path in input_resolved for path in output_resolved):
+            raise JobValidationError("report/export output path must not replace recipe/rules input")
+        if len(output_resolved) != len(set(output_resolved)):
+            raise JobValidationError("report and scientific export must have distinct paths")
 
 
 @dataclass(frozen=True)
