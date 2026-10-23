@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import statistics
 import time
 import tracemalloc
 from array import array
