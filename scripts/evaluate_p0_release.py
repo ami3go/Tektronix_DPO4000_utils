@@ -137,7 +137,9 @@ def _gate(fn) -> dict:
         reasons = fn()
     except FileNotFoundError as exc:
         return {"state": "BLOCKED", "reasons": [f"Missing evidence: {exc.filename or exc}"]}
-    except (OSError, ValueError, KeyError, TypeError, ET.ParseError) as exc:
+    except Exception as exc:
+        # Untrusted JSON/XML must never crash the evaluator or suppress a gate.
+        # KeyboardInterrupt and SystemExit still propagate.
         return {"state": "FAIL", "reasons": [f"Invalid evidence: {exc}"]}
     return {"state": "PASS" if not reasons else "FAIL", "reasons": reasons}
 
@@ -164,8 +166,14 @@ def evaluate(root: Path, *, commit: str) -> dict:
             return [*reasons, "Missing CI jobs matrix"]
         for name in REQUIRED_CI:
             job = jobs.get(name)
-            if not isinstance(job, dict) or job.get("status") != "PASS" or not job.get("url"):
-                reasons.append(f"No successful traceable CI run: {name}")
+            if (not isinstance(job, dict) or job.get("status") != "PASS"
+                or job.get("commit_sha") != commit
+                or not isinstance(job.get("url"), str)
+                or not re.fullmatch(
+                    r"https://github\\.com/ami3go/Tektronix_DPO4000_utils/actions/runs/[0-9]+(?:/job/[0-9]+)?",
+                    job["url"],
+                )):
+                reasons.append(f"No exact-head traceable CI run: {name}")
         return reasons
 
     def hardware() -> list[str]:
@@ -339,6 +347,8 @@ def evaluate(root: Path, *, commit: str) -> dict:
             reasons.append("Installed CLI not qualified")
         if qualification.get("session_released") is not True:
             reasons.append("Independent post-job connection evidence absent")
+        if result.get("commit_sha") != commit:
+            reasons.append("A25 installed CLI result commit mismatch")
         if result.get("status") != "pass" or result.get("exit_code") != 0:
             reasons.append("A25 CLI hardware result not PASS")
         if "DPO4054" not in str(result.get("identity", "")).upper():
@@ -352,8 +362,9 @@ def evaluate(root: Path, *, commit: str) -> dict:
             suites = [parsed] if parsed.tag == "testsuite" else list(parsed.findall("testsuite"))
             if not suites:
                 reasons.append("A25 JUnit has no test suite")
-            elif sum(int(s.get("tests", "0")) for s in suites) < 1:
-                reasons.append("A25 JUnit has no hardware test cases")
+            elif (sum(int(s.get("tests", "0")) for s in suites) < 1
+                  or not any(s.findall(".//testcase") for s in suites)):
+                reasons.append("A25 JUnit has no real hardware test cases")
             elif (any(int(s.get(field, "0")) for s in suites
                       for field in ("failures", "errors", "skipped"))
                   or any(s.findall(".//failure") or s.findall(".//error")
