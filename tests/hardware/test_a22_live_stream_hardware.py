@@ -12,6 +12,8 @@ import os
 import re
 import time
 import tracemalloc
+from concurrent.futures import ThreadPoolExecutor
+from threading import Event
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -220,3 +222,52 @@ def test_a22_read_only_sustained_snapshots(scope, point_count):
             json.dumps(payload, indent=2) + "\n", encoding="utf-8"
         )
     assert result.acquisition_errors == 0
+
+
+@pytest.mark.hardware
+def test_a22_stop_during_real_transfer_discards_late_frame(scope):
+    """Real VISA call finishes before querying again; no competing scope I/O."""
+    config = StreamConfig(point_count=10_000, target_hz=5.0)
+    engine = LiveStreamEngine()
+    engine.start(config)
+    token = engine.begin_due()
+    assert token is not None
+    entered = Event()
+
+    def read_on_single_worker():
+        entered.set()
+        return capture_frame(scope, config, *token)
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(read_on_single_worker)
+        assert entered.wait(2), "Physical worker did not start"
+        engine.stop()
+        assert engine.in_flight  # Stop invalidates publication, not VISA ownership.
+        frame = future.result(timeout=90)  # No concurrent SCPI access.
+    assert not engine.complete(token, frame)
+    assert engine.state is StreamState.IDLE
+    assert not engine.in_flight and engine.take_latest() is None
+    assert "DPO4054" in scope.query_identity().upper()
+
+
+@pytest.mark.hardware
+def test_a22_pause_resume_real_scope_transfer(scope):
+    config = StreamConfig(point_count=10_000, target_hz=5.0)
+    engine = LiveStreamEngine()
+    engine.start(config)
+    first = engine.begin_due()
+    assert first is not None
+    frame1 = capture_frame(scope, config, *first)
+    assert engine.complete(first, frame1)
+    assert engine.pending_frames == 1
+    engine.pause()
+    assert engine.state is StreamState.PAUSED
+    assert engine.pending_frames == 0 and engine.take_latest() is None
+    engine.resume()
+    second = engine.begin_due()
+    assert second is not None and second[0] != first[0]
+    frame2 = capture_frame(scope, config, *second)
+    assert engine.complete(second, frame2)
+    assert engine.take_latest() is not None
+    engine.stop()
+    assert "DPO4054" in scope.query_identity().upper()
