@@ -229,9 +229,13 @@ class HardwareBaselineCapture:
             restore_delay_s=0.5,
         )
         after = build_scope_settings_payload(instrument)
+        setup_matches = before["setup"] == after["setup"]
+        instrument_matches = before["instrument"] == after["instrument"]
+        if not setup_matches or not instrument_matches:
+            raise RuntimeError("R0 functional setup round-trip readback mismatch")
         return {
-            "restored": True,
-            "instrument_matches": before["instrument"] == after["instrument"],
+            "restored": setup_matches,
+            "instrument_matches": instrument_matches,
         }
 
     # ---- R0-T: timing/performance baseline ---------------------------------
