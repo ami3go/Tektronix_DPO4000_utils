@@ -346,6 +346,17 @@ def main() -> int:
     unmeasured_thresholds = sorted(
         set(thresholds) - (_operation_names(baseline_ops) & _operation_names(candidate_ops))
     )
+    mandatory_operations = {
+        "connection", "identity_query", "channel_readback", "channel_apply",
+        "measurement_refresh", "trigger_config_apply", "trigger_config_readback",
+        "unsupported_trigger_probe", "single_acquisition", "png_capture",
+        "csv_export",
+        *(f"waveform_acquisition.{size}" for size in (1000, 10000, 100000, 1000000)),
+    }
+    mandatory_missing = sorted(
+        mandatory_operations - _operation_names(baseline_ops)
+        | mandatory_operations - _operation_names(candidate_ops)
+    )
 
     report = {
         "status": "NOT_EVALUATED",
@@ -356,6 +367,7 @@ def main() -> int:
         "configuration_issues": configuration_issues,
         "timing_quality_issues": timing_quality_issues,
         "unmeasured_thresholds": unmeasured_thresholds,
+        "mandatory_missing": mandatory_missing,
         "thresholds_sha256": hashlib.sha256(args.thresholds.read_bytes()).hexdigest(),
         "unthresholded_operations": unthresholded_operations,
         "known_coverage_gaps": missing_coverage,
@@ -371,13 +383,16 @@ def main() -> int:
     }
     exit_code = int(bool(
         identity_issues or restoration_issues or configuration_issues or timing_quality_issues
-        or unmeasured_thresholds or missing_operations or new_operations or functional_diffs
+        or unmeasured_thresholds or mandatory_missing
+        or missing_operations or new_operations or functional_diffs
         or unthresholded_operations or missing_coverage
         or any(result.regressed for result in timing_regressions)
     ))
     report["status"] = "FAIL" if exit_code else "PASS"
     report["failure_reasons"] = (
         identity_issues + restoration_issues + configuration_issues + timing_quality_issues
+        + ([f"Required core operations missing: {mandatory_missing}"]
+           if mandatory_missing else [])
         + ([f"Unmeasured threshold operations: {unmeasured_thresholds}"]
            if unmeasured_thresholds else [])
         + ([f"Candidate-only operations without approved baseline: {new_operations}"]
@@ -397,6 +412,7 @@ def main() -> int:
     print(f"  test configuration issues: {configuration_issues}")
     print(f"  timing observation integrity issues: {timing_quality_issues}")
     print(f"  unmeasured threshold operations: {unmeasured_thresholds}")
+    print(f"  mandatory core operations missing: {mandatory_missing}")
     print(f"  timing metrics lacking acceptance thresholds: {unthresholded_operations}")
     print(f"  remaining coverage gaps: {missing_coverage}")
     print(f"  candidate-only timing operations: {new_operations}")
