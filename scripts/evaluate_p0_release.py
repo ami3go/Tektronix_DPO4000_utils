@@ -161,7 +161,8 @@ def _raw_timing_issues(operations: dict, label: str) -> list[str]:
                    or value < 0 for value in samples)):
             issues.append(f"{label}: invalid or absent raw duration observations: {name}")
             continue
-        if stats.get("error_count") != 0 or stats.get("timeout_count") != 0:
+        if (type(stats.get("error_count")) is not int or stats["error_count"] != 0
+            or type(stats.get("timeout_count")) is not int or stats["timeout_count"] != 0):
             issues.append(f"{label}: timing observation failures/timeouts: {name}")
         ordered = sorted(samples)
         # Matches the committed baseline_capture.distribution nearest-rank policy.
@@ -267,6 +268,11 @@ def evaluate(root: Path, *, commit: str) -> dict:
             # by their respective test runners and must be reviewed on the bench.
             try:
                 _track_file(root, artifact, tracked)
+                actual_digest = tracked[artifact]
+                if (not isinstance(case.get("artifact_sha256"), str)
+                    or not re.fullmatch(r"[0-9a-f]{64}", case["artifact_sha256"])
+                    or case["artifact_sha256"] != actual_digest):
+                    reasons.append(f"HIL evidence SHA256 missing/mismatch for {name}")
             except (FileNotFoundError, OSError, ValueError) as exc:
                 reasons.append(f"Missing/unsafe HIL artifact for {name}: {exc}")
         return reasons
