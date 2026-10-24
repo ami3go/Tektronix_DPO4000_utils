@@ -56,6 +56,9 @@ def _assert_round_trip(original, loaded) -> None:
 
 @pytest.mark.hardware
 def test_a21_real_waveform_npz_and_dpoz_round_trip(a21_scope: DPO4054, tmp_path) -> None:
+    if not _env_enabled("DPO4000_ENABLE_WRITE_TESTS"):
+        pytest.skip("This check sends SCPI state-changing commands; authorize reversible writes.")
+
     waveform = a21_scope.read_channel_waveform_data(1, point_count=1000)
     assert waveform.sample_count == 1000
 
