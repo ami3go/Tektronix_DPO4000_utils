@@ -154,6 +154,15 @@ def main() -> int:
         # Only publish after the physical setup was verified restored.
         for _, document in results:
             document["setup_restoration"] = dict(guard.report)
+            document["test_configuration"] = {
+                "timeout_ms": config.timeout_ms,
+                "capability_probe_timeout_ms": config.capability_probe_timeout_ms,
+                "test_channel": config.test_channel,
+                "reps_standard": config.reps_standard,
+                "reps_heavy": config.reps_heavy,
+                "reps_waveform_large": config.reps_waveform_large,
+                "waveform_sizes": list(config.waveform_sizes),
+            }
     finally:
         capture.disconnect()
 
