@@ -110,6 +110,7 @@ Only following explicit **reversible** bench approval:
 ```bash
 python scripts/run_hardware_verification.py \
   --resource "$DPO4000_RESOURCE" --profile reversible \
+  --expected-idn "$DPO4000_VERIFIED_IDN" \
   --authorize-reversible-writes --test-channel 1 \
   --waveform-points 1000 \
   --output-dir qualification_reports/hardware/usb/reversible
@@ -316,3 +317,12 @@ This tool validates **integrity, structure, gate completeness and traceability**
 It cannot independently attest that a scope, measurement, signature or approval
 is authentic. Human bench evidence review and independent engineering signoff
 are mandatory. Do not fabricate these input files to obtain a PASS.
+
+
+**Hardware authorization amendment (R1).** Dispatch the API workflow with
+`authorized_bench=true` even for read-only access. For reversible or full
+operation supply a real, exact `expected_idn` and
+`authorized_reversible=true`; full additionally needs
+`authorized_disruptive=true`. No implicit REF destination is authorized.
+`DPO4000_VERIFIED_IDN` must be obtained from a prior read-only
+`*IDN?` query and independently matched to the bench reservation.
