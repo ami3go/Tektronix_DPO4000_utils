@@ -98,7 +98,7 @@ def _child_env(tmp_path: Path, scenario: str) -> dict[str, str]:
         "A25_FAKE_SCENARIO": scenario,
         "DPO4000_RESOURCE": "",
         "DPO4000_TIMEOUT_MS": "20000",
-        "DPO4000_EXPECT_IDN": "",
+        "DPO4000_EXPECT_IDN": "TEKTRONIX,DPO4054",
     }
 
 
