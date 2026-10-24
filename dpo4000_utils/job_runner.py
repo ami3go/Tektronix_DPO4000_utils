@@ -17,6 +17,7 @@ import json
 import math
 import os
 from pathlib import Path
+import re
 import signal
 import sys
 from tempfile import NamedTemporaryFile
@@ -196,6 +197,17 @@ def _no_duplicate_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 
 
 MAX_JOB_JSON_DEPTH = 64
+
+# A15 recipes can use public driver helpers which write directly to caller-chosen
+# local files. Headless jobs must use the controlled A21 export/report destinations
+# instead; otherwise a recipe step could bypass JobConfig collision safeguards.
+HEADLESS_DENIED_LOCAL_WRITE_METHODS = frozenset({
+    "save_scope_settings",
+    "save_image_path",
+    "save_waveform_to_csv",
+    "save_all_channels_to_csv",
+    "save_all_channels_to_single_csv",
+})
 
 
 def _check_json_depth(raw: bytes) -> None:
@@ -390,6 +402,12 @@ class HeadlessJobRunner:
             sequencer.cancel()
 
     def _preflight(self, recipe: Recipe, config: JobConfig) -> None:
+        for step in recipe.steps:
+            if step.method in HEADLESS_DENIED_LOCAL_WRITE_METHODS:
+                raise JobValidationError(
+                    f"method {step.method!r} is not available to headless jobs; "
+                    "use the controlled A21 export destination"
+                )
         target = self._validation_target_factory(
             config.resource or "A25::VALIDATION_ONLY",
             auto_connect=False,
@@ -504,6 +522,16 @@ class HeadlessJobRunner:
                 write_termination="\n",
             ) as scope:
                 identity = scope.query_identity()
+                idn_fields = [field.strip().upper() for field in str(identity).split(",")]
+                if (
+                    len(idn_fields) < 2
+                    or idn_fields[0] != "TEKTRONIX"
+                    or re.fullmatch(r"(?:DPO|MSO)4[0-9]{3}[A-Z]?", idn_fields[1]) is None
+                ):
+                    raise RuntimeError(
+                        f"unsupported instrument identity {identity!r}; "
+                        "expected a Tektronix DPO4000/MSO4000 family scope"
+                    )
                 if config.expect_idn and config.expect_idn.upper() not in identity.upper():
                     raise RuntimeError(
                         f"scope identity {identity!r} does not contain expected {config.expect_idn!r}"
