@@ -137,6 +137,17 @@ def _capture_candidate_live(args: argparse.Namespace, output_dir: Path) -> tuple
             }
         functional["setup_restoration"] = dict(guard.report)
         timing["setup_restoration"] = dict(guard.report)
+        configuration = {
+                "timeout_ms": config.timeout_ms,
+                "capability_probe_timeout_ms": config.capability_probe_timeout_ms,
+                "test_channel": config.test_channel,
+                "reps_standard": config.reps_standard,
+                "reps_heavy": config.reps_heavy,
+                "reps_waveform_large": config.reps_waveform_large,
+                "waveform_sizes": list(config.waveform_sizes),
+            }
+        functional["test_configuration"] = configuration
+        timing["test_configuration"] = configuration
     finally:
         capture.disconnect()
     return functional, timing
@@ -301,6 +312,15 @@ def main() -> int:
         _timing_quality_issues(baseline_timing.get("operations"), "baseline")
         + _timing_quality_issues(candidate_timing.get("operations"), "candidate")
     )
+    configurations = [
+        doc.get("test_configuration")
+        for doc in (baseline_functional, baseline_timing, candidate_functional, candidate_timing)
+    ]
+    configuration_issues = (
+        [] if all(isinstance(cfg, dict) for cfg in configurations)
+        and all(cfg == configurations[0] for cfg in configurations)
+        else ["Missing or inconsistent R0 test configuration across baseline/candidate"]
+    )
     functional_diffs = diff_functional(baseline_functional, candidate_functional)
     timing_regressions, new_operations, missing_operations = diff_timing(
         baseline_timing.get("operations", {}),
@@ -330,6 +350,7 @@ def main() -> int:
         "candidate_timing_sha256": timing_candidate_hash,
         "identity_issues": identity_issues,
         "restoration_issues": restoration_issues,
+        "configuration_issues": configuration_issues,
         "timing_quality_issues": timing_quality_issues,
         "unmeasured_thresholds": unmeasured_thresholds,
         "thresholds_sha256": hashlib.sha256(args.thresholds.read_bytes()).hexdigest(),
@@ -344,14 +365,14 @@ def main() -> int:
         "missing_operations": missing_operations,
     }
     exit_code = int(bool(
-        identity_issues or restoration_issues or timing_quality_issues
+        identity_issues or restoration_issues or configuration_issues or timing_quality_issues
         or unmeasured_thresholds or missing_operations or functional_diffs
         or unthresholded_operations or missing_coverage
         or any(result.regressed for result in timing_regressions)
     ))
     report["status"] = "FAIL" if exit_code else "PASS"
     report["failure_reasons"] = (
-        identity_issues + restoration_issues + timing_quality_issues
+        identity_issues + restoration_issues + configuration_issues + timing_quality_issues
         + ([f"Unmeasured threshold operations: {unmeasured_thresholds}"]
            if unmeasured_thresholds else [])
         + ([f"Missing candidate timing operations: {missing_operations}"] if missing_operations else [])
@@ -366,6 +387,7 @@ def main() -> int:
     print("\nComparison summary")
     print(f"  identity/transport issues: {identity_issues}")
     print(f"  setup restoration issues: {restoration_issues}")
+    print(f"  test configuration issues: {configuration_issues}")
     print(f"  timing observation integrity issues: {timing_quality_issues}")
     print(f"  unmeasured threshold operations: {unmeasured_thresholds}")
     print(f"  timing metrics lacking acceptance thresholds: {unthresholded_operations}")
