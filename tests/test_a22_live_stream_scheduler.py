@@ -155,3 +155,30 @@ def test_real_blocking_fake_never_queues_second_operation():
         assert not engine.complete(first, frame(first))
         assert engine.begin_due() is not None
     assert active[1] == 1
+
+
+def test_pause_discards_unrendered_frame_and_keeps_render_count():
+    clock = Clock()
+    engine = LiveStreamEngine(clock)
+    engine.start()
+    token = engine.begin_due()
+    assert engine.complete(token, frame(token))
+    assert engine.pending_frames == 1
+    engine.pause()
+    assert engine.pending_frames == 0
+    assert engine.take_latest() is None
+    assert engine.stats().frames_rendered == 0
+    engine.resume()
+    assert engine.take_latest() is None
+
+
+def test_old_frame_never_reappears_after_stop_restart():
+    clock = Clock()
+    engine = LiveStreamEngine(clock)
+    engine.start()
+    token = engine.begin_due()
+    assert engine.complete(token, frame(token))
+    engine.stop()
+    engine.start()
+    assert engine.take_latest() is None
+    assert engine.stats().frames_rendered == 0
