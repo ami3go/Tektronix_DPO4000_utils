@@ -81,3 +81,18 @@ jobs:
 
       - name: Run full test suite with PySide6
         run: pytest -q
+
+      - name: A22 synthetic snapshot benchmark (not hardware throughput)
+        run: |
+          python scripts/benchmark_a22_live_stream.py \
+            --sizes 1000,10000,100000,1000000 \
+            --iterations 5 \
+            --output a22-synthetic-benchmark.json
+
+      - name: Retain A22 software-only performance evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: a22-hosted-synthetic-benchmark
+          path: a22-synthetic-benchmark.json
+          if-no-files-found: warn
