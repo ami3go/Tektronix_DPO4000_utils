@@ -109,7 +109,7 @@ class LiveWaveformPanel(QGroupBox):
         self.points_combo = QComboBox()
         self.points_combo.setObjectName("liveStreamPoints")
         for label, value in (("1k", 1_000), ("10k", 10_000),
-                             ("100k", 100_000), ("1M", 1_000_000), ("Full", None)):
+                             ("100k", 100_000), ("1M", 1_000_000)):
             self.points_combo.addItem(label, value)
         self.points_combo.setCurrentIndex(1)
         form.addRow("Transfer", self.points_combo)
@@ -164,6 +164,14 @@ class LiveWaveformPanel(QGroupBox):
             render_points=int(self.render_combo.currentData()),
         )
 
+    def _sync_lease(self) -> None:
+        # Stop/Pause invalidates publications, NOT a blocking VISA call.
+        # Keep the shared-session lease until its worker callback returns.
+        self._host._composition_live_lease = (
+            self.engine.in_flight
+            or self.engine.state not in {StreamState.IDLE, StreamState.ERROR}
+        )
+
     def start(self) -> None:
         if self._closed:
             return
@@ -179,7 +187,7 @@ class LiveWaveformPanel(QGroupBox):
             return
         self._last_actual_points = None
         self.error_label.clear()
-        self._host._composition_live_lease = True
+        self._sync_lease()
         self._render_timer.start()
         self._schedule()
         self._refresh()
@@ -202,7 +210,7 @@ class LiveWaveformPanel(QGroupBox):
         self._cadence.stop()
         self._render_timer.stop()
         self.engine.stop()  # invalidates callbacks; physical transfer may still time out
-        self._host._composition_live_lease = False
+        self._sync_lease()
         self._refresh()
 
     def shutdown(self) -> None:
@@ -231,33 +239,33 @@ class LiveWaveformPanel(QGroupBox):
         def success(result: Any) -> None:
             if not isinstance(result, WaveformFrame):
                 self.engine.fail(token, TypeError("Driver returned invalid frame"))
-            else:
-                if self.engine.complete(token, result):
-                    self._last_actual_points = result.waveform.sample_count
-            if self._closed:
-                return
-            if self.engine.state is StreamState.ERROR:
-                self._host._composition_live_lease = False
-            self._schedule()
-            self._refresh_status()
+            elif self.engine.complete(token, result):
+                self._last_actual_points = result.waveform.sample_count
+            self._sync_lease()
+            if not self._closed:
+                self._schedule()
+                self._refresh_status()
 
         def failure(exc: BaseException) -> None:
             self.engine.fail(token, exc)
-            if self.engine.state is StreamState.ERROR:
-                self._host._composition_live_lease = False
-            self._schedule()
-            self._refresh_status()
+            self._sync_lease()
+            if not self._closed:
+                self._schedule()
+                self._refresh_status()
 
-        self._run_action(
-            "A22 live waveform snapshot", execute,
-            on_success=success, on_error=failure, retain_session=True,
-        )
+        try:
+            self._run_action(
+                "A22 live waveform snapshot", execute,
+                on_success=success, on_error=failure, retain_session=True,
+            )
+        except Exception as exc:
+            # A synchronous dispatch failure must not strand the in-flight
+            # lease or leave the GUI displaying a healthy running state.
+            failure(exc)
 
     def _refresh(self) -> None:
         frame = self.engine.take_latest()
-        if frame is not None and self.engine.state in {
-            StreamState.RUNNING, StreamState.PAUSED
-        }:
+        if frame is not None and self.engine.state is StreamState.RUNNING:
             self.plot.display(frame)
         self._refresh_status()
 
