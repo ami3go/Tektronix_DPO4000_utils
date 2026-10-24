@@ -30,6 +30,8 @@ FUNCTIONAL_METADATA_KEYS: frozenset[str] = frozenset(
         "resource",
         "idn",
         "firmware",
+        "setup_restoration",  # independently checked, run-specific setup provenance
+        "test_configuration",  # independently compared before timing acceptance
     }
 )
 
