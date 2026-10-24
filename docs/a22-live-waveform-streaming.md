@@ -65,7 +65,9 @@ acquisition until the old callback releases the lease.
 ### Stop, Pause, errors, shutdown
 
 Stop disables scheduling immediately, clears the pending frame and invalidates
-old callbacks. The instrument's current PyVISA call cannot be interrupted
+old callbacks. The shared session lease is retained until an outstanding callback
+returns, including after a Stop or shutdown request. The instrument's current
+PyVISA call cannot be interrupted
 reliably; actual release is bounded by the driver/VISA timeout. The GUI stays
 responsive in the meantime. Pause also invalidates an in-flight result and
 keeps the already drawn plot. Resume uses a new monotonic schedule; no replay.
@@ -98,7 +100,7 @@ is constructed.
 ### Limitations and deferred
 
 - CH2–CH4 are selectable but require physical qualification.
-- 1k/10k/100k/1M and Full depend on the scope's configured record length. A Full transfer returning more than 1M samples is rejected before A22 retains/renders it; the driver's transient read allocation may still temporarily exceed the nominal 2MB/frame limit. Prefer explicit 1M or fewer on large-memory instruments.
+- 1k/10k/100k/1M depend on the scope's configured record length. Unbounded Full transfer is deliberately **disabled**: a driver can allocate >1M points before an A22 post-transfer limit check. A bounded size request remains capped at 1M and oversized driver responses are rejected.
 - `Maximum` uses the 100 Hz software scheduling bound, not a guaranteed rate.
 - Automatic reconnect, multi-channel aligned concurrent acquisition,
   stream recording/A18 evidence-per-frame and WebSocket publishing are deferred.
@@ -113,16 +115,23 @@ QT_QPA_PLATFORM=offscreen pytest -q tests/test_a22_*.py
 python scripts/benchmark_a22_live_stream.py --output a22-synthetic-benchmark.json
 ```
 
+Real DPO4054 HIL **writes** DATA:SOURCE/START/STOP/WIDTH/ENCDG via the public driver. It is not read-only. The operator must explicitly authorize reversible writes, reserve exclusive use of the scope and approve snapshot/verified restoration of all five DATA settings. The test restores these settings even when an acquisition fails; restoration failure is a hard hardware-safety gate.
+
 Real DPO4054 HIL is opt-in:
 
 ```bash
 DPO4000_HARDWARE=1 \
+DPO4000_A22_REVERSIBLE_WRITES=YES \
+DPO4000_A22_EXCLUSIVE=YES \
+DPO4000_A22_RESTORE_APPROVED=YES \
 DPO4000_RESOURCE='USB0::...::INSTR' \
 DPO4000_EXPECT_IDN='TEKTRONIX,DPO4054' \
 DPO4000_A22_RUN_SECONDS=30 \
 DPO4000_A22_EVIDENCE_DIR=artifacts/a22-usb \
 pytest -q -m hardware tests/hardware/test_a22_live_stream_hardware.py
 ```
+
+Run only with an operator-verified DPO4054, safe bench setup and a proven restoration procedure. The HIL JSON includes RSS and Python allocation metrics and a separate DATA setup-restoration report. A Python-only HIL test does **not** measure GUI heartbeat, trigger fault-injection, or shared-session interference; those gates require additional supervised GUI/HIL evidence.
 
 Repeat independently for TCPIP/VXI-11. **No claim of HIL qualification
 is made until the real run completes and evidence is retained.** Use 10k/5 Hz
