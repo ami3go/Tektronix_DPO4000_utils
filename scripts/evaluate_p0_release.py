@@ -14,6 +14,7 @@ import json
 import os
 import math
 import re
+import statistics
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 import xml.etree.ElementTree as ET
@@ -92,14 +93,23 @@ def _track_file(root: Path, relative: str, tracked: dict[str, str]) -> Path:
 
 def _load(path: Path, tracked: dict[str, str], root: Path) -> dict:
     relative = str(path.relative_to(root))
-    path = _track_file(root, relative, tracked)
+    # Hash and parse the same bytes: separate hash/read operations permit
+    # a concurrent file replacement to change the judged evidence.
+    path = _evidence_path(root, relative)
+    if not path.is_file():
+        raise FileNotFoundError(path)
+    with path.open("rb") as handle:
+        raw = handle.read(100_000_001)
+    if not 0 < len(raw) <= 100_000_000:
+        raise ValueError(f"Empty or oversized evidence: {relative}")
     payload = json.loads(
-        path.read_text(encoding="utf-8"),
+        raw.decode("utf-8"),
         parse_constant=_reject_constant,
         object_pairs_hook=_unique_object,
     )
     if not isinstance(payload, dict):
         raise ValueError(f"Evidence must be an object: {relative}")
+    tracked[relative] = hashlib.sha256(raw).hexdigest()
     return payload
 
 
@@ -126,6 +136,53 @@ def _validate_numeric_tree(item: object) -> None:
     elif isinstance(item, float) and not math.isfinite(item):
         raise ValueError("Evidence includes a nonfinite number")
 
+
+
+def _raw_timing_issues(operations: dict, label: str) -> list[str]:
+    """Cross-check reported percentiles against complete raw monotonic observations."""
+    issues = []
+    flattened = {}
+    for name, stats in operations.items():
+        if name == "not_yet_covered":
+            continue
+        if name == "waveform_acquisition" and isinstance(stats, dict):
+            flattened.update({f"{name}.{size}": item for size, item in stats.items()})
+        else:
+            flattened[name] = stats
+    for name, stats in flattened.items():
+        if not isinstance(stats, dict):
+            issues.append(f"{label}: invalid timing operation {name}")
+            continue
+        samples = stats.get("samples_s")
+        if (not isinstance(samples, list) or not samples
+            or type(stats.get("sample_count")) is not int
+            or stats["sample_count"] != len(samples)
+            or any(type(value) not in (float, int) or not math.isfinite(value)
+                   or value < 0 for value in samples)):
+            issues.append(f"{label}: invalid or absent raw duration observations: {name}")
+            continue
+        if stats.get("error_count") != 0 or stats.get("timeout_count") != 0:
+            issues.append(f"{label}: timing observation failures/timeouts: {name}")
+        ordered = sorted(samples)
+        # Matches the committed baseline_capture.distribution nearest-rank policy.
+        expected = {
+            "min": ordered[0],
+            "max": ordered[-1],
+            "p50": statistics.median(ordered),
+            "p95": ordered[round(0.95 * (len(ordered) - 1))],
+        }
+        for metric, number in expected.items():
+            claimed = stats.get(metric)
+            if (type(claimed) not in (float, int)
+                or not math.isfinite(claimed)
+                or not math.isclose(claimed, number, rel_tol=1e-12, abs_tol=1e-12)):
+                issues.append(f"{label}: reported {metric} contradicts raw samples: {name}")
+    for size in (1000, 10000, 100000, 1000000):
+        if f"waveform_acquisition.{size}" not in flattened:
+            issues.append(f"{label}: missing required waveform timing size {size}")
+    if not flattened:
+        issues.append(f"{label}: timing coverage is empty")
+    return issues
 
 
 def _reject_constant(token: str):
@@ -256,6 +313,16 @@ def evaluate(root: Path, *, commit: str) -> dict:
                 reasons.append(f"{transport}: inconsistent approved baseline commit")
             if any(doc.get("commit_sha") != commit for doc in (candidate_f, candidate_t)):
                 reasons.append(f"{transport}: candidate must come from exact qualified commit")
+            configurations = [doc.get("test_configuration") for doc in documents]
+            if not all(isinstance(config, dict) and config
+                       and config == configurations[0] for config in configurations):
+                reasons.append(f"{transport}: missing or inconsistent capture configuration")
+            for doc in documents:
+                restoration = doc.get("setup_restoration")
+                if (not isinstance(restoration, dict)
+                    or restoration.get("status") != "VERIFIED"
+                    or restoration.get("verified") is not True):
+                    reasons.append(f"{transport}: missing independently verified setup restoration")
             if data.get("status") != "PASS":
                 reasons.append(f"{transport}: R0 comparison status is not PASS")
             for name in ("functional", "timing"):
@@ -280,6 +347,8 @@ def evaluate(root: Path, *, commit: str) -> dict:
                 reasons.append(f"{transport}: missing/new timing operations")
             _validate_numeric_tree(baseline_ops)
             _validate_numeric_tree(candidate_ops)
+            reasons.extend(_raw_timing_issues(baseline_ops, f"{transport}: baseline"))
+            reasons.extend(_raw_timing_issues(candidate_ops, f"{transport}: candidate"))
             for label, operations in (("baseline", baseline_ops), ("candidate", candidate_ops)):
                 for name in _operation_names(operations):
                     if name.startswith("waveform_acquisition."):
