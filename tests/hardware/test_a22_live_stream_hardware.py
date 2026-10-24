@@ -97,7 +97,11 @@ def scope():
         except Exception as exc:
             restore_error = f"{type(exc).__name__}: {exc}"
         finally:
-            instrument.disconnect()
+            disconnect_error = None
+            try:
+                instrument.disconnect()
+            except Exception as exc:
+                disconnect_error = f"{type(exc).__name__}: {exc}"
             output_dir = os.getenv("DPO4000_A22_EVIDENCE_DIR", "").strip()
             if output_dir:
                 folder = Path(output_dir)
@@ -107,11 +111,14 @@ def scope():
                         "kind": "dpo4054_data_setup_restoration",
                         "identity": identity, "initial": initial,
                         "verified": verified, "error": restore_error,
+                        "disconnect_error": disconnect_error,
                         "completed_at_utc": datetime.now(timezone.utc).isoformat(),
                     }, indent=2) + "\n", encoding="utf-8"
                 )
         if initial is not None and not verified:
             pytest.fail(f"CRITICAL: physical scope DATA setup restoration failed: {restore_error}")
+        if disconnect_error:
+            pytest.fail(f"CRITICAL: physical scope disconnect failed: {disconnect_error}")
 
 
 @pytest.mark.hardware
