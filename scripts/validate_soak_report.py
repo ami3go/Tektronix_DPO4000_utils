@@ -30,6 +30,7 @@ def validate_soak_report(
     """Return failure reasons and SHA-256 hashes for the reviewed artifacts."""
     reasons: list[str] = []
     evidence: dict[str, str] = {}
+    raw_files: dict[str, bytes] = {}
     if not math.isfinite(min_hours) or min_hours < 24:
         return ["Minimum approved qualification duration is 24 hours"], evidence
     paths = {
@@ -47,6 +48,7 @@ def validate_soak_report(
         if not raw or len(raw) > 100_000_000:
             reasons.append(f"Empty or oversized {name} evidence")
             continue
+        raw_files[name] = raw
         evidence[name] = hashlib.sha256(raw).hexdigest()
     if len(evidence) != 2:
         return reasons, evidence
@@ -60,7 +62,9 @@ def validate_soak_report(
         return item
 
     try:
-        payload = json.loads(paths["json"].read_text(encoding="utf-8"),
+        # Parse the exact bytes whose digest was retained. Reopening permits a
+        # concurrent replacement to make the judged report differ from its hash.
+        payload = json.loads(raw_files["json"].decode("utf-8"),
                              parse_constant=lambda value: (_ for _ in ()).throw(
                                  ValueError(f"Nonstandard number {value}")),
                              object_pairs_hook=unique_keys)
@@ -248,7 +252,7 @@ def validate_soak_report(
                 reasons.append("Real-time evidence shorter than requested soak")
     except (KeyError, TypeError, ValueError):
         reasons.append("Missing or malformed start/end timestamps")
-    markdown = paths["markdown"].read_text(encoding="utf-8")
+    markdown = raw_files["markdown"].decode("utf-8")
     if "**Status:** PASS" not in markdown or "# DPO4000 hardware soak qualification" not in markdown:
         reasons.append("Human-readable report missing finalized PASS status")
     return reasons, evidence
