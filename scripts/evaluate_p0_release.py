@@ -322,6 +322,32 @@ def evaluate(root: Path, *, commit: str) -> dict:
                         for item, actual in zip(reported, regressions)
                     ):
                         reasons.append(f"{transport}: reported timing comparisons inconsistent")
+        # Separately reviewed, cross-transport R0 rollup is mandatory.
+        rollup = load("performance/transport_comparison/transport_comparison.json")
+        if rollup.get("schema_version") != 1 or rollup.get("status") != "PASS":
+            reasons.append("USB/TCPIP independently reviewed transport rollup not PASS")
+        if rollup.get("threshold_sha256") != _sha(policy_path):
+            reasons.append("R0 transport rollup threshold digest mismatch")
+        approval = rollup.get("threshold_approval")
+        if not isinstance(approval, dict) or approval.get("status") != "APPROVED":
+            reasons.append("R0 baseline/threshold independent approval absent")
+        artifact_hashes = rollup.get("artifacts_sha256")
+        if not isinstance(artifact_hashes, dict):
+            reasons.append("R0 transport rollup missing evidence digest map")
+        else:
+            for relative, recorded_sha in artifact_hashes.items():
+                if not isinstance(relative, str) or not relative:
+                    reasons.append("R0 transport rollup has invalid evidence path")
+                    continue
+                path = _track_file(root, f"performance/{relative}", tracked)
+                if recorded_sha != _sha(path):
+                    reasons.append(f"R0 transport artifact SHA256 mismatch: {relative}")
+        for transport in ("usb", "tcpip"):
+            extra = load(f"performance/{transport}/candidate/r0_extra_metrics.json")
+            baseline_extra = load(f"performance/{transport}/baseline/r0_extra_metrics.json")
+            for label, doc in (("candidate", extra), ("baseline", baseline_extra)):
+                if not isinstance(doc.get("metrics"), dict) or not doc["metrics"]:
+                    reasons.append(f"{transport}: {label} extra performance observations absent")
         return reasons
 
     def soak() -> list[str]:
