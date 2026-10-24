@@ -14,7 +14,6 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 from dpo4000_utils.baseline_capture import BaselineConfig, HardwareBaselineCapture, build_baseline_header
-from dpo4000_utils.settings import apply_setup_string, build_scope_settings_payload
 from dpo4000_utils.r0_qualification import VerifiedSetupGuard
 
 
@@ -135,10 +134,7 @@ def main() -> int:
     capture = HardwareBaselineCapture(config)
     results: list[tuple[Path, dict]] = []
     capture.connect()
-    original_setup = None
     try:
-        assert capture.scope is not None
-        original_setup = build_scope_settings_payload(capture.scope.ensure_connected())
         with VerifiedSetupGuard(capture, config.output_dir, args.expected_idn) as guard:
             idn = guard.expected_idn
             print(f"  verified idn: {idn}")
@@ -168,17 +164,7 @@ def main() -> int:
                 "waveform_sizes": list(config.waveform_sizes),
             }
     finally:
-        try:
-            if original_setup is not None:
-                assert capture.scope is not None
-                instrument = capture.scope.ensure_connected()
-                apply_setup_string(instrument, original_setup["setup"], restore_delay_s=0.5)
-                restored = build_scope_settings_payload(instrument)
-                if (restored["instrument"] != original_setup["instrument"]
-                    or restored["setup"] != original_setup["setup"]):
-                    raise RuntimeError("Baseline capture failed exact setup-restore readback")
-        finally:
-            capture.disconnect()
+        capture.disconnect()
 
     # Do not leave a seemingly approved functional baseline behind if the
     # hardware timing capture failed. Publish only after both stages complete.
