@@ -131,7 +131,12 @@ def _connect(resource: str, timeout_ms: int) -> DPO4054:
         read_termination="\n",
         write_termination="\n",
     )
-    scope.connect()
+    try:
+        scope.connect()
+    except BaseException:
+        # A transport failure during connect may still leave a VISA handle open.
+        _safe_disconnect(scope)
+        raise
     return scope
 
 
@@ -354,8 +359,8 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    if not math.isfinite(args.interval_seconds) or args.interval_seconds <= 0:
-        raise SystemExit("--interval-seconds must be finite and positive")
+    if not math.isfinite(args.interval_seconds) or args.interval_seconds < 5.0:
+        raise SystemExit("--interval-seconds must be finite and >= 5 to bound retained cycle memory")
     if args.timeout_ms <= 0:
         raise SystemExit("--timeout-ms must be positive")
     for key in (
