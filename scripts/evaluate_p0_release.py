@@ -190,16 +190,29 @@ def _reject_constant(token: str):
     raise ValueError(f"Nonstandard JSON number: {token}")
 
 
+def _findings(*, failed: list[str], blocked: list[str]) -> dict:
+    """Completed failures always outrank pending/missing qualification evidence."""
+    return {
+        "state": "FAIL" if failed else "BLOCKED" if blocked else "PASS",
+        "reasons": [*failed, *blocked],
+    }
+
+
 def _gate(fn) -> dict:
     try:
-        reasons = fn()
+        findings = fn()
     except FileNotFoundError as exc:
         return {"state": "BLOCKED", "reasons": [f"Missing evidence: {exc.filename or exc}"]}
     except Exception as exc:
-        # Untrusted JSON/XML must never crash the evaluator or suppress a gate.
+        # Malformed, contradictory or unsafe evidence must never become BLOCKED.
         # KeyboardInterrupt and SystemExit still propagate.
         return {"state": "FAIL", "reasons": [f"Invalid evidence: {exc}"]}
-    return {"state": "PASS" if not reasons else "FAIL", "reasons": reasons}
+    if isinstance(findings, dict):
+        if (findings.get("state") not in {"PASS", "BLOCKED", "FAIL"}
+            or not isinstance(findings.get("reasons"), list)):
+            return {"state": "FAIL", "reasons": ["Invalid gate findings contract"]}
+        return findings
+    return {"state": "PASS" if not findings else "FAIL", "reasons": findings}
 
 
 def evaluate(root: Path, *, commit: str) -> dict:
@@ -219,20 +232,33 @@ def evaluate(root: Path, *, commit: str) -> dict:
         reasons = []
         if data.get("schema_version") != 1 or data.get("commit_sha") != commit:
             reasons.append("Software CI schema or commit mismatch")
-        jobs = data.get("jobs", {})
+        blocked = []
+        jobs = data.get("jobs")
+        if jobs is None:
+            blocked.append("Required CI jobs matrix has not been supplied")
+            return _findings(failed=reasons, blocked=blocked)
         if not isinstance(jobs, dict):
-            return [*reasons, "Missing CI jobs matrix"]
+            return _findings(failed=[*reasons, "Invalid CI jobs matrix"], blocked=blocked)
         for name in REQUIRED_CI:
             job = jobs.get(name)
-            if (not isinstance(job, dict) or job.get("status") != "PASS"
-                or job.get("commit_sha") != commit
+            if job is None:
+                blocked.append(f"Missing required CI job: {name}")
+                continue
+            if not isinstance(job, dict):
+                reasons.append(f"Invalid CI job record: {name}")
+                continue
+            status = job.get("status")
+            if status in ("NOT_RUN", "UNKNOWN", "PENDING", "SKIPPED", "CANCELLED"):
+                blocked.append(f"Required CI job not successfully executed: {name}: {status}")
+                continue
+            if (status != "PASS" or job.get("commit_sha") != commit
                 or not isinstance(job.get("url"), str)
                 or not re.fullmatch(
                     r"https://github\.com/ami3go/Tektronix_DPO4000_utils/actions/runs/[0-9]+(?:/job/[0-9]+)?",
                     job["url"],
                 )):
                 reasons.append(f"No exact-head traceable CI run: {name}")
-        return reasons
+        return _findings(failed=reasons, blocked=blocked)
 
     def hardware() -> list[str]:
         data = load("hardware/qualification.json")
@@ -243,17 +269,23 @@ def evaluate(root: Path, *, commit: str) -> dict:
             reasons.append("Missing real DPO4054 identity")
         if data.get("setup_restored") is not True:
             reasons.append("Initial instrument setup was not independently verified restored")
-        cases = data.get("cases", [])
+        cases = data.get("cases")
+        if cases is None:
+            return _findings(failed=reasons, blocked=["HIL feature cases not supplied"])
         if not isinstance(cases, list):
-            return [*reasons, "Missing HIL feature cases"]
+            return _findings(failed=[*reasons, "Invalid HIL feature cases"], blocked=[])
+        blocked = []
         by_name = {
             item["id"]: item for item in cases
             if isinstance(item, dict) and isinstance(item.get("id"), str)
         }
+        ids = [item.get("id") for item in cases if isinstance(item, dict)]
+        if len(ids) != len(cases) or len(ids) != len(set(ids)):
+            reasons.append("Invalid or duplicate HIL case IDs")
         for name in REQUIRED_HIL:
             case = by_name.get(name)
             if not case:
-                reasons.append(f"Missing physical feature qualification: {name}")
+                blocked.append(f"Missing physical feature qualification: {name}")
                 continue
             status = case.get("status")
             if status != "PASS":
@@ -262,7 +294,7 @@ def evaluate(root: Path, *, commit: str) -> dict:
                 reasons.append(f"HIL case {name} not PASS: {status}")
             artifact = case.get("artifact")
             if not isinstance(artifact, str) or not artifact.strip():
-                reasons.append(f"Missing retained case evidence path: {name}")
+                blocked.append(f"Missing retained case evidence path: {name}")
                 continue
             # Track case evidence hashes; JSON documents are already checked
             # by their respective test runners and must be reviewed on the bench.
@@ -273,9 +305,11 @@ def evaluate(root: Path, *, commit: str) -> dict:
                     or not re.fullmatch(r"[0-9a-f]{64}", case["artifact_sha256"])
                     or case["artifact_sha256"] != actual_digest):
                     reasons.append(f"HIL evidence SHA256 missing/mismatch for {name}")
-            except (FileNotFoundError, OSError, ValueError) as exc:
+            except FileNotFoundError as exc:
+                blocked.append(f"Missing HIL artifact for {name}: {exc}")
+            except (OSError, ValueError) as exc:
                 reasons.append(f"Missing/unsafe HIL artifact for {name}: {exc}")
-        return reasons
+        return _findings(failed=reasons, blocked=blocked)
 
     def performance() -> list[str]:
         """Recompute regression decisions from raw evidence, never trust status alone."""
@@ -428,7 +462,11 @@ def evaluate(root: Path, *, commit: str) -> dict:
     def soak() -> list[str]:
         path = root / "soak"
         for name in ("soak_report.json", "soak_report.md"):
-            _evidence_path(root, "soak/" + name)
+            evidence = _evidence_path(root, "soak/" + name)
+            if not evidence.is_file():
+                # The validator returns diagnostics for absent reports. For a
+                # release gate, absence is pending work, not a failed run.
+                raise FileNotFoundError(evidence)
         problems, digests = validate_soak_report(
             path, min_hours=24.0, expected_commit=commit
         )
