@@ -74,6 +74,7 @@ Then reversible:
 python scripts/run_hardware_verification.py \
   --resource 'USB0::0x0699::0x0401::C011280::INSTR' \
   --profile reversible \
+  --expected-idn 'TEKTRONIX,DPO4054,<ACTUAL_SERIAL>,<ACTUAL_FW>' \
   --authorize-reversible-writes \
   --test-channel 1 \
   --waveform-points 1000
@@ -85,6 +86,7 @@ Finally, only when disruptive behavior is acceptable:
 python scripts/run_hardware_verification.py \
   --resource 'USB0::0x0699::0x0401::C011280::INSTR' \
   --profile full \
+  --expected-idn 'TEKTRONIX,DPO4054,<ACTUAL_SERIAL>,<ACTUAL_FW>' \
   --authorize-reversible-writes \
   --authorize-disruptive-tests \
   --test-channel 1 \
@@ -97,11 +99,19 @@ To qualify a disposable REF4 as well:
 python scripts/run_hardware_verification.py \
   --resource 'USB0::0x0699::0x0401::C011280::INSTR' \
   --profile full \
+  --expected-idn 'TEKTRONIX,DPO4054,<ACTUAL_SERIAL>,<ACTUAL_FW>' \
   --authorize-reversible-writes \
   --authorize-disruptive-tests \
   --allow-reference-overwrite \
   --reference-destination 4
 ```
+
+The `--expected-idn` strings above are **placeholders**, not real
+instrument identities. Replace each with the complete exact response to
+`*IDN?` from the approved DPO4054, including its real serial number.
+Write-capable verification refuses an absent/mismatched target identity.
+Driver waveform/hardcopy operations write SCPI transfer settings and are now
+classified as REVERSIBLE, not read-only.
 
 ## v0.7 session and decoded-BUS coverage
 
