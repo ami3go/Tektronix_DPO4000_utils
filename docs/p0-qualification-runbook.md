@@ -136,7 +136,8 @@ On known-good approved baseline checkout, separately for USB and TCPIP:
 python scripts/capture_r0_baseline.py \
   --resource "$DPO4000_RESOURCE" \
   --output-dir qualification_reports/performance/usb/baseline \
-  --authorize-reversible-writes \
+  --expected-idn "$DPO4000_VERIFIED_IDN" \
+  --authorize-reversible-writes --confirm-restore-plan \
   --reps-standard 20 --reps-heavy 5 --reps-waveform-large 5
 ```
 
@@ -150,9 +151,15 @@ python scripts/compare_r0_baseline.py \
   --baseline-dir qualification_reports/performance/usb/baseline \
   --thresholds tests/baselines/r0_timing_thresholds.json \
   --resource "$DPO4000_RESOURCE" \
-  --authorize-reversible-writes \
+  --expected-idn "$DPO4000_VERIFIED_IDN" \
+  --authorize-reversible-writes --confirm-restore-plan \
   --output-dir qualification_reports/performance/usb/candidate
 ```
+
+Read **docs/r0-usb-tcpip-qualification.md** for exact-IDN and verified-restore
+preflight, per-transport extra A15/A18/A21/A25 measured raw samples,
+independent approval of baseline/threshold SHA-256, and the fail-closed
+`scripts/report_r0_transports.py` aggregate CSV/JSON/Markdown/plots.
 
 Repeat with `performance/tcpip/` and its own VISA resource. Never compare
 USB against TCPIP. The comparison now refuses completion if its threshold
