@@ -170,6 +170,7 @@ def test_invalid_recipe_never_opens_session(tmp_path: Path, method: str) -> None
     "method",
     [
         "save_scope_settings",
+        "apply_scope_settings",
         "save_image_path",
         "save_waveform_to_csv",
         "save_all_channels_to_csv",
