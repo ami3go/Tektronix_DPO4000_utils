@@ -528,3 +528,23 @@ def test_rejected_review_remains_failed(tmp_path: Path) -> None:
         "critical_open": 0, "high_open": 0,
     })
     assert release.evaluate(tmp_path, commit=COMMIT)["gates"]["REVIEW"]["state"] == "FAIL"
+
+
+def test_r0_confirmed_failed_usb_not_hidden_by_missing_tcpip(tmp_path: Path) -> None:
+    _json(tmp_path, "performance/usb/candidate/comparison_report.json", {
+        "status": "FAIL", "reason": "measured regression (synthetic fixture)",
+    })
+    gate = release.evaluate(tmp_path, commit=COMMIT)["gates"]["P0-G2"]
+    assert gate["state"] == "FAIL"
+    assert "explicitly failed" in " ".join(gate["reasons"])
+    assert "Missing R0 evidence" in " ".join(gate["reasons"])
+
+
+def test_r0_wrong_candidate_commit_not_hidden_by_missing_transport(tmp_path: Path) -> None:
+    _json(tmp_path, "performance/tcpip/candidate/r0_candidate_timing.json", {
+        "schema_version": 1, "commit_sha": "b" * 40, "idn": IDN,
+        "resource": "TCPIP0::SCOPE::INSTR",
+    })
+    gate = release.evaluate(tmp_path, commit=COMMIT)["gates"]["P0-G2"]
+    assert gate["state"] == "FAIL"
+    assert "candidate commit mismatch" in " ".join(gate["reasons"])
