@@ -363,7 +363,9 @@ def main() -> int:
         "thresholds_file": str(args.thresholds),
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "functional_diffs": [asdict(d) for d in functional_diffs],
-        "timing_regressions": [asdict(r) for r in timing_regressions],
+        "timing_regressions": [
+            {**asdict(r), "regressed": r.regressed} for r in timing_regressions
+        ],
         "new_operations": new_operations,
         "missing_operations": missing_operations,
     }
