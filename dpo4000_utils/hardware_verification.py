@@ -57,6 +57,31 @@ verification_manifest_gaps = _core.verification_manifest_gaps
 class HardwareVerifier(_core.HardwareVerifier):
     """Hardware verifier extended with post-core public API coverage."""
 
+    def _case_lifecycle(self) -> str:
+        if self.config.profile == VerificationRisk.READ_ONLY:
+            raise _core.VerificationSkip(
+                "Legacy lifecycle case opens several separate VISA sessions before the "
+                "exclusive lock; deferred to separately authorized transport tests. "
+                "The verifier's primary session is still opened, locked and closed."
+            )
+        return super()._case_lifecycle()
+
+    def _case_waveform_readback(self) -> str:
+        if self.config.profile == VerificationRisk.READ_ONLY:
+            raise _core.VerificationSkip(
+                "Public waveform reader issues DATA:SOURCE/START/STOP/WIDTH/ENCDG writes; "
+                "not authorized under strict no-write qualification."
+            )
+        return super()._case_waveform_readback()
+
+    def _case_hardcopy(self) -> str:
+        if self.config.profile == VerificationRisk.READ_ONLY:
+            raise _core.VerificationSkip(
+                "PNG capture issues SAVE:IMAGE:FILEFORMAT and HARDCOPY START writes; "
+                "not authorized under strict no-write qualification."
+            )
+        return super()._case_hardcopy()
+
     def _case_control_readbacks(self) -> str:
         detail = super()._case_control_readbacks()
         scope = self._require_scope()
@@ -76,14 +101,17 @@ class HardwareVerifier(_core.HardwareVerifier):
         instrument = scope.ensure_connected()
         original_timeout = getattr(instrument, "timeout", None)
         scope.get_trigger_holdoff()
-        supported = scope.probe_scpi_query("TRIGGER:A:HOLDOFF:VALUE?", timeout_ms=500)
-        if not supported.supported:
-            raise AssertionError(f"Verified A14 holdoff query was not supported: {supported}")
-        unsupported = scope.probe_scpi_query("TRIGGER:B:EVENTS:MODE?", timeout_ms=500)
-        if unsupported.supported:
-            raise AssertionError("Known unsupported TRIGGER:B:EVENTS:MODE? unexpectedly succeeded.")
+        if self.config.profile != VerificationRisk.READ_ONLY:
+            supported = scope.probe_scpi_query("TRIGGER:A:HOLDOFF:VALUE?", timeout_ms=500)
+            if not supported.supported:
+                raise AssertionError(f"Verified A14 holdoff query was not supported: {supported}")
+            unsupported = scope.probe_scpi_query("TRIGGER:B:EVENTS:MODE?", timeout_ms=500)
+            if unsupported.supported:
+                raise AssertionError("Known unsupported TRIGGER:B:EVENTS:MODE? unexpectedly succeeded.")
         if getattr(instrument, "timeout", None) != original_timeout:
             raise AssertionError("A14 capability probe did not restore the original VISA timeout.")
+        if self.config.profile == VerificationRisk.READ_ONLY:
+            return detail + " A14 holdoff readback passed; *CLS-based capability probes SKIP."
         return detail + " Session state plus A14 holdoff/capability-probe readbacks passed."
 
     def _case_trigger_config_write(self) -> str:
@@ -145,8 +173,11 @@ class HardwareVerifier(_core.HardwareVerifier):
             "is_acquiring",
             "is_busy",
             "get_trigger_holdoff",
-            "probe_scpi_query",
         }:
+            return super()._symbol_status("get_acquisition_setup", method=True)
+        if method and symbol == "probe_scpi_query":
+            if self.config.profile == VerificationRisk.READ_ONLY:
+                return "SKIP", []
             return super()._symbol_status("get_acquisition_setup", method=True)
         if method and symbol == "set_trigger_holdoff":
             return super()._symbol_status("configure_trigger", method=True)
