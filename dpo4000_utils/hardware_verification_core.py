@@ -212,6 +212,7 @@ class VerificationConfig:
     artifact_record_length: int = 1_000
     allow_reference_overwrite: bool = False
     reference_destination: int = 4
+    expected_idn: str = ""
 
 
 class HardwareVerifier:
@@ -220,6 +221,14 @@ class HardwareVerifier:
     def __init__(self, config: VerificationConfig):
         self.config = config
         self.config.output_dir = Path(self.config.output_dir)
+        if self.config.profile >= VerificationRisk.REVERSIBLE:
+            expected = self.config.expected_idn.strip()
+            if ("DPO4054" not in expected.upper()
+                or len(expected.split(",")) < 3):
+                raise ValueError(
+                    "Write-capable HIL requires a complete exact DPO4054 *IDN? "
+                    "with model and serial number before opening VISA"
+                )
         self.config.output_dir.mkdir(parents=True, exist_ok=True)
         self.results: list[VerificationResult] = []
         self.scope: DPO4054 | None = None
@@ -882,6 +891,14 @@ class HardwareVerifier:
         try:
             self.scope.connect()
             self.idn = self.scope.query_identity().strip()
+            expected = self.config.expected_idn.strip()
+            if expected and self.idn != expected:
+                raise RuntimeError(
+                    "Connected scope identity does not exactly match approved "
+                    f"bench instrument: expected={expected!r}, actual={self.idn!r}"
+                )
+            if "DPO4054" not in self.idn.upper():
+                raise RuntimeError(f"Physical qualification target is not DPO4054: {self.idn!r}")
             self._capture_baseline()
 
             cases: list[tuple[VerificationCase, Callable[[], str | None]]] = [
