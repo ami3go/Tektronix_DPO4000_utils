@@ -179,6 +179,16 @@ def evaluate(root: Path, threshold_file: Path, approval_path: Path | None
     threshold_hash = _digest(threshold_file) if threshold_file.is_file() else None
     if threshold_hash is None:
         issues.append("Acceptance-threshold file absent")
+        threshold_operations: dict[str, Any] = {}
+    else:
+        try:
+            threshold_document = json.loads(threshold_file.read_text(encoding="utf-8"))
+            threshold_operations = threshold_document["operations"]
+            if not isinstance(threshold_operations, dict):
+                raise ValueError("operations must be an object")
+        except (OSError, UnicodeError, ValueError, KeyError, TypeError) as error:
+            issues.append(f"Malformed acceptance-threshold file: {error}")
+            threshold_operations = {}
     approval_file = (
         (root / approval_path).resolve() if approval_path is not None
         and not approval_path.is_absolute()
@@ -202,6 +212,9 @@ def evaluate(root: Path, threshold_file: Path, approval_path: Path | None
         cand_f = _read(root, f"{prefix}/candidate/r0_candidate_functional.json", hashes, issues)
         comparison = _read(root, f"{prefix}/candidate/comparison_report.json", hashes, issues)
         extensions = _read(root, f"{prefix}/candidate/r0_extra_metrics.json", hashes, issues)
+        baseline_extensions = _read(
+            root, f"{prefix}/baseline/r0_extra_metrics.json", hashes, issues
+        )
         if any(not doc for doc in (base, base_f, candidate, cand_f, comparison)):
             issues.append(f"{transport}: incomplete R0 functional/timing evidence")
             continue
@@ -289,6 +302,61 @@ def evaluate(root: Path, threshold_file: Path, approval_path: Path | None
                 "regressed": computed_regressed,
             })
         issues.extend(_extension_issues(extensions, transport, idn, commits[transport]))
+        issues.extend(_extension_issues(
+            baseline_extensions, transport, idn, baseline_commits[transport]
+        ))
+        old_metrics = baseline_extensions.get("metrics", {})
+        new_metrics = extensions.get("metrics", {})
+        if not isinstance(old_metrics, dict) or not isinstance(new_metrics, dict):
+            continue
+        for operation in REQUIRED_EXTENSIONS:
+            previous = old_metrics.get(operation)
+            current = new_metrics.get(operation)
+            if not isinstance(previous, dict) or not isinstance(current, dict):
+                continue
+            if not _raw_ok(previous) or not _raw_ok(current):
+                continue
+            limits = threshold_operations.get(operation)
+            if not isinstance(limits, dict):
+                issues.append(f"{transport}: no approved threshold entry for {operation}")
+                continue
+            relative, absolute = limits.get("relative_limit"), limits.get("absolute_tolerance_s")
+            if (type(relative) not in (int, float) or not math.isfinite(relative)
+                or relative < 1 or type(absolute) not in (int, float)
+                or not math.isfinite(absolute) or absolute < 0):
+                issues.append(f"{transport}: invalid threshold entry for {operation}")
+                continue
+            delta = current["p95"] - previous["p95"]
+            regressed = current["p95"] > previous["p95"] * relative and delta > absolute
+            if regressed:
+                comparison_failed = True
+                issues.append(f"{transport}: feature regression {operation}")
+            byte_field = (
+                "payload_bytes" if operation == "transport_throughput"
+                else "file_bytes" if operation.startswith("a21_") else None
+            )
+            bytes_measured = current.get(byte_field) if byte_field else None
+            throughput = (
+                bytes_measured / current["p50"] / 1_000_000
+                if type(bytes_measured) is int and bytes_measured > 0
+                and current["p50"] > 0 else None
+            )
+            rows.append({
+                "transport": transport, "operation": operation,
+                "baseline_n": previous["sample_count"], "candidate_n": current["sample_count"],
+                "baseline_p50_s": previous["p50"], "candidate_p50_s": current["p50"],
+                "baseline_p95_s": previous["p95"], "candidate_p95_s": current["p95"],
+                "candidate_p99_s": current.get("p99"), "candidate_max_s": current["max"],
+                "candidate_stdev_s": current.get("stdev"),
+                "absolute_delta_p95_s": delta,
+                "relative_delta_p95_percent": (
+                    100 * delta / previous["p95"] if previous["p95"] > 0 else None
+                ),
+                "candidate_samples_per_second": current.get("samples_per_second"),
+                "transport_mb_per_second": throughput,
+                "threshold_relative_limit": relative,
+                "threshold_absolute_tolerance_s": absolute, "regressed": regressed,
+            })
     baseline_digests = approval.get("baseline_sha256", {}) if isinstance(approval, dict) else {}
     for transport in ("usb", "tcpip"):
         for kind in ("functional", "timing"):
