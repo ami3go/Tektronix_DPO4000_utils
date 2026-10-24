@@ -13,6 +13,7 @@ import hashlib
 import json
 import math
 import os
+import statistics
 from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -118,6 +119,21 @@ def _raw_ok(stats: dict[str, Any]) -> bool:
         value = stats.get(name)
         if type(value) not in (int, float) or not math.isfinite(value) or value < 0:
             return False
+    ordered = sorted(samples)
+    expected = {
+        "p50": statistics.median(ordered),
+        "p95": ordered[min(len(ordered) - 1, max(0, round(0.95 * (len(ordered) - 1))))],
+        "max": ordered[-1],
+    }
+    if any(not math.isclose(stats[key], value, rel_tol=1e-10, abs_tol=1e-12)
+           for key, value in expected.items()):
+        return False
+    p99 = stats.get("p99")
+    if len(samples) < 100:
+        if p99 is not None:
+            return False
+    elif type(p99) not in (int, float) or not math.isfinite(p99):
+        return False
     return True
 
 
@@ -241,10 +257,22 @@ def evaluate(root: Path, threshold_file: Path, approval_path: Path | None
                 issues.append(f"{transport}: no acceptance gate for {operation}")
                 continue
             diff = c["p95"] - b["p95"]
-            if recorded.get("regressed"):
+            relative = recorded.get("relative_limit")
+            absolute = recorded.get("absolute_tolerance_s")
+            if (type(relative) not in (int, float) or not math.isfinite(relative)
+                or relative < 1 or type(absolute) not in (int, float)
+                or not math.isfinite(absolute) or absolute < 0):
+                issues.append(f"{transport}: invalid acceptance limits for {operation}")
+                continue
+            computed_regressed = c["p95"] > b["p95"] * relative and diff > absolute
+            if computed_regressed:
+                comparison_failed = True
                 issues.append(f"{transport}: regression in {operation}")
-            if recorded.get("baseline_value") != b["p95"] or recorded.get("candidate_value") != c["p95"]:
-                issues.append(f"{transport}: comparison metric modified/mismatched for {operation}")
+            if (recorded.get("regressed") is not computed_regressed
+                or recorded.get("baseline_value") != b["p95"]
+                or recorded.get("candidate_value") != c["p95"]):
+                comparison_failed = True
+                issues.append(f"{transport}: comparison metric/verdict mismatched for {operation}")
             rows.append({
                 "transport": transport, "operation": operation,
                 "baseline_n": b["sample_count"], "candidate_n": c["sample_count"],
@@ -258,7 +286,7 @@ def evaluate(root: Path, threshold_file: Path, approval_path: Path | None
                 "transport_mb_per_second": c.get("transport_mb_per_second"),
                 "threshold_relative_limit": recorded.get("relative_limit"),
                 "threshold_absolute_tolerance_s": recorded.get("absolute_tolerance_s"),
-                "regressed": recorded.get("regressed"),
+                "regressed": computed_regressed,
             })
         issues.extend(_extension_issues(extensions, transport, idn, commits[transport]))
     baseline_digests = approval.get("baseline_sha256", {}) if isinstance(approval, dict) else {}
