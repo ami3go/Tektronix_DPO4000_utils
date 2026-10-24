@@ -18,6 +18,10 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/build-gui-executables.yml"
+      - ".github/workflows/tests.yml"
+      - "scripts/evaluate_p0_release.py"
+      - "scripts/validate_soak_report.py"
+      - "tests/test_p0_*"
       - "constraints-release.txt"
       - "dpo4000_utils/**"
       - "pyproject.toml"
