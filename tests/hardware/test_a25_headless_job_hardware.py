@@ -16,6 +16,7 @@ from dpo4000_utils.job_runner import (
 )
 
 from dpo4000_utils.session import scope_session
+from dpo4000_utils.settings import read_scope_setup_string
 
 _TRUE_VALUES = {"1", "true", "yes", "on"}
 
@@ -72,6 +73,15 @@ def test_a25_read_only_recipe_rule_and_report(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
+    # Capture the full instrument setup before exercising A25. *LRN? is a
+    # read-only query with SET? fallback; changes must fail qualification.
+    with scope_session(
+        resource,
+        timeout_ms=int(os.getenv("DPO4000_TIMEOUT_MS", "20000")),
+    ) as baseline_scope:
+        baseline_identity = baseline_scope.query_identity()
+        baseline_setup = read_scope_setup_string(baseline_scope.ensure_connected())
+
     result = HeadlessJobRunner().run(
         JobConfig(
             recipe_path=recipe_path,
@@ -100,6 +110,9 @@ def test_a25_read_only_recipe_rule_and_report(tmp_path: Path) -> None:
         timeout_ms=int(os.getenv("DPO4000_TIMEOUT_MS", "20000")),
     ) as scope:
         followup_idn = scope.query_identity()
+        followup_setup = read_scope_setup_string(scope.ensure_connected())
+    assert followup_idn == baseline_identity, "scope identity changed during qualification"
+    assert followup_setup == baseline_setup, "scope setup changed during read-only qualification"
     assert os.getenv("DPO4000_EXPECT_IDN", "TEKTRONIX,DPO4054").lower() in (
         followup_idn.lower()
     )
