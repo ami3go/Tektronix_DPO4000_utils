@@ -178,6 +178,17 @@ def test_reported_performance_pass_without_raw_coverage_fails(tmp_path: Path) ->
             "candidate_functional_sha256": candidates["functional"],
             "candidate_timing_sha256": candidates["timing"],
         })
+        for destination in ("candidate", "baseline"):
+            _json(tmp_path, base + "/" + destination + "/r0_extra_metrics.json", {
+                "metrics": {"synthetic_test_only": 1},
+            })
+    policy = ROOT / "tests/baselines/r0_timing_thresholds.json"
+    _json(tmp_path, "performance/transport_comparison/transport_comparison.json", {
+        "schema_version": 1, "status": "PASS",
+        "threshold_sha256": hashlib.sha256(policy.read_bytes()).hexdigest(),
+        "threshold_approval": {"status": "APPROVED"},
+        "artifacts_sha256": {},
+    })
     gate = release.evaluate(tmp_path, commit=COMMIT)["gates"]["P0-G2"]
     assert gate["state"] == "FAIL"
     assert "zero timing coverage" in " ".join(gate["reasons"])
