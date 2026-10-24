@@ -13,23 +13,28 @@ qualifying evidence yet, not an implied pass.
 | State Start/Pause/Resume/Stop/Restart | `test_a22_live_stream*.py` | CI required |
 | Single in flight / slow driver | `test_a22_live_stream_scheduler.py` | CI required |
 | Monotonic absolute deadlines and misses | `test_a22_live_stream_scheduler.py` | CI required |
-| Generation stale-success/failure | `test_a22_live_stream_scheduler.py` | CI required |
+| Generation stale-success/failure and paused-frame suppression | `test_a22_live_stream_scheduler.py` | Final-head CI required |
 | Latest frame/backpressure | `test_a22_live_stream_scheduler.py` | CI required |
 | Spike-preserving min/max | `test_a22_live_stream.py` | CI required |
-| Driver boundary and shared lease | `test_a22_live_stream_safety.py` | CI required |
+| Driver boundary, Stop-in-flight lease, dispatch exceptions | `test_a22_live_stream_safety.py`, `test_a22_live_stream_gui_contract.py` | Final-head CI required |
 | PySide6 layout, lifecycle, callbacks | `test_a22_live_stream_gui_contract.py` | CI required |
 | GUI 50ms heartbeat with synthetic activity | `test_a22_live_stream_gui_heartbeat.py` | CI required |
-| Synthetic 1k / 10k / 100k / 1M | `scripts/benchmark_a22_live_stream.py` | CI required |
+| Synthetic 1k / 10k / 100k / 1M | Permanent `Tests` PySide6 job / benchmark artifact | Final-head CI required |
 | Linux/Windows package startup | existing release build workflows | CI required |
-| CH1 1k/10k/100k/1M USB | `tests/hardware/test_a22_live_stream_hardware.py` | **PENDING** |
-| CH1 1k/10k/100k/1M TCPIP | separate HIL resource/run | **PENDING** |
+| CH1 1k/10k/100k/1M USB | Reversible-write authorized HIL, mandatory DATA snapshot/restore | **PENDING** |
+| CH1 1k/10k/100k/1M TCPIP | Separate reversible-write authorized HIL resource/run | **PENDING** |
 | CH2–CH4 | future HIL profile | **PENDING** |
-| 30–60 min soak (CH1/10k/5Hz) | opt-in bench run | **PENDING** |
+| 30–60 min soak (CH1/10k/5Hz) | Opt-in bench, JSON memory metrics and setup restoration | **PENDING** |
+| Physical GUI heartbeat / shared-session conflict | Supervised GUI and instrument verification | **PENDING** |
+| Timeout / disconnect physical negative tests | Authorized fault injection and verified cleanup | **PENDING** |
+| Independent reviewer approval | Human reviewer not author | **PENDING** |
 
 Real hardware qualification records are transport-scoped JSON files. Required
 fields: target/actual FPS, point count, transfer latency p50/p95/p99,
 samples/s, MB/s, missed deadlines, replacement and errors, scope identity,
-and final driver usability. Report USB and TCPIP baselines separately.
+RSS/Python allocation growth, and final driver usability. A separate DATA setup
+restoration JSON with `verified: true` is mandatory. The waveform read performs
+reversible DATA:* writes: a read-only scope authorization does not permit HIL. Report USB and TCPIP baselines separately.
 
 The synthetic benchmark is deliberately **not** a real oscilloscope
 throughput or VISA performance measurement. Never substitute it for HIL.
