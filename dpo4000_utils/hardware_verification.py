@@ -57,6 +57,15 @@ verification_manifest_gaps = _core.verification_manifest_gaps
 class HardwareVerifier(_core.HardwareVerifier):
     """Hardware verifier extended with post-core public API coverage."""
 
+    def _case_lifecycle(self) -> str:
+        if self.config.profile == VerificationRisk.READ_ONLY:
+            raise _core.VerificationSkip(
+                "Legacy lifecycle case opens several separate VISA sessions before the "
+                "exclusive lock; deferred to separately authorized transport tests. "
+                "The verifier's primary session is still opened, locked and closed."
+            )
+        return super()._case_lifecycle()
+
     def _case_waveform_readback(self) -> str:
         if self.config.profile == VerificationRisk.READ_ONLY:
             raise _core.VerificationSkip(

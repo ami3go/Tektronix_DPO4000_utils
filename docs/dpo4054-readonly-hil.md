@@ -38,6 +38,11 @@ python scripts/run_hardware_verification.py \
   --output-dir hardware_verification_reports/readonly
 ```
 
+The legacy lifecycle case opens several VISA sessions **before** instrument
+locking and is explicitly SKIP under strict no-write authorization. The main
+verifier's single protected session still exercises connection and final cleanup,
+but its lifecycle proof is not equivalent to multi-session transport qualification.
+
 The verifier wraps the active VISA session in a fail-closed query-only adapter.
 Configuration writes, `*CLS`, raw/binary write operations, compound SCPI commands and
 VISA device clear are rejected before instrument I/O. The adapter records query and
