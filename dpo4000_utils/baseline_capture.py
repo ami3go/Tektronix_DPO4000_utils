@@ -87,7 +87,7 @@ def build_baseline_header(resource: str, idn: str) -> dict[str, Any]:
     }
 
 
-def distribution(samples: list[float]) -> dict[str, float | int]:
+def distribution(samples: list[float]) -> dict[str, Any]:
     """Return timing distribution plus individual monotonic samples."""
     if not samples:
         raise ValueError("distribution() requires at least one sample.")
@@ -103,6 +103,8 @@ def distribution(samples: list[float]) -> dict[str, float | int]:
         "stdev": statistics.stdev(ordered) if len(ordered) > 1 else None,
         "sample_count": len(ordered),
         "samples_s": list(samples),
+        "timeout_count": 0,  # any timeout would abort this complete distribution
+        "error_count": 0,  # a failed iteration raises, never silently discarded
     }
 
 
@@ -381,7 +383,7 @@ class HardwareBaselineCapture:
             "readback": distribution(readback_samples),
         }
 
-    def _time_unsupported_trigger_probe(self, scope: DPO4054) -> dict[str, float | int]:
+    def _time_unsupported_trigger_probe(self, scope: DPO4054) -> dict[str, Any]:
         """Measure the known unsupported A14 probe using its dedicated timeout."""
         instrument = scope.ensure_connected()
         original_timeout = getattr(instrument, "timeout", None)
