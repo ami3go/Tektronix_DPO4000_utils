@@ -227,23 +227,75 @@ with per-gate PASS/FAIL/BLOCKED, evidence SHA-256 digests and a nonzero exit
 for incomplete qualification. Missing evidence is **BLOCKED**, not PASS.
 The input manifest contract requires:
 
-- `software/ci.json`: schema version 1, exact commit, each Python 3.10–3.13,
-  Ruff, PySide6, CodeQL, and Windows/Linux packaging job PASS plus run URLs.
+- `software/ci.json`: schema version 1 and exact commit. Each required
+  Python 3.10–3.13, Ruff, PySide6, CodeQL and Windows/Linux packaging job
+  must carry `status: "PASS"`, `commit_sha` equal to the qualified 40-digit
+  SHA, and an exact repository GitHub Actions `url` such as
+  `https://github.com/ami3go/Tektronix_DPO4000_utils/actions/runs/123456`.
+  URLs/JSON are **claims**, not trusted CI attestations: reviewer MUST independently
+  open exact-head jobs, inspect conclusions and verify the source SHA.
 - `hardware/qualification.json`: schema version 1, exact commit, actual
   DPO4054 IDN, independently verified setup restoration and a `cases` array
   mapping each required feature family to its measured supporting artifact.
-  A hardware SKIP must have capability-absent evidence and an explicit reason.
+  All `REQUIRED_HIL` entries must be `PASS`. A `SKIP`, even if claimed
+  capability-absent, blocks release pending a separately approved, documented
+  scope reduction and updated policy. Case artifacts must be nonempty local
+  files, with no traversal or symbolic-link components.
 - `performance/{usb,tcpip}/baseline/r0_{functional,timing}_baseline.json`:
   immutable, separately approved real-device R0 references. Each candidate
   folder has a `comparison_report.json` and raw
-  `r0_candidate_{functional,timing}.json` with matching SHA-256.
-- `soak/soak_report.{json,md}`: one uninterrupted continuous 24-hour
-  physical run, validated with the separate soak validator.
+  `r0_candidate_{functional,timing}.json` with matching SHA-256. The evaluator
+  independently recalculates R0 functional differences and timing regressions
+  against the **versioned checkout's** `tests/baselines/r0_timing_thresholds.json`.
+  Both sides must contain nonempty, numeric, thresholded timing coverage.
+  Candidate source SHA, baseline identity/transport, and baseline commit pair
+  must be consistent. No raw coverage, stale/untested operations or forged
+  `comparison_report.json` PASS can satisfy this gate. Any threshold changes
+  require a separately reviewed source commit.
+- `soak/soak_report.{json,md}`: one uninterrupted continuous >=24-hour
+  physical run with an accurate monotonic duration, approximately matching
+  UTC wall-clock interval and scheduled-cycle coverage (accounted cycles plus
+  bounded missed deadlines). Initial/final sampling, identity, latencies,
+  resource-growth limits, cleanup and postflight must all pass the independent
+  report validator. A one-cycle file that claims a 24-hour elapsed duration
+  is **FAIL**, not a completed qualification. Use `--interval-seconds >= 5`
+  to keep 24/72-hour retained sample counts bounded.
 - `a25/qualification.json`, `hardware-cli-report.json` and
   `hardware-junit.xml`: installed CLI and second-session evidence from
   the dedicated authorized workflow, plus independent review status.
 - `review.json`: exact combined candidate commit, named reviewer,
-  `status=APPROVED`, `critical_open=0`, `high_open=0`.
+  `status=APPROVED`, `critical_open=0`, `high_open=0` and a traceable
+  GitHub `approval_url`. Offline review metadata cannot replace a qualified
+  independent human reviewer and direct verification of their approval.
+
+
+## Independent R1–R5 safety findings and operating restrictions
+
+- **READ_ONLY is not permission for general SCPI writes.** Driver waveform
+  reads configure persistent `DATA:SOURCE/START/STOP/WIDTH/ENCDG` state, and
+  screenshot acquisition writes `SAVE:IMAGE:FILEFORMAT` and
+  `HARDCOPY START`. The public-API verification manifest therefore
+  classifies these cases as `REVERSIBLE` and skips them on an unauthorized
+  read-only run. Hardware pytest waveform cases and the `*CLS` status test
+  also require `DPO4000_ENABLE_WRITE_TESTS=1`, set only after bench-owner
+  reversible authorization. A read-only run legitimately leaves those cases
+  **unqualified**, not PASS.
+- The full public verifier now compares its post-restore `*LRN?` setup
+  snapshot and instrument identity against the pre-test capture; a mismatch
+  fails the case and therefore the run. This **cannot** restore overwritten
+  REF waveform contents. REF storage remains destructive and requires a
+  separate disposable REF destination and authorization.
+- R0 baseline/candidate live capture must retain `VerifiedSetupGuard`
+  evidence and perform readback confirmation. Never publish an approved
+  reference from a failed or unverified restore. Candidate output must not
+  overwrite the baseline tree.
+- An offline JSON `PASS`, apparent hash or GitHub URL alone is not
+  cryptographic provenance: download artifacts from the exact CI/HIL run,
+  verify scopes and serial numbers against bench records, validate SHA-256,
+  and have a distinct qualified human sign the final release approval.
+- GitHub-hosted software tests and CodeQL do not exercise a physical DPO4054.
+  Leave HIL, USB/TCPIP baseline performance, 24-hour soak, installed A25 CLI,
+  and independent approval **BLOCKED** until valid evidence actually exists.
 
 This tool validates **integrity, structure, gate completeness and traceability**.
 It cannot independently attest that a scope, measurement, signature or approval
