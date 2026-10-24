@@ -25,6 +25,7 @@ from dpo4000_utils.baseline_compare import diff_functional, diff_timing, load_th
 REQUIRED_CI = (
     "python_3_10", "python_3_11", "python_3_12", "python_3_13",
     "ruff", "pyside6", "codeql", "package_windows", "package_linux",
+    "r0_offline_batch", "release_integrity",
 )
 REQUIRED_HIL = (
     "core", "channels_math_ref_bus", "waveform", "acquisition",
