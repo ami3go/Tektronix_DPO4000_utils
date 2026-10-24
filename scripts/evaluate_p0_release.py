@@ -556,9 +556,15 @@ def evaluate(root: Path, *, commit: str) -> dict:
         if not xml_path.is_file():
             blocked.append("A25 physical pytest JUnit missing")
         else:
-            tracked[str(xml_path.relative_to(root))] = _sha(xml_path)
-            parsed = ET.parse(xml_path).getroot()
-            suites = [parsed] if parsed.tag == "testsuite" else list(parsed.findall("testsuite"))
+            # Interpret the same bounded bytes as the retained digest; do not
+            # hash and then reopen an attacker-controlled JUnit path.
+            xml_raw = xml_path.read_bytes()
+            if not 0 < len(xml_raw) <= 10_000_000:
+                raise ValueError("A25 JUnit is empty or oversized")
+            tracked[str(xml_path.relative_to(root))] = hashlib.sha256(xml_raw).hexdigest()
+            parsed_xml = ET.fromstring(xml_raw)
+            suites = ([parsed_xml] if parsed_xml.tag == "testsuite"
+                      else list(parsed_xml.findall("testsuite")))
             if not suites:
                 failed.append("A25 JUnit has no test suite")
             elif (sum(int(s.get("tests", "0")) for s in suites) < 1
