@@ -12,11 +12,14 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import os
+import math
+import re
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 import xml.etree.ElementTree as ET
 
 from validate_soak_report import validate_soak_report
+from dpo4000_utils.baseline_compare import diff_functional, diff_timing, load_thresholds
 
 REQUIRED_CI = (
     "python_3_10", "python_3_11", "python_3_12", "python_3_13",
@@ -51,20 +54,78 @@ def _atomic_json(path: Path, payload: dict) -> None:
             temporary.unlink(missing_ok=True)
 
 
-def _load(path: Path, tracked: dict[str, str], root: Path) -> dict:
-    # Reject traversal/symlinks into other paths. Evidence must be local to root.
+def _unique_object(pairs: list[tuple[str, object]]) -> dict:
+    """Duplicate JSON keys must not silently replace failing evidence."""
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"Duplicate JSON key: {key}")
+        result[key] = value
+    return result
+
+
+def _evidence_path(root: Path, relative: str) -> Path:
+    """Reject traversal, absolute paths and symlinks at every evidence component."""
+    requested = Path(relative)
+    if requested.is_absolute() or ".." in requested.parts or not requested.parts:
+        raise ValueError(f"Unsafe evidence path: {relative}")
+    path = root
+    for component in requested.parts:
+        path = path / component
+        if path.is_symlink():
+            raise ValueError(f"Symlink evidence not allowed: {relative}")
     if not path.resolve().is_relative_to(root.resolve()):
-        raise ValueError(f"Evidence outside qualification root: {path}")
-    raw = path.read_bytes()
-    if not raw or len(raw) > 100_000_000:
-        raise ValueError(f"Missing or excessive evidence size: {path}")
-    payload = json.loads(raw.decode("utf-8"), parse_constant=lambda value: (
-        _reject_constant(value)
-    ))
+        raise ValueError(f"Evidence outside qualification root: {relative}")
+    return path
+
+
+def _track_file(root: Path, relative: str, tracked: dict[str, str]) -> Path:
+    path = _evidence_path(root, relative)
+    if not path.is_file():
+        raise FileNotFoundError(path)
+    size = path.stat().st_size
+    if not 0 < size <= 100_000_000:
+        raise ValueError(f"Empty or oversized evidence: {relative}")
+    tracked[relative] = _sha(path)
+    return path
+
+
+def _load(path: Path, tracked: dict[str, str], root: Path) -> dict:
+    relative = str(path.relative_to(root))
+    path = _track_file(root, relative, tracked)
+    payload = json.loads(
+        path.read_text(encoding="utf-8"),
+        parse_constant=_reject_constant,
+        object_pairs_hook=_unique_object,
+    )
     if not isinstance(payload, dict):
-        raise ValueError(f"Evidence must be an object: {path}")
-    tracked[str(path.relative_to(root))] = hashlib.sha256(raw).hexdigest()
+        raise ValueError(f"Evidence must be an object: {relative}")
     return payload
+
+
+def _operation_names(operations: dict) -> set[str]:
+    result = set()
+    for name, stats in operations.items():
+        if name == "not_yet_covered":
+            continue
+        if name == "waveform_acquisition" and isinstance(stats, dict):
+            result.update(f"waveform_acquisition.{size}" for size, item in stats.items()
+                          if isinstance(item, dict) and "p95" in item)
+        elif isinstance(stats, dict) and "p95" in stats:
+            result.add(name)
+    return result
+
+
+def _validate_numeric_tree(item: object) -> None:
+    if isinstance(item, dict):
+        for child in item.values():
+            _validate_numeric_tree(child)
+    elif isinstance(item, list):
+        for child in item:
+            _validate_numeric_tree(child)
+    elif isinstance(item, float) and not math.isfinite(item):
+        raise ValueError("Evidence includes a nonfinite number")
+
 
 
 def _reject_constant(token: str):
@@ -85,6 +146,8 @@ def evaluate(root: Path, *, commit: str) -> dict:
     """Evaluate all gates without opening an instrument session."""
     if len(commit) != 40 or any(ch not in "0123456789abcdef" for ch in commit.lower()):
         raise ValueError("--expected-commit must be an exact 40-digit Git SHA")
+    if root.is_symlink():
+        raise ValueError("Qualification evidence root must not be a symlink")
     root = root.resolve()
     tracked: dict[str, str] = {}
 
@@ -127,10 +190,9 @@ def evaluate(root: Path, *, commit: str) -> dict:
                 reasons.append(f"Missing physical feature qualification: {name}")
                 continue
             status = case.get("status")
-            if status == "SKIP":
-                if not case.get("capability_absent") or not case.get("reason"):
-                    reasons.append(f"Unsupported feature skip is not justified: {name}")
-            elif status != "PASS":
+            if status != "PASS":
+                # All required feature IDs are mandatory. An unsupported capability
+                # needs a separate approved exception, never an automatic PASS.
                 reasons.append(f"HIL case {name} not PASS: {status}")
             artifact = case.get("artifact")
             if not isinstance(artifact, str) or not artifact.strip():
@@ -138,46 +200,126 @@ def evaluate(root: Path, *, commit: str) -> dict:
                 continue
             # Track case evidence hashes; JSON documents are already checked
             # by their respective test runners and must be reviewed on the bench.
-            path = (root / artifact).resolve()
-            if not path.is_relative_to(root) or not path.is_file():
-                reasons.append(f"Missing/cross-root HIL artifact for {name}")
-            else:
-                tracked[str(path.relative_to(root))] = _sha(path)
+            try:
+                _track_file(root, artifact, tracked)
+            except (FileNotFoundError, OSError, ValueError) as exc:
+                reasons.append(f"Missing/unsafe HIL artifact for {name}: {exc}")
         return reasons
 
     def performance() -> list[str]:
+        """Recompute regression decisions from raw evidence, never trust status alone."""
         reasons = []
+        # This reviewed threshold file belongs to the executing, versioned checkout.
+        # A threshold change requires a code-reviewed commit, not candidate input.
+        policy_path = Path(__file__).resolve().parents[1] / "tests/baselines/r0_timing_thresholds.json"
+        policy = json.loads(policy_path.read_text(encoding="utf-8"),
+                            parse_constant=_reject_constant, object_pairs_hook=_unique_object)
+        thresholds = load_thresholds(policy)
+        for name, threshold in thresholds.items():
+            if (not math.isfinite(threshold.relative_limit) or threshold.relative_limit <= 0
+                or not math.isfinite(threshold.absolute_tolerance_s)
+                or threshold.absolute_tolerance_s < 0):
+                raise ValueError(f"Invalid reviewed timing threshold: {name}")
+
         for transport in ("usb", "tcpip"):
             base = f"performance/{transport}"
             data = load(f"{base}/candidate/comparison_report.json")
-            if data.get("status") != "PASS":
-                reasons.append(f"{transport}: R0 candidate comparison not PASS")
-            for field in (
-                "identity_issues", "missing_operations", "unthresholded_operations",
-                "known_coverage_gaps", "functional_diffs",
+            baseline_f = load(f"{base}/baseline/r0_functional_baseline.json")
+            baseline_t = load(f"{base}/baseline/r0_timing_baseline.json")
+            candidate_f = load(f"{base}/candidate/r0_candidate_functional.json")
+            candidate_t = load(f"{base}/candidate/r0_candidate_timing.json")
+            documents = (baseline_f, baseline_t, candidate_f, candidate_t)
+            idns = {doc.get("idn") for doc in documents}
+            families = {str(doc.get("resource", "")).split("::")[0].upper()
+                        for doc in documents}
+            if (len(idns) != 1 or not all(isinstance(doc.get("idn"), str)
+                    and "DPO4054" in doc["idn"].upper() for doc in documents)):
+                reasons.append(f"{transport}: baseline/candidate scope identities mismatch")
+            if len(families) != 1 or not next(iter(families)).startswith(
+                "USB" if transport == "usb" else "TCPIP"
             ):
-                if data.get(field):
-                    reasons.append(f"{transport}: {field} is not empty")
-            if any(item.get("regressed") for item in data.get("timing_regressions", [])):
-                reasons.append(f"{transport}: p95 performance regression")
+                reasons.append(f"{transport}: missing/mismatched transport")
+            if any(doc.get("schema_version") != 1 for doc in documents):
+                reasons.append(f"{transport}: unsupported raw evidence schema")
+            if (any(not isinstance(doc.get("commit_sha"), str)
+                    or not re.fullmatch(r"[0-9a-fA-F]{40}", doc["commit_sha"])
+                    for doc in (baseline_f, baseline_t))
+                or baseline_f.get("commit_sha") != baseline_t.get("commit_sha")):
+                reasons.append(f"{transport}: inconsistent approved baseline commit")
+            if any(doc.get("commit_sha") != commit for doc in (candidate_f, candidate_t)):
+                reasons.append(f"{transport}: candidate must come from exact qualified commit")
+            if data.get("status") != "PASS":
+                reasons.append(f"{transport}: R0 comparison status is not PASS")
             for name in ("functional", "timing"):
-                candidate_path = f"{base}/candidate/r0_candidate_{name}.json"
-                baseline_path = f"{base}/baseline/r0_{name}_baseline.json"
-                load(candidate_path)
-                baseline = load(baseline_path)
-                if baseline.get("commit_sha") in (None, "", "unknown"):
-                    reasons.append(f"{transport}: missing approved baseline commit")
-                digest = tracked[candidate_path]
-                if data.get(f"candidate_{name}_sha256") != digest:
-                    reasons.append(f"{transport}: candidate raw {name} SHA256 mismatch")
+                relative = f"{base}/candidate/r0_candidate_{name}.json"
+                if data.get(f"candidate_{name}_sha256") != tracked[relative]:
+                    reasons.append(f"{transport}: raw {name} SHA256 mismatch")
+            baseline_ops = baseline_t.get("operations")
+            candidate_ops = candidate_t.get("operations")
+            if not isinstance(baseline_ops, dict) or not isinstance(candidate_ops, dict):
+                reasons.append(f"{transport}: missing timing operations")
+                continue
+            for label, operations in (("baseline", baseline_ops), ("candidate", candidate_ops)):
+                if operations.get("not_yet_covered"):
+                    reasons.append(f"{transport}: {label} has unqualified operations")
+                if not _operation_names(operations):
+                    reasons.append(f"{transport}: {label} has zero timing coverage")
+            shared = _operation_names(baseline_ops) & _operation_names(candidate_ops)
+            unthresholded = shared - thresholds.keys()
+            if unthresholded:
+                reasons.append(f"{transport}: unthresholded operations {sorted(unthresholded)}")
+            if _operation_names(baseline_ops) != _operation_names(candidate_ops):
+                reasons.append(f"{transport}: missing/new timing operations")
+            _validate_numeric_tree(baseline_ops)
+            _validate_numeric_tree(candidate_ops)
+            for label, operations in (("baseline", baseline_ops), ("candidate", candidate_ops)):
+                for name in _operation_names(operations):
+                    if name.startswith("waveform_acquisition."):
+                        stats = operations["waveform_acquisition"][name.split(".", 1)[1]]
+                    else:
+                        stats = operations[name]
+                    value = stats.get("p95")
+                    if type(value) not in (float, int) or not math.isfinite(value) or value <= 0:
+                        reasons.append(f"{transport}: invalid {label} p95 for {name}")
+            functional_diffs = diff_functional(baseline_f, candidate_f)
+            if functional_diffs:
+                reasons.append(f"{transport}: {len(functional_diffs)} functional regressions")
+            regressions, new, missing = diff_timing(baseline_ops, candidate_ops, thresholds)
+            if new or missing or any(entry.regressed for entry in regressions):
+                reasons.append(f"{transport}: independently confirmed timing/coverage regressions")
+            if not regressions:
+                reasons.append(f"{transport}: no timing comparisons")
+            for field in ("identity_issues", "missing_operations", "unthresholded_operations",
+                          "known_coverage_gaps", "functional_diffs", "timing_regressions"):
+                if not isinstance(data.get(field), list):
+                    reasons.append(f"{transport}: malformed comparison field {field}")
+            if (data.get("identity_issues") or data.get("missing_operations")
+                or data.get("unthresholded_operations") or data.get("known_coverage_gaps")
+                or data.get("functional_diffs")):
+                reasons.append(f"{transport}: comparison reports outstanding defects")
+            reported = data.get("timing_regressions")
+            if isinstance(reported, list):
+                if len(reported) != len(regressions) or any(
+                    not isinstance(item, dict) or item.get("operation") != actual.operation
+                    or item.get("metric") != actual.metric
+                    or item.get("regressed") != actual.regressed
+                    for item, actual in zip(reported, regressions)
+                ):
+                    # The runner's dataclass serialization has no 'regressed' key:
+                    # compare the independent booleans instead.
+                    if len(reported) != len(regressions) or any(
+                        not isinstance(item, dict) or item.get("operation") != actual.operation
+                        or item.get("relative_exceeded") != actual.relative_exceeded
+                        or item.get("absolute_exceeded") != actual.absolute_exceeded
+                        for item, actual in zip(reported, regressions)
+                    ):
+                        reasons.append(f"{transport}: reported timing comparisons inconsistent")
         return reasons
 
     def soak() -> list[str]:
         path = root / "soak"
-        if not (path / "soak_report.json").is_file():
-            raise FileNotFoundError(path / "soak_report.json")
-        if not (path / "soak_report.md").is_file():
-            raise FileNotFoundError(path / "soak_report.md")
+        for name in ("soak_report.json", "soak_report.md"):
+            _evidence_path(root, "soak/" + name)
         problems, digests = validate_soak_report(
             path, min_hours=24.0, expected_commit=commit
         )
@@ -201,7 +343,7 @@ def evaluate(root: Path, *, commit: str) -> dict:
             reasons.append("A25 CLI hardware result not PASS")
         if "DPO4054" not in str(result.get("identity", "")).upper():
             reasons.append("A25 real scope identity missing")
-        xml_path = root / "a25/hardware-junit.xml"
+        xml_path = _evidence_path(root, "a25/hardware-junit.xml")
         if not xml_path.is_file():
             reasons.append("A25 physical pytest JUnit missing")
         else:
@@ -212,8 +354,11 @@ def evaluate(root: Path, *, commit: str) -> dict:
                 reasons.append("A25 JUnit has no test suite")
             elif sum(int(s.get("tests", "0")) for s in suites) < 1:
                 reasons.append("A25 JUnit has no hardware test cases")
-            elif any(int(s.get(field, "0")) for s in suites for field in ("failures", "errors")):
-                reasons.append("A25 physical pytest failures/errors")
+            elif (any(int(s.get(field, "0")) for s in suites
+                      for field in ("failures", "errors", "skipped"))
+                  or any(s.findall(".//failure") or s.findall(".//error")
+                         or s.findall(".//skipped") for s in suites)):
+                reasons.append("A25 physical pytest failures/errors/skips")
         return reasons
 
     def review() -> list[str]:
@@ -221,8 +366,12 @@ def evaluate(root: Path, *, commit: str) -> dict:
         issues = []
         if data.get("commit_sha") != commit:
             issues.append("Independent review applies to a different commit")
-        if data.get("status") != "APPROVED" or not data.get("reviewer"):
-            issues.append("Independent qualified reviewer has not signed off")
+        if (data.get("status") != "APPROVED"
+            or not isinstance(data.get("reviewer"), str)
+            or not data["reviewer"].strip()
+            or not isinstance(data.get("approval_url"), str)
+            or not data["approval_url"].startswith("https://github.com/")):
+            issues.append("Independent human approval and traceable review URL required")
         if data.get("critical_open") != 0 or data.get("high_open") != 0:
             issues.append("Unresolved CRITICAL/HIGH review findings")
         return issues
