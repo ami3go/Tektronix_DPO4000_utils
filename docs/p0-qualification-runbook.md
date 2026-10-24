@@ -256,8 +256,16 @@ The input manifest contract requires:
   against the **versioned checkout's** `tests/baselines/r0_timing_thresholds.json`.
   Both sides must contain nonempty, numeric, thresholded timing coverage.
   Candidate source SHA, baseline identity/transport, and baseline commit pair
-  must be consistent. No raw coverage, stale/untested operations or forged
-  `comparison_report.json` PASS can satisfy this gate. Any threshold changes
+  must be consistent. Each operation also requires retained finite `samples_s`
+  observations, matching `sample_count`, zero errors/timeouts, and actual
+  min/p50/p95/max statistics recomputed from those samples. All four waveform
+  sizes (1k, 10k, 100k and 1M) require coverage. No raw coverage,
+  stale/untested operations or forged `comparison_report.json` PASS can satisfy
+  this gate. In addition, each transport requires approved
+  `baseline/r0_extra_metrics.json` and `candidate/r0_extra_metrics.json`
+  artifacts, plus a shared `performance/transport_comparison/transport_comparison.json`
+  containing independently approved threshold provenance, SHA-256 of the
+  versioned threshold file and reviewed artifact hashes. Any threshold changes
   require a separately reviewed source commit.
 - `soak/soak_report.{json,md}`: one uninterrupted continuous >=24-hour
   physical run with an accurate monotonic duration, approximately matching
