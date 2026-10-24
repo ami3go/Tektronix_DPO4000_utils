@@ -132,3 +132,19 @@ The release manifest's `artifacts_sha256` binds the bytes consumed, but the
 reviewer must separately retrieve, verify, and approve evidence from trusted
 GitHub Actions and physical bench sources. Offline `review.json` is not a
 signature. Do not populate human-review approval fields on behalf of the reviewer.
+
+
+## Follow-up software finding review — DPO4000-P0-CI-FIX-01
+
+| ID | Severity | Root cause / effect | Fix | Regression and disposition |
+| --- | --- | --- | --- | --- |
+| P0-CI-01 | HIGH | `evaluate_p0_release.py` treated missing soak files as a validator error; empty qualification returned `FAIL` instead of `BLOCKED` | Preflight both required files, preserve malformed-present `FAIL` | Empty/partial/invalid soak fixtures; software CI confirmation required |
+| P0-CI-02 | HIGH | A missing CI job or required HIL feature case was indistinguishable from an actual failed case | Separate pending and failure findings with explicit failure precedence | Partial CI/HIL, failed+missing, SHA mismatch, skipped case fixtures; CI pending |
+| P0-CI-03 | HIGH | `validate_soak_report.py` hashed report bytes then reopened JSON/Markdown for interpretation, allowing inconsistent evidence under concurrent replacement | Parse the retained hashed bytes | Existing JSON/hash/soak validations plus final-head CI pending |
+| P0-CI-04 | HIGH / residual | An offline local manifest and syntactically plausible GitHub Actions URL cannot attest to an authentic remote workflow run or human signoff | Retain mandatory independent provenance and review checks; do not represent structural acceptance as attestation | **OPEN for independent human CI provenance and physical bench approval** |
+
+These findings are the result of automated software assessment, **not** a
+qualified independent functional-safety approval. Physical DPO4054 HIL, USB,
+TCPIP, continuous 24 h soak, A25 physical CLI qualification and the signed
+human review are **NOT_RUN/BLOCKED** unless independently verified authentic
+records are supplied. No claim of stable `v0.9.0` readiness is authorized.
