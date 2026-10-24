@@ -5,7 +5,7 @@ permissions:
 
 # Do not allow two runs of this workflow against the same selected VISA resource.
 concurrency:
-  group: dpo4000-soak-${{ inputs.visa_resource }}
+  group: dpo4000-physical-bench
   cancel-in-progress: false
 
 on:
@@ -44,11 +44,20 @@ on:
 jobs:
   soak:
     name: DPO4000 ${{ inputs.duration_hours }}h soak
-    if: ${{ inputs.authorized_bench }}
     runs-on: [self-hosted, dpo4000]
     timeout-minutes: 4440
 
     steps:
+      - name: Refuse unapproved physical soak
+        shell: bash
+        env:
+          BENCH_APPROVED: ${{ inputs.authorized_bench }}
+        run: |
+          if [[ "$BENCH_APPROVED" != "true" ]]; then
+            echo "::error::Physical bench authorization is required."
+            exit 1
+          fi
+
       - name: Check out repository
         uses: actions/checkout@v7
 
