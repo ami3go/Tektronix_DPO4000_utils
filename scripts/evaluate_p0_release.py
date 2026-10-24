@@ -223,9 +223,14 @@ def evaluate(root: Path, *, commit: str) -> dict:
         raise ValueError("Qualification evidence root must not be a symlink")
     root = root.resolve()
     tracked: dict[str, str] = {}
+    parsed: dict[str, dict] = {}
 
     def load(relative: str) -> dict:
-        return _load(root / relative, tracked, root)
+        # A document is read/hashed once per evaluation; never re-read the same
+        # attacker-controlled path after it has already been judged.
+        if relative not in parsed:
+            parsed[relative] = _load(root / relative, tracked, root)
+        return parsed[relative]
 
     def software() -> list[str]:
         data = load("software/ci.json")
@@ -311,9 +316,50 @@ def evaluate(root: Path, *, commit: str) -> dict:
                 reasons.append(f"Missing/unsafe HIL artifact for {name}: {exc}")
         return _findings(failed=reasons, blocked=blocked)
 
-    def performance() -> list[str]:
+    def performance() -> list[str] | dict:
         """Recompute regression decisions from raw evidence, never trust status alone."""
         reasons = []
+        # Inspect *all* required inputs before deep comparison. Otherwise an
+        # absent USB artifact could conceal a confirmed TCPIP failure, or vice
+        # versa, depending on file evaluation order.
+        paths = ["performance/transport_comparison/transport_comparison.json"]
+        for transport in ("usb", "tcpip"):
+            base = f"performance/{transport}"
+            paths.extend([
+                f"{base}/candidate/comparison_report.json",
+                f"{base}/baseline/r0_functional_baseline.json",
+                f"{base}/baseline/r0_timing_baseline.json",
+                f"{base}/candidate/r0_candidate_functional.json",
+                f"{base}/candidate/r0_candidate_timing.json",
+                f"{base}/candidate/r0_extra_metrics.json",
+                f"{base}/baseline/r0_extra_metrics.json",
+            ])
+        missing: list[str] = []
+        failed: list[str] = []
+        for relative in paths:
+            try:
+                data = load(relative)
+            except FileNotFoundError:
+                missing.append(f"Missing R0 evidence: {relative}")
+                continue
+            except Exception as exc:
+                failed.append(f"Invalid R0 evidence {relative}: {exc}")
+                continue
+            if relative.endswith("/comparison_report.json"):
+                if data.get("status") not in ("PASS", "PENDING", "NOT_RUN"):
+                    failed.append(f"R0 comparison explicitly failed or invalid: {relative}")
+                elif data.get("status") != "PASS":
+                    missing.append(f"R0 comparison not executed: {relative}")
+            elif relative.endswith("/transport_comparison.json"):
+                if data.get("status") not in ("PASS", "PENDING", "NOT_RUN"):
+                    failed.append("USB/TCPIP comparison explicitly failed or invalid")
+                elif data.get("status") != "PASS":
+                    missing.append("USB/TCPIP rollup not yet approved")
+            elif "/candidate/r0_candidate_" in relative:
+                if data.get("commit_sha") != commit:
+                    failed.append(f"R0 candidate commit mismatch: {relative}")
+        if missing or failed:
+            return _findings(failed=failed, blocked=missing)
         # This reviewed threshold file belongs to the executing, versioned checkout.
         # A threshold change requires a code-reviewed commit, not candidate input.
         policy_path = Path(__file__).resolve().parents[1] / "tests/baselines/r0_timing_thresholds.json"
