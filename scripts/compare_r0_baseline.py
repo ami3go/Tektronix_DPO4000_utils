@@ -261,6 +261,9 @@ def main() -> int:
         raise SystemExit("--candidate-timing is required when --candidate-functional is given")
     if args.timeout_ms <= 0:
         raise SystemExit("--timeout-ms must be positive")
+    for name in ("reps_standard", "reps_heavy", "reps_waveform_large"):
+        if getattr(args, name) <= 0:
+            raise SystemExit(f"--{name.replace('_', '-')} must be positive")
     if args.capability_probe_timeout_ms <= 0:
         raise SystemExit("--capability-probe-timeout-ms must be positive")
 
@@ -366,7 +369,7 @@ def main() -> int:
     }
     exit_code = int(bool(
         identity_issues or restoration_issues or configuration_issues or timing_quality_issues
-        or unmeasured_thresholds or missing_operations or functional_diffs
+        or unmeasured_thresholds or missing_operations or new_operations or functional_diffs
         or unthresholded_operations or missing_coverage
         or any(result.regressed for result in timing_regressions)
     ))
@@ -375,6 +378,8 @@ def main() -> int:
         identity_issues + restoration_issues + configuration_issues + timing_quality_issues
         + ([f"Unmeasured threshold operations: {unmeasured_thresholds}"]
            if unmeasured_thresholds else [])
+        + ([f"Candidate-only operations without approved baseline: {new_operations}"]
+           if new_operations else [])
         + ([f"Missing candidate timing operations: {missing_operations}"] if missing_operations else [])
         + ([f"Unthresholded timing operations: {unthresholded_operations}"]
            if unthresholded_operations else [])
@@ -392,6 +397,7 @@ def main() -> int:
     print(f"  unmeasured threshold operations: {unmeasured_thresholds}")
     print(f"  timing metrics lacking acceptance thresholds: {unthresholded_operations}")
     print(f"  remaining coverage gaps: {missing_coverage}")
+    print(f"  candidate-only timing operations: {new_operations}")
     print(f"  functional diffs: {len(functional_diffs)}")
     for diff in functional_diffs:
         print(f"    [{diff.kind}] {diff.path}: baseline={diff.baseline!r} candidate={diff.candidate!r}")
