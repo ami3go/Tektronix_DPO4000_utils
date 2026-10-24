@@ -49,6 +49,11 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--expected-idn",
+        default="",
+        help="Required for write-capable profiles: complete exact approved DPO4054 *IDN? including serial.",
+    )
+    parser.add_argument(
         "--authorize-reversible-writes", action="store_true",
         help="Explicit bench permission for reversible instrument setup modifications.",
     )
@@ -99,6 +104,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = build_parser().parse_args()
+    if args.profile in {"reversible", "full"} and (
+        "DPO4054" not in args.expected_idn.upper()
+        or len(args.expected_idn.split(",")) < 3
+    ):
+        raise SystemExit("Write-capable HIL requires --expected-idn with exact model and serial")
     if args.profile in {"reversible", "full"} and not args.authorize_reversible_writes:
         raise SystemExit(
             "Reversible instrument setup writes require --authorize-reversible-writes"
@@ -131,6 +141,7 @@ def main() -> int:
         artifact_record_length=args.artifact_record_length,
         allow_reference_overwrite=args.allow_reference_overwrite,
         reference_destination=args.reference_destination or 4,
+        expected_idn=args.expected_idn,
     )
 
     print("DPO4000 real-hardware verification")
