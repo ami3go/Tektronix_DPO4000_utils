@@ -328,3 +328,36 @@ operation supply a real, exact `expected_idn` and
 `authorized_disruptive=true`. No implicit REF destination is authorized.
 `DPO4000_VERIFIED_IDN` must be obtained from a prior read-only
 `*IDN?` query and independently matched to the bench reservation.
+
+
+## P0-CI-FIX-01: release evaluator gate-state contract (2026-10-24)
+
+The *offline* evaluator distinguishes absent qualification from completed invalid
+qualification. This is **software behavior**, not a waiver of hardware signoff:
+
+| State | Required interpretation |
+| --- | --- |
+| `PASS` | The gate's complete, valid, committed evidence meets every software check; a final release still requires verified human/bench authenticity |
+| `BLOCKED` | A mandatory report, feature case, CI job or other prerequisite has not been provided or executed |
+| `FAIL` | A completed failing check, malformed/contradictory evidence, wrong commit, tampered hash or unsafe path is present |
+
+**Precedence:** any `FAIL` dominates any `BLOCKED`; otherwise missing or
+pending requirements produce `BLOCKED`; `PASS` requires every gate to pass.
+The P0-G3 wrapper checks for the existence of *both* soak artifacts before
+validating the contents: absent reports are `BLOCKED`, present malformed
+reports are `FAIL`. Missing individual CI jobs and HIL cases are `BLOCKED`,
+but a failed CI job, skipped required HIL case or mismatched artifact digest
+takes precedence as `FAIL`. No `SKIP`, `UNKNOWN` or `NOT_RUN` qualifies
+as `PASS`.
+
+The soak validator hashes and parses the same read bytes, eliminating a
+reopen-between-hash-and-validation inconsistency. Remaining authenticity and
+review duties **cannot** be proved from an untrusted local JSON document:
+all CI URLs, artifact origins, physical VISA resource/serial, observations and
+review approvals must be verified against trusted systems. Never use
+synthetic/offline fixtures as physical qualification evidence.
+
+Strict read-only PR #54 remains stacked and unmodified. Its base must be
+rebased or otherwise reconciled with the latest PR #53 head before integration
+tests are treated as exact-head qualification. Neither PR may be merged on
+the basis of this software-only change.
