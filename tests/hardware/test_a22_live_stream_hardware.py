@@ -66,6 +66,8 @@ def scope():
     resource = os.getenv("DPO4000_RESOURCE", "").strip()
     if not resource:
         pytest.fail("Set DPO4000_RESOURCE for explicit hardware qualification")
+    if not os.getenv("DPO4000_A22_EVIDENCE_DIR", "").strip():
+        pytest.fail("DPO4000_A22_EVIDENCE_DIR is required to retain HIL evidence")
     instrument = DPO4054(
         resource, auto_connect=False,
         timeout_ms=int(os.getenv("DPO4000_TIMEOUT_MS", "20000")),
@@ -75,8 +77,11 @@ def scope():
     instrument.connect()
     try:
         identity = instrument.query_identity()
-        expected = os.getenv("DPO4000_EXPECT_IDN", "TEKTRONIX,DPO4054")
-        assert expected.upper() in identity.upper(), identity
+        parts = [value.strip() for value in identity.upper().split(",")]
+        assert len(parts) >= 4 and parts[0] == "TEKTRONIX" and parts[1] == "DPO4054", identity
+        assert parts[2] and parts[3], "Scope serial number and firmware are required"
+        expected = os.getenv("DPO4000_EXPECT_IDN", "TEKTRONIX,DPO4054").strip()
+        assert expected and expected.upper() in identity.upper(), identity
         initial = _data_setup(instrument)
         yield instrument
     finally:
@@ -199,6 +204,7 @@ def test_a22_read_only_sustained_snapshots(scope, point_count):
         "errors": result.acquisition_errors,
         "max_in_flight": max_in_flight,
         "identity": scope.query_identity(),
+        "commit_sha": os.getenv("GITHUB_SHA"),
         "rss_initial_bytes": rss_before,
         "rss_final_bytes": rss_after,
         "rss_peak_bytes": rss_peak,
