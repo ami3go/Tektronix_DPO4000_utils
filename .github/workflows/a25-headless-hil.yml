@@ -86,6 +86,33 @@ jobs:
       - name: Synthetic overhead benchmark
         run: python scripts/benchmark_a25_job_runner.py --steps 1,100,1000 --repetitions 5 --output a25-evidence/benchmark.json
 
+      - name: Read-only baseline identity and complete setup fingerprint
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          from dpo4000_utils.session import scope_session
+          from dpo4000_utils.settings import read_scope_setup_string
+
+          with scope_session(
+              os.environ["DPO4000_RESOURCE"],
+              timeout_ms=int(os.getenv("DPO4000_TIMEOUT_MS", "20000")),
+          ) as scope:
+              identity = scope.query_identity()
+              setup = read_scope_setup_string(scope.ensure_connected())
+          assert os.environ["DPO4000_EXPECT_IDN"].lower() in identity.lower()
+          evidence = {
+              "identity": identity,
+              "setup_sha256": hashlib.sha256(setup.encode("utf-8")).hexdigest(),
+              "commit_sha": os.environ["GITHUB_SHA"],
+          }
+          Path("a25-evidence/setup-before.json").write_text(
+              json.dumps(evidence, indent=2) + "\n", encoding="utf-8"
+          )
+          PY
+
       - name: Installed CLI DPO4054 HIL read-only query
         run: |
           dpo4000-job --recipe a25-evidence/recipe.json \
@@ -110,6 +137,34 @@ jobs:
 
       - name: Independent API DPO4054 HIL read-only regression
         run: pytest -q -m hardware tests/hardware/test_a25_headless_job_hardware.py --junitxml=a25-evidence/hardware-junit.xml
+
+      - name: Verify setup unchanged after CLI and API and retain scope identity
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          from dpo4000_utils.session import scope_session
+          from dpo4000_utils.settings import read_scope_setup_string
+
+          before = json.loads(Path("a25-evidence/setup-before.json").read_text(encoding="utf-8"))
+          with scope_session(
+              os.environ["DPO4000_RESOURCE"],
+              timeout_ms=int(os.getenv("DPO4000_TIMEOUT_MS", "20000")),
+          ) as scope:
+              identity = scope.query_identity()
+              setup = read_scope_setup_string(scope.ensure_connected())
+          after = {
+              "identity": identity,
+              "setup_sha256": hashlib.sha256(setup.encode("utf-8")).hexdigest(),
+              "commit_sha": os.environ["GITHUB_SHA"],
+          }
+          Path("a25-evidence/setup-after.json").write_text(
+              json.dumps(after, indent=2) + "\n", encoding="utf-8"
+          )
+          assert after == before, "DPO4054 identity/setup changed or commit mismatch"
+          PY
 
       - name: Upload actual evidence (including failures)
         if: always()
