@@ -17,6 +17,7 @@ import json
 import math
 import os
 from pathlib import Path
+import re
 import signal
 import sys
 from tempfile import NamedTemporaryFile
@@ -43,10 +44,12 @@ from .rules import (
     rule_set_from_mapping,
 )
 from .scientific_export import (
+    MAX_SCIENTIFIC_SAMPLES,
     ScientificExportError,
     ScientificExportResult,
     ScientificFormat,
     export_scientific_dataset,
+    infer_scientific_format,
     normalize_scientific_format,
 )
 from .session import scope_session
@@ -108,29 +111,59 @@ class JobConfig:
         if not self.validate_only and not self.resource:
             raise JobValidationError("resource is required unless --validate-only is used")
         if self.expect_idn is not None:
-            text = str(self.expect_idn).strip()
-            object.__setattr__(self, "expect_idn", text or None)
+            if not isinstance(self.expect_idn, str) or not self.expect_idn.strip():
+                raise JobValidationError("expect_idn must be a non-empty string")
+            object.__setattr__(self, "expect_idn", self.expect_idn.strip())
         if self.scientific_points is not None:
             if (
                 isinstance(self.scientific_points, bool)
                 or not isinstance(self.scientific_points, int)
                 or self.scientific_points <= 0
+                or self.scientific_points > MAX_SCIENTIFIC_SAMPLES
             ):
-                raise JobValidationError("scientific_points must be a positive integer or None")
+                raise JobValidationError(
+                    f"scientific_points must be a positive integer <= {MAX_SCIENTIFIC_SAMPLES}"
+                )
+        if not isinstance(self.scientific_compressed, bool):
+            raise JobValidationError("scientific_compressed must be a boolean")
         if self.scientific_export_path is not None:
             if self.validate_only:
                 raise JobValidationError("scientific export is not available in validate-only mode")
-            selected = (
-                normalize_scientific_format(self.scientific_format)
-                if self.scientific_format is not None
-                else None
-            )
-            if selected is not None:
-                object.__setattr__(self, "scientific_format", selected)
-        elif self.scientific_format is not None or self.scientific_points is not None:
+            try:
+                selected = (
+                    normalize_scientific_format(self.scientific_format)
+                    if self.scientific_format is not None
+                    else infer_scientific_format(self.scientific_export_path)
+                )
+            except ScientificExportError as exc:
+                raise JobValidationError(str(exc)) from exc
+            object.__setattr__(self, "scientific_format", selected)
+        elif (
+            self.scientific_format is not None
+            or self.scientific_points is not None
+            or self.scientific_compressed
+        ):
             raise JobValidationError(
-                "scientific format/points require scientific_export_path"
+                "scientific format/points/compressed require scientific_export_path"
             )
+
+        # Explicitly requested report/export destinations must never replace
+        # the job's input recipe/rules or one another, including symlink aliases.
+        input_paths = [
+            path for path in (self.recipe_path, self.rules_path) if path is not None
+        ]
+        output_paths = [
+            path for path in (self.report_path, self.scientific_export_path) if path is not None
+        ]
+        try:
+            input_resolved = {path.resolve() for path in input_paths}
+            output_resolved = [path.resolve() for path in output_paths]
+        except (OSError, RuntimeError) as exc:
+            raise JobValidationError(f"cannot resolve job file paths: {exc}") from exc
+        if any(path in input_resolved for path in output_resolved):
+            raise JobValidationError("report/export output path must not replace recipe/rules input")
+        if len(output_resolved) != len(set(output_resolved)):
+            raise JobValidationError("report and scientific export must have distinct paths")
 
 
 @dataclass(frozen=True)
@@ -163,23 +196,99 @@ def _no_duplicate_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return result
 
 
+MAX_JOB_JSON_DEPTH = 64
+
+# A15 includes public helpers for arbitrary filesystem output and replaying
+# user-supplied setup strings as raw SCPI. A25 must not expose either route:
+# use controlled A21 destinations and validated driver operations instead.
+HEADLESS_DENIED_UNRESTRICTED_METHODS = frozenset({
+    "apply_scope_settings",
+    "save_scope_settings",
+    "save_image_path",
+    "save_waveform_to_csv",
+    "save_all_channels_to_csv",
+    "save_all_channels_to_single_csv",
+})
+
+
+def _check_json_depth(raw: bytes) -> None:
+    """Bound JSON collection depth before decoding, independent of Python limits.
+
+    Ignore structural characters in strings and escaped quotes. The subsequent
+    strict JSON parser remains responsible for complete syntax validation.
+    """
+    depth = 0
+    in_string = False
+    escaped = False
+    for byte in raw:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif byte == 0x5C:  # backslash
+                escaped = True
+            elif byte == 0x22:  # quote
+                in_string = False
+        elif byte == 0x22:
+            in_string = True
+        elif byte in (0x7B, 0x5B):  # { [
+            depth += 1
+            if depth > MAX_JOB_JSON_DEPTH:
+                raise JobValidationError(
+                    f"JSON nesting exceeds maximum depth {MAX_JOB_JSON_DEPTH}"
+                )
+        elif byte in (0x7D, 0x5D):  # } ]
+            depth -= 1
+            if depth < 0:
+                raise JobValidationError("unexpected JSON closing delimiter")
+
+
 def load_json_mapping(path: str | Path, *, label: str) -> Mapping[str, Any]:
     source = Path(path)
+    # Bounded binary read also protects against files enlarged after a stat call.
     try:
-        size = source.stat().st_size
-    except OSError as exc:
-        raise JobValidationError(f"could not stat {label} file {source}: {exc}") from exc
-    if size > MAX_JOB_JSON_BYTES:
-        raise JobValidationError(
-            f"{label} file is {size:,} bytes; maximum is {MAX_JOB_JSON_BYTES:,}"
-        )
-    try:
-        text = source.read_text(encoding="utf-8")
+        with source.open("rb") as handle:
+            raw = handle.read(MAX_JOB_JSON_BYTES + 1)
     except OSError as exc:
         raise JobValidationError(f"could not read {label} file {source}: {exc}") from exc
+    if len(raw) > MAX_JOB_JSON_BYTES:
+        raise JobValidationError(
+            f"{label} file exceeds maximum of {MAX_JOB_JSON_BYTES:,} bytes"
+        )
+
+    def reject_constant(token: str) -> None:
+        raise JobValidationError(f"non-standard JSON numeric constant: {token}")
+
+    def bounded_int(token: str) -> int:
+        if len(token) > 128:
+            raise JobValidationError("JSON integer literal is excessively long")
+        return int(token)
+
+    def finite_float(token: str) -> float:
+        number = float(token)
+        if not math.isfinite(number):
+            raise JobValidationError("JSON number is not finite")
+        return number
+
     try:
-        value = json.loads(text, object_pairs_hook=_no_duplicate_object)
-    except (json.JSONDecodeError, JobValidationError) as exc:
+        _check_json_depth(raw)
+        value = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=_no_duplicate_object,
+            parse_constant=reject_constant,
+            parse_int=bounded_int,
+            parse_float=finite_float,
+        )
+        # Python's JSON parser accepts escaped lone UTF-16 surrogates. Do not
+        # allow ill-formed Unicode keys/values to reach the driver or report.
+        json.dumps(value, ensure_ascii=False).encode("utf-8")
+    except (
+        UnicodeDecodeError,
+        UnicodeEncodeError,
+        json.JSONDecodeError,
+        JobValidationError,
+        RecursionError,
+        ValueError,
+    ) as exc:
         raise JobValidationError(f"invalid {label} JSON: {exc}") from exc
     if not isinstance(value, Mapping):
         raise JobValidationError(f"{label} JSON must contain an object at the top level")
@@ -223,6 +332,7 @@ def _json_safe(value: Any) -> Any:
 def job_result_to_mapping(result: JobResult) -> dict[str, Any]:
     return {
         "schema": "dpo4000-headless-job",
+        "version": 1,
         "schema_version": 1,
         "exit_code": int(result.exit_code),
         "status": result.status,
@@ -254,7 +364,7 @@ def write_job_report(path: str | Path, result: JobResult) -> Path:
     temp = Path(handle.name)
     try:
         with handle:
-            json.dump(job_result_to_mapping(result), handle, indent=2, sort_keys=True)
+            json.dump(job_result_to_mapping(result), handle, indent=2, sort_keys=True, allow_nan=False)
             handle.write("\n")
             handle.flush()
             os.fsync(handle.fileno())
@@ -284,6 +394,7 @@ class HeadlessJobRunner:
         self._validation_target_factory = validation_target_factory
         self._cancel_requested = threading.Event()
         self._sequencer: RecipeSequencer | None = None
+        self._run_lock = threading.Lock()
 
     def cancel(self) -> None:
         self._cancel_requested.set()
@@ -292,6 +403,12 @@ class HeadlessJobRunner:
             sequencer.cancel()
 
     def _preflight(self, recipe: Recipe, config: JobConfig) -> None:
+        for step in recipe.steps:
+            if step.method in HEADLESS_DENIED_UNRESTRICTED_METHODS:
+                raise JobValidationError(
+                    f"method {step.method!r} is not available to headless jobs; "
+                    "use controlled A21 outputs or typed driver methods"
+                )
         target = self._validation_target_factory(
             config.resource or "A25::VALIDATION_ONLY",
             auto_connect=False,
@@ -338,6 +455,25 @@ class HeadlessJobRunner:
         )
 
     def run(self, config: JobConfig) -> JobResult:
+        """Run at most one job at a time on this runner instance."""
+        if not self._run_lock.acquire(blocking=False):
+            now = datetime.now(timezone.utc)
+            return JobResult(
+                exit_code=JobExitCode.RUNTIME_ERROR,
+                status="runtime_error",
+                message="runner is already executing a job",
+                started_at=now,
+                finished_at=now,
+                duration_s=0.0,
+                resource=config.resource,
+                validation_only=config.validate_only,
+            )
+        try:
+            return self._run_exclusive(config)
+        finally:
+            self._run_lock.release()
+
+    def _run_exclusive(self, config: JobConfig) -> JobResult:
         started_at = datetime.now(timezone.utc)
         started_perf = time.perf_counter()
         identity: str | None = None
@@ -349,6 +485,16 @@ class HeadlessJobRunner:
         try:
             recipe, rules = load_job_inputs(config)
             self._preflight(recipe, config)
+            if self._cancel_requested.is_set():
+                return self._result(
+                    started_at=started_at,
+                    started_perf=started_perf,
+                    config=config,
+                    exit_code=JobExitCode.CANCELLED,
+                    status="cancelled",
+                    message="Job cancelled during validation",
+                    recipe_name=recipe.name,
+                )
             if config.validate_only:
                 return self._result(
                     started_at=started_at,
@@ -377,6 +523,16 @@ class HeadlessJobRunner:
                 write_termination="\n",
             ) as scope:
                 identity = scope.query_identity()
+                idn_fields = [field.strip().upper() for field in str(identity).split(",")]
+                if (
+                    len(idn_fields) < 2
+                    or idn_fields[0] != "TEKTRONIX"
+                    or re.fullmatch(r"(?:DPO|MSO)4[0-9]{3}[A-Z]?", idn_fields[1]) is None
+                ):
+                    raise RuntimeError(
+                        f"unsupported instrument identity {identity!r}; "
+                        "expected a Tektronix DPO4000/MSO4000 family scope"
+                    )
                 if config.expect_idn and config.expect_idn.upper() not in identity.upper():
                     raise RuntimeError(
                         f"scope identity {identity!r} does not contain expected {config.expect_idn!r}"
@@ -394,10 +550,22 @@ class HeadlessJobRunner:
                     )
 
                 self._sequencer = RecipeSequencer(scope)
-                recipe_result = self._sequencer.run(recipe)
+
+                def request_cancel_before_step(_index: int, _step: Any) -> None:
+                    # A15 resets its own cancellation event on run(). The
+                    # runner-owned event closes that pre-start cancellation race.
+                    if self._cancel_requested.is_set():
+                        self._sequencer.cancel()
+
+                recipe_result = self._sequencer.run(
+                    recipe, on_step_start=request_cancel_before_step
+                )
                 self._sequencer = None
 
-                if recipe_result.state is RecipeRunState.CANCELLED:
+                if (
+                    recipe_result.state is RecipeRunState.CANCELLED
+                    or self._cancel_requested.is_set()
+                ):
                     return self._result(
                         started_at=started_at,
                         started_perf=started_perf,
@@ -447,7 +615,9 @@ class HeadlessJobRunner:
                             },
                             compressed=config.scientific_compressed,
                         )
-                    except ScientificExportError as exc:
+                    except Exception as exc:
+                        # A21 acquisition, filesystem and serializer errors are
+                        # all export failures, not DUT rule failures.
                         return self._result(
                             started_at=started_at,
                             started_perf=started_perf,
@@ -461,6 +631,21 @@ class HeadlessJobRunner:
                             rule_result=rule_result,
                         )
 
+            if self._cancel_requested.is_set():
+                return self._result(
+                    started_at=started_at,
+                    started_perf=started_perf,
+                    config=config,
+                    exit_code=JobExitCode.CANCELLED,
+                    status="cancelled",
+                    message="Job cancelled after active operation returned",
+                    identity=identity,
+                    recipe_name=recipe.name,
+                    recipe_result=recipe_result,
+                    rule_result=rule_result,
+                    scientific_export=scientific_result,
+                )
+
             if rule_result is not None:
                 if rule_result.status is RuleStatus.FAIL:
                     return self._result(
@@ -468,7 +653,7 @@ class HeadlessJobRunner:
                         started_perf=started_perf,
                         config=config,
                         exit_code=JobExitCode.RULE_FAILED,
-                        status="fail",
+                        status="rule_failed",
                         message="A16 rule set evaluated to FAIL",
                         identity=identity,
                         recipe_name=recipe.name,
@@ -482,7 +667,7 @@ class HeadlessJobRunner:
                         started_perf=started_perf,
                         config=config,
                         exit_code=JobExitCode.RULE_INVALID,
-                        status="invalid",
+                        status="rule_invalid",
                         message="A16 rule set evaluated to INVALID",
                         identity=identity,
                         recipe_name=recipe.name,
@@ -561,12 +746,20 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--resource",
         default=os.getenv("DPO4000_RESOURCE"),
-        help="VISA resource (or DPO4000_RESOURCE environment variable)",
+        help="VISA resource (CLI > DPO4000_RESOURCE > no default)",
     )
     parser.add_argument("--report", type=Path, help="atomic JSON result report path")
     parser.add_argument("--validate-only", action="store_true", help="validate without opening VISA")
-    parser.add_argument("--timeout-ms", type=int, default=DEFAULT_JOB_TIMEOUT_MS)
-    parser.add_argument("--expect-idn", help="required case-insensitive substring of *IDN?")
+    parser.add_argument(
+        "--timeout-ms",
+        type=int,
+        default=None,
+        help="VISA timeout in ms (CLI > DPO4000_TIMEOUT_MS > 20000; range 1..600000)",
+    )
+    parser.add_argument(
+        "--expect-idn",
+        help="required case-insensitive *IDN? substring (CLI > DPO4000_EXPECT_IDN)",
+    )
     parser.add_argument("--export", dest="scientific_export_path", type=Path)
     parser.add_argument("--export-format", choices=("npz", "dpoz"))
     parser.add_argument("--export-points", type=int, dest="scientific_points")
@@ -579,21 +772,58 @@ def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
     try:
+        timeout_ms = args.timeout_ms
+        if timeout_ms is None:
+            timeout_env = os.getenv("DPO4000_TIMEOUT_MS")
+            if timeout_env is None:
+                timeout_ms = DEFAULT_JOB_TIMEOUT_MS
+            else:
+                try:
+                    timeout_ms = int(timeout_env)
+                except ValueError as exc:
+                    raise JobValidationError(
+                        "DPO4000_TIMEOUT_MS must be a decimal integer"
+                    ) from exc
+        expect_idn = (
+            args.expect_idn
+            if args.expect_idn is not None
+            else os.getenv("DPO4000_EXPECT_IDN")
+        )
         config = JobConfig(
             recipe_path=args.recipe,
             resource=args.resource,
             rules_path=args.rules,
             report_path=args.report,
             validate_only=args.validate_only,
-            timeout_ms=args.timeout_ms,
-            expect_idn=args.expect_idn,
+            timeout_ms=timeout_ms,
+            expect_idn=expect_idn,
             scientific_export_path=args.scientific_export_path,
             scientific_format=args.export_format,
             scientific_points=args.scientific_points,
             scientific_compressed=args.scientific_compressed,
         )
     except (JobValidationError, ScientificExportError) as exc:
-        parser.error(str(exc))
+        now = datetime.now(timezone.utc)
+        invalid = JobResult(
+            exit_code=JobExitCode.VALIDATION_ERROR,
+            status="validation_error",
+            message=str(exc),
+            started_at=now,
+            finished_at=now,
+            duration_s=0.0,
+            resource=args.resource,
+            validation_only=args.validate_only,
+        )
+        if args.report is not None:
+            try:
+                write_job_report(args.report, invalid)
+            except OSError as report_exc:
+                if not args.quiet:
+                    print(f"Could not write report: {report_exc}", file=sys.stderr)
+                return int(JobExitCode.RUNTIME_ERROR)
+        if not args.quiet:
+            print(json.dumps(job_result_to_mapping(invalid), sort_keys=True))
+        return int(JobExitCode.VALIDATION_ERROR)
 
     runner = HeadlessJobRunner()
     interrupt_count = 0
@@ -621,8 +851,9 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as exc:
             if not args.quiet:
                 print(f"Could not write report: {exc}", file=sys.stderr)
-            if result.exit_code is JobExitCode.SUCCESS:
-                return int(JobExitCode.RUNTIME_ERROR)
+            # An explicitly requested report is part of the job contract.
+            # Its failure must not masquerade as a DUT PASS/FAIL.
+            return int(JobExitCode.RUNTIME_ERROR)
 
     if not args.quiet:
         print(json.dumps(job_result_to_mapping(result), sort_keys=True))
