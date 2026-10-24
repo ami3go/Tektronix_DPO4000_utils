@@ -49,10 +49,11 @@ class StreamConfig:
             "CH1", "CH2", "CH3", "CH4"
         }:
             raise ValueError("A22 source must be CH1..CH4")
-        if self.point_count is not None and (
-            type(self.point_count) is not int or not 1 <= self.point_count <= MAX_POINTS
-        ):
-            raise ValueError("point_count must be None or 1..1,000,000")
+        # Unlimited Full transfers can allocate many megabytes inside the VISA
+        # driver before A22 can reject an oversized return value. Permit only
+        # explicitly bounded requests until a pre-transfer size gate exists.
+        if type(self.point_count) is not int or not 1 <= self.point_count <= MAX_POINTS:
+            raise ValueError("point_count must be 1..1,000,000; Full is not bounded")
         if isinstance(self.target_hz, bool) or not isinstance(
             self.target_hz, (int, float)
         ) or not math.isfinite(self.target_hz) or not 0 < self.target_hz <= 100:
@@ -260,6 +261,7 @@ class LiveStreamEngine:
         self.generation += 1  # discard completion that was already in flight
         self.state = StreamState.PAUSED
         self._deadline = None
+        self._pending = None  # Never paint a pre-Pause frame afterward.
 
     def resume(self) -> None:
         if self.state is not StreamState.PAUSED:
@@ -346,8 +348,13 @@ class LiveStreamEngine:
     def take_latest(self) -> WaveformFrame | None:
         frame = self._pending
         self._pending = None
-        if frame is not None:
-            self._rendered += 1
+        if (
+            frame is None
+            or self.state is not StreamState.RUNNING
+            or frame.generation != self.generation
+        ):
+            return None
+        self._rendered += 1
         return frame
 
     def stats(self) -> StreamStats:
