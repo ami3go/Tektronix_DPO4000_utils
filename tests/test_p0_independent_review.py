@@ -348,3 +348,130 @@ def test_hil_artifact_hash_mismatch_cannot_claim_coverage(tmp_path: Path) -> Non
     gate = release.evaluate(tmp_path, commit=COMMIT)["gates"]["P0-G1"]
     assert gate["state"] == "FAIL"
     assert "SHA256 missing/mismatch" in " ".join(gate["reasons"])
+
+
+# DPO4000-P0-CI-FIX-01 — release-state precedence and adversarial evidence fixtures.
+# All fixtures below are synthetic/offline, never proof of physical HIL.
+
+@pytest.mark.parametrize("present", [(), ("soak_report.json",), ("soak_report.md",)])
+def test_missing_soak_artifacts_are_blocked(tmp_path: Path, present: tuple[str, ...]) -> None:
+    soak = tmp_path / "soak"
+    soak.mkdir()
+    for name in present:
+        (soak / name).write_text("synthetic evidence", encoding="utf-8")
+    gate = release.evaluate(tmp_path, commit=COMMIT)["gates"]["P0-G3"]
+    assert gate["state"] == "BLOCKED"
+    assert any("Missing evidence" in reason for reason in gate["reasons"])
+
+
+def test_malformed_present_soak_is_failed_not_blocked(tmp_path: Path) -> None:
+    soak = tmp_path / "soak"
+    soak.mkdir()
+    (soak / "soak_report.json").write_text('{"summary":', encoding="utf-8")
+    (soak / "soak_report.md").write_text("synthetic", encoding="utf-8")
+    gate = release.evaluate(tmp_path, commit=COMMIT)["gates"]["P0-G3"]
+    assert gate["state"] == "FAIL"
+    assert any("Invalid JSON" in reason for reason in gate["reasons"])
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows symlink creation may require privileges")
+def test_soak_symlink_is_failed_not_missing(tmp_path: Path) -> None:
+    soak = tmp_path / "soak"
+    soak.mkdir()
+    (soak / "real.json").write_text("synthetic", encoding="utf-8")
+    (soak / "soak_report.json").symlink_to(soak / "real.json")
+    (soak / "soak_report.md").write_text("synthetic", encoding="utf-8")
+    gate = release.evaluate(tmp_path, commit=COMMIT)["gates"]["P0-G3"]
+    assert gate["state"] == "FAIL"
+    assert any("Symlink" in reason for reason in gate["reasons"])
+
+
+def _ci_job(status: str = "PASS") -> dict:
+    return {
+        "status": status,
+        "commit_sha": COMMIT,
+        "url": "https://github.com/ami3go/Tektronix_DPO4000_utils/actions/runs/12345",
+    }
+
+
+def test_missing_required_ci_job_is_blocked(tmp_path: Path) -> None:
+    jobs = {name: _ci_job() for name in release.REQUIRED_CI[1:]}
+    _json(tmp_path, "software/ci.json", {
+        "schema_version": 1, "commit_sha": COMMIT, "jobs": jobs,
+    })
+    gate = release.evaluate(tmp_path, commit=COMMIT)["gates"]["P0-G0"]
+    assert gate["state"] == "BLOCKED"
+    assert "Missing required CI job" in " ".join(gate["reasons"])
+
+
+@pytest.mark.parametrize("status", ["NOT_RUN", "UNKNOWN", "PENDING", "SKIPPED", "CANCELLED"])
+def test_unexecuted_required_ci_cannot_pass(tmp_path: Path, status: str) -> None:
+    jobs = {name: _ci_job() for name in release.REQUIRED_CI}
+    jobs[release.REQUIRED_CI[0]] = _ci_job(status)
+    _json(tmp_path, "software/ci.json", {
+        "schema_version": 1, "commit_sha": COMMIT, "jobs": jobs,
+    })
+    assert release.evaluate(tmp_path, commit=COMMIT)["gates"]["P0-G0"]["state"] == "BLOCKED"
+
+
+def test_real_ci_failure_outweighs_missing_job(tmp_path: Path) -> None:
+    jobs = {name: _ci_job() for name in release.REQUIRED_CI[1:]}
+    jobs[release.REQUIRED_CI[1]] = _ci_job("FAIL")
+    _json(tmp_path, "software/ci.json", {
+        "schema_version": 1, "commit_sha": COMMIT, "jobs": jobs,
+    })
+    manifest = release.evaluate(tmp_path, commit=COMMIT)
+    assert manifest["gates"]["P0-G0"]["state"] == "FAIL"
+    assert manifest["overall"] == "FAIL"
+
+
+def test_ci_wrong_commit_is_failure_even_when_another_job_missing(tmp_path: Path) -> None:
+    jobs = {name: _ci_job() for name in release.REQUIRED_CI[1:]}
+    jobs[release.REQUIRED_CI[1]]["commit_sha"] = "b" * 40
+    _json(tmp_path, "software/ci.json", {
+        "schema_version": 1, "commit_sha": COMMIT, "jobs": jobs,
+    })
+    assert release.evaluate(tmp_path, commit=COMMIT)["gates"]["P0-G0"]["state"] == "FAIL"
+
+
+def _partial_hil(tmp_path: Path, *, status: str = "PASS", correct_hash: bool = True) -> None:
+    artifact = _json(tmp_path, "hardware/case.json", {"synthetic": True})
+    _json(tmp_path, "hardware/qualification.json", {
+        "schema_version": 1, "commit_sha": COMMIT, "idn": IDN,
+        "setup_restored": True, "cases": [{
+            "id": release.REQUIRED_HIL[0], "status": status,
+            "artifact": "hardware/case.json",
+            "artifact_sha256": hashlib.sha256(artifact.read_bytes()).hexdigest()
+            if correct_hash else "0" * 64,
+        }],
+    })
+
+
+def test_missing_required_hil_case_is_blocked(tmp_path: Path) -> None:
+    _partial_hil(tmp_path)
+    gate = release.evaluate(tmp_path, commit=COMMIT)["gates"]["P0-G1"]
+    assert gate["state"] == "BLOCKED"
+    assert "Missing physical feature qualification" in " ".join(gate["reasons"])
+
+
+@pytest.mark.parametrize("status", ["FAIL", "SKIP", "UNKNOWN"])
+def test_failed_or_skipped_hil_outweighs_missing_cases(tmp_path: Path, status: str) -> None:
+    _partial_hil(tmp_path, status=status)
+    manifest = release.evaluate(tmp_path, commit=COMMIT)
+    assert manifest["gates"]["P0-G1"]["state"] == "FAIL"
+    assert manifest["overall"] == "FAIL"
+
+
+def test_tampered_hil_outweighs_missing_cases(tmp_path: Path) -> None:
+    _partial_hil(tmp_path, correct_hash=False)
+    assert release.evaluate(tmp_path, commit=COMMIT)["gates"]["P0-G1"]["state"] == "FAIL"
+
+
+def test_duplicate_ci_json_key_is_fail_not_blocked(tmp_path: Path) -> None:
+    ci = tmp_path / "software/ci.json"
+    ci.parent.mkdir()
+    ci.write_text('{"schema_version":1,"commit_sha":"' + COMMIT
+                  + '","jobs":{},"jobs":{}}', encoding="utf-8")
+    gate = release.evaluate(tmp_path, commit=COMMIT)["gates"]["P0-G0"]
+    assert gate["state"] == "FAIL"
+    assert "Duplicate JSON key" in " ".join(gate["reasons"])
