@@ -15,7 +15,7 @@ dpo4000-job \
 ```
 
 The command is installed by `python -m pip install -e .[dev]`, without PySide6.
-No GUI or Qt application is created, and A25 never sends arbitrary user-authored SCPI.
+No GUI or Qt application is created. A25 disallows the A15 setup-file replay method\n(which could submit user-authored raw SCPI) and direct local-file-writing recipe\nmethods. Use typed driver commands and controlled A21 export/report outputs.
 
 Precedence for each supported environment setting is **CLI > environment > default**:
 
@@ -103,7 +103,7 @@ dpo4000-job \
   --recipe recipe.json
 ```
 
-An identity mismatch exits with code 3 and still closes the session.
+A25 additionally rejects all non-Tektronix or non-DPO4000/MSO4000-family\nidentities before the first recipe step, even without `--expect-idn`.\n`--expect-idn` can enforce an exact bench model substring such as DPO4054.\nAn identity mismatch exits with code 3 and still closes the session.
 
 ## Scientific export
 
