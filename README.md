@@ -48,7 +48,7 @@ See `docs/architecture.md`, `docs/a15-recipe-sequencer-plan.md`, `docs/a16-pass-
 
 ## Full feature status matrix
 
-**Status snapshot:** 2026-10-23; assessed against the merged main branch and active feature PRs. This inventory distinguishes *software implemented* from *hardware qualified*. It is a point-in-time audit, not a dynamic CI dashboard.
+**Status snapshot:** 2026-10-24; assessed against the merged main branch and active feature PRs. This inventory distinguishes *software implemented* from *hardware qualified*. It is a point-in-time audit, not a dynamic CI dashboard.
 
 | Status | Meaning |
 |---|---|
@@ -59,7 +59,7 @@ See `docs/architecture.md`, `docs/a15-recipe-sequencer-plan.md`, `docs/a16-pass-
 | Deferred | Deliberately not exposed pending hardware/protocol evidence |
 | Qualification pending | Test machinery exists, but required retained hardware evidence is not verified complete |
 
-**Release posture:** Python package version 0.9.0rc1; a release candidate, **not** the hardware-qualified stable 0.9.0. Hosted main-branch test and CodeQL workflows passed at baseline commit [8a5b6cf](https://github.com/ami3go/Tektronix_DPO4000_utils/commit/8a5b6cfcf794104a3f428799bd415874a8392d72). Hardware qualification requires independently recorded results, transport-specific baselines, and a reviewed 24-hour soak. Open draft branches [A22 #51](https://github.com/ami3go/Tektronix_DPO4000_utils/pull/51) and [A25 #50](https://github.com/ami3go/Tektronix_DPO4000_utils/pull/50) are not part of main until merged.
+**Release posture:** Python package version 0.9.0rc1; a release candidate, **not** the hardware-qualified stable 0.9.0. Hosted main-branch test and CodeQL workflows passed at baseline commit [8a5b6cf](https://github.com/ami3go/Tektronix_DPO4000_utils/commit/8a5b6cfcf794104a3f428799bd415874a8392d72). Hardware qualification requires independently recorded results, transport-specific baselines, and a reviewed 24-hour soak. Open draft branches [A22 #51](https://github.com/ami3go/Tektronix_DPO4000_utils/pull/51), [A25 hardening #50](https://github.com/ami3go/Tektronix_DPO4000_utils/pull/50), and [P0 qualification hardening #53](https://github.com/ami3go/Tektronix_DPO4000_utils/pull/53) are **not** part of main until merged. Existing test runners and baselines are software infrastructure, not independently accepted DPO4054 HIL evidence.
 
 ### Core driver / instrument control
 
@@ -105,7 +105,7 @@ See [waveform API](docs/waveform-acquisition.md), [usage](docs/usage.md), and [d
 | Connection | Implemented | Discovery, VISA connection, IDN, preferences |
 | Channels | Implemented | CH1–CH4, MATH, REF and BUS setup |
 | Measurement | Implemented | MEAS1–MEAS8 management and A20 trends |
-| Trigger | Implemented | Basic and verified advanced A/B triggers |
+| Trigger | Implemented | Basic and software-validated advanced A/B triggers; final live DPO4054 HIL pending |
 | Acquisition | Implemented | Mode, record length, Run/Stop/Single |
 | Automation | Implemented | Scheduled, triggered and conditional jobs |
 | Recipe | Implemented | A15 sequencing and A16 rule evaluation |
@@ -168,7 +168,7 @@ See [Logger specification](docs/logger-tab-plan.md).
 
 | ID | Feature | Status | Limitation / completion condition |
 |---|---|---|---|
-| A14.1 | A-trigger type configuration | Implemented | Verified type selector |
+| A14.1 | A-trigger type configuration | Implemented | Validated driver selector; live qualification tracked separately |
 | A14.2 | Pulse width | Implemented | Width limits, polarity, comparator |
 | A14.3 | Runt | Implemented | Threshold and timing fields |
 | A14.4 | LOGIC / setup-hold | Partial | Verified fields present; unmapped leaves withheld |
@@ -176,7 +176,7 @@ See [Logger specification](docs/logger-tab-plan.md).
 | A14.6 | Video | Partial | Verified fields exposed; unmapped leaf withheld |
 | A14.7 | B-trigger / sequence | Implemented | Verified A/B constraints |
 | A14.8 | Time holdoff | Implemented | Validated time-based holdoff |
-| A14.9 | Advanced Trigger GUI | Implemented | Public-driver/worker boundary |
+| A14.9 | Advanced Trigger GUI | Implemented | Public-driver/worker boundary; software contract tests |
 | A14.10 | Full DPO4054 HIL and R0-T | Qualification pending | Recorded live qualification and measured baselines |
 
 See [A14 qualification backlog](docs/a14-advanced-trigger-backlog.md).
@@ -247,6 +247,8 @@ See [A22 plan](docs/a22-live-waveform-streaming-plan.md) and [draft implementati
 
 ### Verification, packaging and release
 
+The table below describes **test infrastructure** and **release evidence** separately. A test script, passing hosted CI, or a constructed report is not equivalent to a passing physical DPO4054 measurement.
+
 | Capability / gate | Status | Notes |
 |---|---|---|
 | Python unit and PySide6 regression | Implemented | Hosted CI suite, GUI tests |
@@ -255,7 +257,8 @@ See [A22 plan](docs/a22-live-waveform-streaming-plan.md) and [draft implementati
 | R0-T timing/performance comparison | Implemented | Tools available; final hardware comparison pending |
 | DPO4054 per-feature HIL modules | Implemented | Opt-in physical hardware tests |
 | Automation/Logger HIL runner | Implemented | Bench tooling and reporting |
-| Hardware soak runner | Implemented | Script exists; result is not implied |
+| Hardware soak runner | Implemented | Script exists on main; result is not implied |
+| P0 fail-closed qualification/release-gate hardening | In progress | Baseline/soak verification and release-manifest hardening on draft [PR #53](https://github.com/ami3go/Tektronix_DPO4000_utils/pull/53), **not main**; physical HIL pending |
 | Final candidate hardware HIL | Qualification pending | Read-only/reversible/authorized profiles |
 | USB and Ethernet performance baselines | Qualification pending | Separate measured hardware artifacts and review |
 | 24-hour DPO4054 stability soak | Qualification pending | No claim of release acceptance without retained report |
@@ -290,6 +293,7 @@ The identifiers A13, A17, A19, A23 and A24 are not established as independently 
 | P0 | USB and Ethernet R0-T baselines | Independent hardware measurements and regression comparisons for each transport |
 | P0 | 24-hour stability soak | Retained 24-hour hardware run showing acceptable errors, GUI/worker behavior and no progressive resource growth |
 | P0 | A25 PR #50 hardening and qualification | Full software/packaging gates, independent review, real hardware test, approved integration |
+| P0 | P0 PR #53 qualification/release guards | Review draft evidence validators and controlled HIL procedures; retain genuine USB/TCPIP baselines and uninterrupted 24-hour soak before release acceptance |
 
 Feature completion and release approval must be based on retained evidence rather than the presence of tests or CI jobs alone. Test execution on a connected scope requires a controlled resource and the appropriate read-only or separately authorized reversible-write profile.
 
