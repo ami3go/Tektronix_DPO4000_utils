@@ -38,6 +38,7 @@ CORE_OPERATIONS = (
     "trigger_config_readback",
     "single_acquisition",
     "png_capture",
+    "csv_export",
     "waveform_acquisition.1000",
     "waveform_acquisition.10000",
     "waveform_acquisition.100000",
@@ -162,8 +163,13 @@ def evaluate(root: Path, threshold_file: Path, approval_path: Path | None
     threshold_hash = _digest(threshold_file) if threshold_file.is_file() else None
     if threshold_hash is None:
         issues.append("Acceptance-threshold file absent")
-    approval = _read(root, str(approval_path.relative_to(root)), hashes, issues) if (
-        approval_path is not None and approval_path.resolve().is_relative_to(root.resolve())
+    approval_file = (
+        (root / approval_path).resolve() if approval_path is not None
+        and not approval_path.is_absolute()
+        else approval_path.resolve() if approval_path is not None else None
+    )
+    approval = _read(root, str(approval_file.relative_to(root)), hashes, issues) if (
+        approval_file is not None and approval_file.is_relative_to(root.resolve())
     ) else None
     if approval is None:
         issues.append("Independent threshold approval record absent or outside evidence root")
@@ -171,6 +177,7 @@ def evaluate(root: Path, threshold_file: Path, approval_path: Path | None
           or not approval.get("reviewer")
           or approval.get("threshold_sha256") != threshold_hash):
         issues.append("Independent threshold approval invalid or digest does not match")
+    comparison_failed = False
     for transport in ("usb", "tcpip"):
         prefix = f"{transport}"
         base = _read(root, f"{prefix}/baseline/r0_timing_baseline.json", hashes, issues)
@@ -184,6 +191,7 @@ def evaluate(root: Path, threshold_file: Path, approval_path: Path | None
             continue
         if comparison.get("status") != "PASS":
             issues.append(f"{transport}: R0 comparison not PASS")
+            comparison_failed = comparison.get("status") == "FAIL" or comparison_failed
         for issue_field in (
             "identity_issues", "restoration_issues", "configuration_issues",
             "timing_quality_issues", "unmeasured_thresholds", "unthresholded_operations",
@@ -253,6 +261,16 @@ def evaluate(root: Path, threshold_file: Path, approval_path: Path | None
                 "regressed": recorded.get("regressed"),
             })
         issues.extend(_extension_issues(extensions, transport, idn, commits[transport]))
+    baseline_digests = approval.get("baseline_sha256", {}) if isinstance(approval, dict) else {}
+    for transport in ("usb", "tcpip"):
+        for kind in ("functional", "timing"):
+            relative = f"{transport}/baseline/r0_{kind}_baseline.json"
+            if not isinstance(baseline_digests, dict) or (
+                baseline_digests.get(relative) != hashes.get(relative)
+            ):
+                issues.append(f"No approved immutable baseline hash for {relative}")
+    if approval and approval.get("known_good_commit_sha") not in set(baseline_commits.values()):
+        issues.append("Approved known-good baseline commit does not match captured baselines")
     if len(set(idns.values())) != 1 or len(idns) != 2:
         issues.append("USB and TCPIP do not identify the same physical scope")
     if len(set(commits.values())) != 1 or len(commits) != 2:
@@ -261,7 +279,7 @@ def evaluate(root: Path, threshold_file: Path, approval_path: Path | None
         issues.append("USB and TCPIP baseline commits differ")
     return ({
         "schema_version": 1, "generated_at": datetime.now(timezone.utc).isoformat(),
-        "status": "BLOCKED" if issues else "PASS",
+        "status": "FAIL" if comparison_failed else "BLOCKED" if issues else "PASS",
         "issues": sorted(set(issues)), "identities": idns, "candidate_commits": commits,
         "baseline_commits": baseline_commits, "threshold_sha256": threshold_hash,
         "threshold_approval": approval if approval else None,
