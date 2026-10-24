@@ -51,6 +51,7 @@ FIELDS = (
     "candidate_p95_s", "candidate_p99_s", "candidate_max_s",
     "candidate_stdev_s", "absolute_delta_p95_s", "relative_delta_p95_percent",
     "candidate_samples_per_second", "transport_mb_per_second",
+    "candidate_timeout_count", "candidate_error_count",
     "threshold_relative_limit", "threshold_absolute_tolerance_s", "regressed",
 )
 
@@ -149,6 +150,9 @@ def _extension_issues(document: dict[str, Any], transport: str, idn: str,
         reasons.append(f"{transport}: missing/inconsistent additional benchmark identity")
     if document.get("commit_sha") != candidate_sha or document.get("transport") != transport:
         reasons.append(f"{transport}: additional benchmarks have wrong transport/commit")
+    for field in ("visa_backend", "pyvisa_version", "host_platform", "installed_options"):
+        if not isinstance(document.get(field), str) or not document[field].strip():
+            reasons.append(f"{transport}: missing test-system provenance {field}")
     metrics = document.get("metrics")
     if not isinstance(metrics, dict):
         return [*reasons, f"{transport}: extra measurement metrics absent"]
@@ -159,6 +163,21 @@ def _extension_issues(document: dict[str, Any], transport: str, idn: str,
             continue
         if not _raw_ok(observation):
             reasons.append(f"{transport}: missing/corrupt raw observations for {metric}")
+        for counter in ("timeout_count", "error_count"):
+            if type(observation.get(counter)) is not int or observation[counter] < 0:
+                reasons.append(f"{transport}: missing/invalid {counter} for {metric}")
+        if metric == "resource_usage":
+            for field in ("peak_rss_bytes", "peak_thread_count", "peak_fd_count"):
+                if type(observation.get(field)) is not int or observation[field] < 0:
+                    reasons.append(f"{transport}: {metric} missing {field}")
+        if metric == "gui_responsiveness":
+            if type(observation.get("missed_heartbeats")) is not int or observation["missed_heartbeats"] < 0:
+                reasons.append(f"{transport}: GUI missed heartbeat count not measured")
+            if type(observation.get("maximum_stall_s")) not in (int, float):
+                reasons.append(f"{transport}: GUI maximum stall not measured")
+        if metric == "cancellation_and_error_recovery":
+            if type(observation.get("recovered_trials")) is not int or observation["recovered_trials"] <= 0:
+                reasons.append(f"{transport}: recovered cancellation/error trial count not measured")
         if metric == "transport_throughput":
             if type(observation.get("payload_bytes")) is not int or observation["payload_bytes"] <= 0:
                 reasons.append(f"{transport}: transport wire payload bytes not measured")
@@ -297,6 +316,8 @@ def evaluate(root: Path, threshold_file: Path, approval_path: Path | None
                 "relative_delta_p95_percent": (100 * diff / b["p95"]) if b["p95"] > 0 else None,
                 "candidate_samples_per_second": c.get("samples_per_second"),
                 "transport_mb_per_second": c.get("transport_mb_per_second"),
+                "candidate_timeout_count": c.get("timeout_count"),
+                "candidate_error_count": c.get("error_count"),
                 "threshold_relative_limit": recorded.get("relative_limit"),
                 "threshold_absolute_tolerance_s": recorded.get("absolute_tolerance_s"),
                 "regressed": computed_regressed,
@@ -354,6 +375,8 @@ def evaluate(root: Path, threshold_file: Path, approval_path: Path | None
                 ),
                 "candidate_samples_per_second": current.get("samples_per_second"),
                 "transport_mb_per_second": throughput,
+                "candidate_timeout_count": current.get("timeout_count"),
+                "candidate_error_count": current.get("error_count"),
                 "threshold_relative_limit": relative,
                 "threshold_absolute_tolerance_s": absolute, "regressed": regressed,
             })
