@@ -29,7 +29,7 @@ def waveform(samples=None):
 @pytest.mark.parametrize("override", [
     {"source": "MATH"}, {"source": "CH5"}, {"source": "ch1"},
     {"point_count": 0}, {"point_count": -1}, {"point_count": True},
-    {"point_count": 1_000_001}, {"target_hz": 0}, {"target_hz": -1},
+    {"point_count": 1_000_001}, {"point_count": None}, {"target_hz": 0}, {"target_hz": -1},
     {"target_hz": float("nan")}, {"target_hz": float("inf")},
     {"target_hz": 101}, {"render_points": 99}, {"render_points": 50_001},
     {"buffer_frames": 0}, {"buffer_frames": 9}, {"reconnect": True},
@@ -44,7 +44,7 @@ def test_default_acceptance_configuration():
     assert (config.source, config.point_count, config.target_hz, config.render_points) == (
         "CH1", 10_000, 5.0, 2_000
     )
-    assert StreamConfig(point_count=None, target_hz=100, buffer_frames=8)
+    assert StreamConfig(point_count=1_000_000, target_hz=100, buffer_frames=8)
 
 
 @pytest.mark.parametrize("n", [0, 1, 100, 2000, 2001, 1_000_000])
@@ -119,11 +119,19 @@ def test_minmax_pure_python_fallback_preserves_spikes(monkeypatch):
     assert indices[0] == 0 and indices[-1] == 9999
 
 
-def test_full_record_above_retention_limit_is_rejected():
+def test_unbounded_full_record_is_rejected_before_driver_transfer():
+    class DangerousFake:
+        def read_channel_waveform_data(self, channel, *, point_count):
+            raise AssertionError("Unbounded transfer must not be issued")
+
+    with pytest.raises(ValueError, match="Full is not bounded"):
+        capture_frame(DangerousFake(), StreamConfig(point_count=None), 1, 1)
+
+
+def test_oversized_driver_return_is_rejected_even_for_bounded_request():
     class OversizedFake:
         def read_channel_waveform_data(self, channel, *, point_count):
-            assert channel == 1 and point_count is None
             return waveform([0] * 1_000_001)
 
     with pytest.raises(ValueError, match="retention limit"):
-        capture_frame(OversizedFake(), StreamConfig(point_count=None), 1, 1)
+        capture_frame(OversizedFake(), StreamConfig(point_count=1_000_000), 1, 1)
