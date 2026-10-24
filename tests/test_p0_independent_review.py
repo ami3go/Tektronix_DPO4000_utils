@@ -300,3 +300,30 @@ def test_unapproved_soak_is_a_failed_job_not_a_successful_skip() -> None:
     assert "exit 1" in workflow
     assert "if: ${{ inputs.authorized_bench }}" not in workflow
     assert "dpo4000-physical-bench" in workflow
+
+
+def test_missing_exact_idn_blocks_invasive_hil_before_visa(monkeypatch, tmp_path: Path) -> None:
+    from dpo4000_utils import hardware_verification_core as core
+
+    def forbidden_connect(*_args, **_kwargs):
+        raise AssertionError("Unauthorized verifier attempted VISA construction")
+
+    monkeypatch.setattr(core, "DPO4054", forbidden_connect)
+    verifier = core.HardwareVerifier(core.VerificationConfig(
+        resource="USB0::RESERVED::INSTR",
+        output_dir=tmp_path,
+        profile=core.VerificationRisk.REVERSIBLE,
+        expected_idn="TEKTRONIX",
+    ))
+    with pytest.raises(ValueError, match="exact DPO4054"):
+        verifier.run()
+
+
+def test_manual_hardware_workflow_requires_bench_reservation_and_serial() -> None:
+    workflow = (ROOT / ".github/workflows/hardware-api-tests.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "BENCH_APPROVED" in workflow
+    assert "TARGET_IDN" in workflow
+    assert '--expected-idn "' in workflow
+    assert "default: \"none\"" in workflow
