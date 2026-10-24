@@ -170,7 +170,7 @@ def evaluate(root: Path, *, commit: str) -> dict:
                 or job.get("commit_sha") != commit
                 or not isinstance(job.get("url"), str)
                 or not re.fullmatch(
-                    r"https://github\\.com/ami3go/Tektronix_DPO4000_utils/actions/runs/[0-9]+(?:/job/[0-9]+)?",
+                    r"https://github\.com/ami3go/Tektronix_DPO4000_utils/actions/runs/[0-9]+(?:/job/[0-9]+)?",
                     job["url"],
                 )):
                 reasons.append(f"No exact-head traceable CI run: {name}")
