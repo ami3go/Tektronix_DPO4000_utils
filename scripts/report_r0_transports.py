@@ -34,9 +34,11 @@ CORE_OPERATIONS = (
     "connection",
     "identity_query",
     "channel_readback",
+    "channel_apply",
     "measurement_refresh",
     "trigger_config_apply",
     "trigger_config_readback",
+    "unsupported_trigger_probe",
     "single_acquisition",
     "png_capture",
     "csv_export",
@@ -242,7 +244,8 @@ def evaluate(root: Path, threshold_file: Path, approval_path: Path | None
             comparison_failed = comparison.get("status") == "FAIL" or comparison_failed
         for issue_field in (
             "identity_issues", "restoration_issues", "configuration_issues",
-            "timing_quality_issues", "unmeasured_thresholds", "unthresholded_operations",
+            "timing_quality_issues", "unmeasured_thresholds", "mandatory_missing",
+            "unthresholded_operations",
             "known_coverage_gaps", "missing_operations", "functional_diffs",
         ):
             if comparison.get(issue_field):
