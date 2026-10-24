@@ -41,6 +41,7 @@ The *names* of these public APIs are not proof they are read-only.
 | IR-12 | **HIGH** | `scripts/capture_r0_baseline.py`, `scripts/compare_r0_baseline.py` | Unsafe live capture could modify setup without positive restoration evidence or correct IDN. | Reuse existing `VerifiedSetupGuard` for preflight, backup, post-restore confirmation and recorded evidence. No second redundant restore. |
 | IR-13 | **HIGH** | `hardware-api-tests.yml` | REF slot 4 was implicitly selected by workflow dispatch, permitting accidental destructive memory overwrite if `allow_reference_overwrite` was set. | Default destination `none`; require a separate explicit disposable REF slot and full/disruptive authorization. |
 | IR-14 | **HIGH** | `evaluate_p0_release.py` | An apparent software-only PASS could omit independent USB/TCPIP cross-transport review, extra performance metrics or a threshold approval. | Required cross-transport rollup, immutable artifact hashes, reviewed threshold SHA and nonempty extra performance observations (concurrent hardening to PR #53). |
+| IR-15 | **HIGH** | `hardware_verification_core.py`, `run_hardware_verification.py`, hardware API workflow | Invasive qualification could accept a generic vendor substring without binding the reserved physical scope's model and serial before SCPI writes. Selecting another attached instrument could modify an unapproved bench setup. | Require a complete exact approved DPO4054 `*IDN?` for reversible/full runs, compare before any invasive case, and require explicit bench authorization even for read-only workflow dispatch. Offline test confirms no VISA construction without a valid target. |
 
 **Severity** describes initial failure potential. A correction being committed does not itself
 certify that it is fully verified: **exact-final-head CI and independent human assessment
@@ -52,7 +53,8 @@ are still required**, and additional findings could emerge.
 
 READ_ONLY, REVERSIBLE and DISRUPTIVE classes must follow actual emitted SCPI
 commands, not method names. Destructive REF waveform overwrite requires a separately
-authorized full profile *and* an explicit disposable REF destination. Setup backup and
+authorized full profile *and* an explicit disposable REF destination. A write-capable runner must bind the complete exact approved DPO4054
+model/serial identity before proceeding with any invasive case. Setup backup and
 verified post-restore readback are mandatory before accepting write-capable HIL evidence.
 Configuration restoration does not recover destructively overwritten REF waveform memory.
 Hardware workflows must not run pytest after authorization failures.
