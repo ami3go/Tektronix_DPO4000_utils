@@ -90,6 +90,9 @@ def test_hardware_reads_trigger_level(scope: DPO4054) -> None:
 @pytest.mark.hardware
 def test_hardware_standard_event_status_is_readable(scope: DPO4054) -> None:
     """Verify basic SCPI status access through the active API session."""
+    if not _env_enabled("DPO4000_ENABLE_WRITE_TESTS"):
+        pytest.skip("This check sends SCPI state-changing commands; authorize reversible writes.")
+
     assert scope.scope is not None
     scope.scope.write("*CLS")
     esr = int(scope.scope.query("*ESR?").strip())
@@ -104,6 +107,9 @@ def test_hardware_binary_waveform_transfer_is_deterministic(scope: DPO4054) -> N
     ``DPO4000_WAVEFORM_POINTS`` to 10000, 100000, or a larger practical record
     length to execute the Phase-4 qualification matrix on the connected scope.
     """
+    if not _env_enabled("DPO4000_ENABLE_WRITE_TESTS"):
+        pytest.skip("This check sends SCPI state-changing commands; authorize reversible writes.")
+
     assert scope.scope is not None
     channel = int(os.getenv("DPO4000_TEST_CHANNEL", "1"))
     if not parse_channel_enabled(scope.scope.query(f"SELECT:CH{channel}?").strip()):
@@ -142,6 +148,9 @@ def test_hardware_binary_waveform_transfer_is_deterministic(scope: DPO4054) -> N
 @pytest.mark.hardware
 def test_hardware_partial_waveform_uses_outgoing_xzero(scope: DPO4054) -> None:
     """Exercise partial-transfer X-axis semantics on real DPO4000 firmware."""
+    if not _env_enabled("DPO4000_ENABLE_WRITE_TESTS"):
+        pytest.skip("This check sends SCPI state-changing commands; authorize reversible writes.")
+
     assert scope.scope is not None
     channel = int(os.getenv("DPO4000_TEST_CHANNEL", "1"))
     if not parse_channel_enabled(scope.scope.query(f"SELECT:CH{channel}?").strip()):
