@@ -14,6 +14,7 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 from dpo4000_utils.baseline_capture import BaselineConfig, HardwareBaselineCapture, build_baseline_header
+from dpo4000_utils.r0_qualification import VerifiedSetupGuard
 
 
 def _write_new_baseline(destination: Path, payload: dict) -> None:
@@ -48,6 +49,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--resource", required=True, help="VISA resource, e.g. TCPIP0::192.168.0.5::INSTR")
     parser.add_argument("--output-dir", type=Path, default=Path("tests/baselines"))
     parser.add_argument("--timeout-ms", type=int, default=20_000)
+    parser.add_argument("--expected-idn", required=True,
+                        help="Full *IDN? response independently verified before this campaign.")
+    parser.add_argument("--confirm-restore-plan", action="store_true",
+                        help="Operator verified and approved restoration from saved *LRN?/SET? setup.")
     parser.add_argument(
         "--capability-probe-timeout-ms",
         type=int,
@@ -79,6 +84,10 @@ def main() -> int:
             "R0 capture performs physical configuration writes. "
             "Supply --authorize-reversible-writes only on an approved disposable setup."
         )
+    if not args.confirm_restore_plan:
+        raise SystemExit("Operator must verify the bench restore plan and pass --confirm-restore-plan")
+    if args.output_dir.exists() and any(args.output_dir.iterdir()):
+        raise SystemExit("Use a new empty output directory for this immutable capture")
     if args.timeout_ms <= 0:
         raise SystemExit("--timeout-ms must be positive")
     if args.capability_probe_timeout_ms <= 0:
@@ -126,24 +135,25 @@ def main() -> int:
     results: list[tuple[Path, dict]] = []
     capture.connect()
     try:
-        assert capture.scope is not None
-        idn = capture.scope.query_identity()
-        print(f"  idn: {idn}")
-
-        if not args.skip_functional:
-            print("\nCapturing R0-F functional baseline...")
-            functional = {**build_baseline_header(config.resource, idn), **capture.capture_functional()}
-            results.append((config.output_dir / "r0_functional_baseline.json", functional))
-
-        if not args.skip_timing:
-            print("\nCapturing R0-T timing baseline (this touches the scope repeatedly)...")
-            timing_data = capture.capture_timing()
-            timing = {
-                **build_baseline_header(config.resource, idn),
-                "transport": config.resource.split("::")[0],
-                "operations": timing_data,
-            }
-            results.append((config.output_dir / "r0_timing_baseline.json", timing))
+        with VerifiedSetupGuard(capture, config.output_dir, args.expected_idn) as guard:
+            idn = guard.expected_idn
+            print(f"  verified idn: {idn}")
+            if not args.skip_functional:
+                print("\nCapturing R0-F functional baseline...")
+                functional = {**build_baseline_header(config.resource, idn), **capture.capture_functional()}
+                results.append((config.output_dir / "r0_functional_baseline.json", functional))
+            if not args.skip_timing:
+                print("\nCapturing R0-T timing baseline (this touches the scope repeatedly)...")
+                timing_data = capture.capture_timing()
+                timing = {
+                    **build_baseline_header(config.resource, idn),
+                    "transport": config.resource.split("::")[0],
+                    "operations": timing_data,
+                }
+                results.append((config.output_dir / "r0_timing_baseline.json", timing))
+        # Only publish after the physical setup was verified restored.
+        for _, document in results:
+            document["setup_restoration"] = dict(guard.report)
     finally:
         capture.disconnect()
 
