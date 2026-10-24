@@ -51,6 +51,9 @@ def a18_scope():
 
 @pytest.mark.hardware
 def test_a18_read_only_waveform_bundle_round_trip(a18_scope, tmp_path: Path) -> None:
+    if not _env_enabled("DPO4000_ENABLE_WRITE_TESTS"):
+        pytest.skip("This check sends SCPI state-changing commands; authorize reversible writes.")
+
     recipe = Recipe(
         "A18 holdoff evidence",
         (RecipeStep.call("get_trigger_holdoff", name="HOLDOFF"),),
