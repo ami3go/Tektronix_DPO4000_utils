@@ -240,3 +240,63 @@ def test_waveform_and_hardcopy_calls_are_not_classified_read_only() -> None:
         "read_screen_png", "save_image_path",
     ):
         assert PUBLIC_METHOD_RISK[name] >= VerificationRisk.REVERSIBLE
+
+
+def test_reported_p95_cannot_contradict_raw_monotonic_samples() -> None:
+    samples = [0.01, 0.02, 0.03, 0.04, 0.05]
+    record = {
+        "samples_s": samples,
+        "sample_count": len(samples),
+        "min": 0.01, "max": 0.05,
+        "p50": 0.03, "p95": 0.01,  # impossible, yet below an R0 threshold
+        "timeout_count": 0, "error_count": 0,
+    }
+    ops = {"connection": record, "waveform_acquisition": {
+        str(size): {**record, "p95": 0.05}
+        for size in (1000, 10000, 100000, 1000000)
+    }}
+    issues = release._raw_timing_issues(ops, "forged")
+    assert any("reported p95 contradicts raw samples: connection" in issue
+               for issue in issues)
+
+
+def test_verifier_requires_exact_scope_setup_restore_readback(tmp_path: Path, monkeypatch) -> None:
+    from dpo4000_utils import hardware_verification_core as core
+
+    class FakeScope:
+        def ensure_connected(self):
+            return object()
+
+    verifier = core.HardwareVerifier(core.VerificationConfig(
+        resource="USB0::FAKE::INSTR", output_dir=tmp_path
+    ))
+    verifier.scope = FakeScope()
+    verifier.baseline_payload = {"instrument": IDN, "setup": "ACQUIRE:STATE ON"}
+    writes = []
+    monkeypatch.setattr(core, "apply_setup_string", lambda _session, command, **_kw:
+                        writes.append(command))
+    monkeypatch.setattr(core, "build_scope_settings_payload", lambda _session: {
+        "instrument": IDN, "setup": "ACQUIRE:STATE OFF"
+    })
+    with pytest.raises(AssertionError, match="readback differs"):
+        verifier._restore_baseline()
+    assert writes == ["ACQUIRE:STATE ON"]
+
+
+def test_rejected_hardware_preflight_cannot_fall_through_to_pytest() -> None:
+    workflow = (ROOT / ".github/workflows/hardware-api-tests.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "if: steps.verifier.outcome == 'success'" in workflow
+    assert "if: always()\n        run: pytest" not in workflow
+    assert "dpo4000-physical-bench" in workflow
+
+
+def test_unapproved_soak_is_a_failed_job_not_a_successful_skip() -> None:
+    workflow = (ROOT / ".github/workflows/hardware-soak.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "BENCH_APPROVED" in workflow
+    assert "exit 1" in workflow
+    assert "if: ${{ inputs.authorized_bench }}" not in workflow
+    assert "dpo4000-physical-bench" in workflow
