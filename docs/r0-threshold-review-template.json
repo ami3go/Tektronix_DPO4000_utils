@@ -1,0 +1,16 @@
+{
+  "_note": "UNAPPROVED TEMPLATE ONLY. Populate with independently reviewed real hardware hashes and reviewer identity. Never use this template as qualification evidence.",
+  "status": "PENDING",
+  "reviewer": "",
+  "reviewed_at": null,
+  "known_good_commit_sha": "",
+  "threshold_sha256": "",
+  "baseline_sha256": {
+    "usb/baseline/r0_functional_baseline.json": "",
+    "usb/baseline/r0_timing_baseline.json": "",
+    "usb/baseline/r0_extra_metrics.json": "",
+    "tcpip/baseline/r0_functional_baseline.json": "",
+    "tcpip/baseline/r0_timing_baseline.json": "",
+    "tcpip/baseline/r0_extra_metrics.json": ""
+  }
+}
