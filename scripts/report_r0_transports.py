@@ -365,6 +365,11 @@ def evaluate(root: Path, threshold_file: Path, approval_path: Path | None
                 baseline_digests.get(relative) != hashes.get(relative)
             ):
                 issues.append(f"No approved immutable baseline hash for {relative}")
+        relative = f"{transport}/baseline/r0_extra_metrics.json"
+        if not isinstance(baseline_digests, dict) or (
+            baseline_digests.get(relative) != hashes.get(relative)
+        ):
+            issues.append(f"No approved immutable baseline hash for {relative}")
     if approval and approval.get("known_good_commit_sha") not in set(baseline_commits.values()):
         issues.append("Approved known-good baseline commit does not match captured baselines")
     if len(set(idns.values())) != 1 or len(idns) != 2:
@@ -382,6 +387,39 @@ def evaluate(root: Path, threshold_file: Path, approval_path: Path | None
         "artifacts_sha256": hashes, "operations_compared": len(rows),
         "note": "Offline structural evaluation only: human bench and reviewer attestation required.",
     }, rows)
+
+
+def _write_optional_plots(rows: list[dict[str, Any]], output: Path) -> None:
+    """Plot matched p95 values when measured rows and matplotlib are available."""
+    if not rows:
+        return
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        from matplotlib import pyplot as plt
+    except ImportError:
+        print("Optional matplotlib unavailable; CSV/JSON contain the complete measured data")
+        return
+    for transport in ("usb", "tcpip"):
+        selected = [item for item in rows if item["transport"] == transport]
+        if not selected:
+            continue
+        positions = list(range(len(selected)))
+        fig, ax = plt.subplots(figsize=(max(9, len(selected) * 0.45), 6))
+        ax.bar([v - 0.2 for v in positions],
+               [item["baseline_p95_s"] for item in selected], width=0.4,
+               label="Approved baseline p95")
+        ax.bar([v + 0.2 for v in positions],
+               [item["candidate_p95_s"] for item in selected], width=0.4,
+               label="Candidate p95")
+        ax.set_xticks(positions, [item["operation"] for item in selected],
+                      rotation=80, ha="right")
+        ax.set_ylabel("Elapsed time (s, monotonic)")
+        ax.set_title(f"{transport.upper()} R0 p95 operation latencies")
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig(output / f"{transport}_p95.png", dpi=140)
+        plt.close(fig)
 
 
 def main() -> int:
@@ -413,6 +451,7 @@ def main() -> int:
     lines.extend(f"- {issue}" for issue in report["issues"])
     lines.extend(["", "No unsupported measurement or human approval is inferred.", ""])
     _atomic(output / "transport_comparison.md", "\n".join(lines).encode("utf-8"))
+    _write_optional_plots(rows, output)
     print(f"R0 transport qualification: {report['status']} ({len(report['issues'])} blockers)")
     print(f"Evidence report: {output / 'transport_comparison.json'}")
     return 0 if report["status"] == "PASS" else 1
