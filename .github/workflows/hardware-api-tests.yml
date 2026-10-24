@@ -14,11 +14,29 @@ on:
       visa_resource:
         description: "VISA resource for the oscilloscope"
         required: true
-        default: "USB0::0x0699::0x0401::C011280::INSTR"
+        default: ""
       expected_idn:
         description: "Exact DPO4054 *IDN? including instrument serial; required for all write-capable profiles"
         required: false
         default: ""
+      authorized_readonly:
+        description: "Bench owner separately approves strict query-only HIL"
+        type: boolean
+        required: true
+        default: false
+      expected_serial:
+        description: "Exact DPO4054 serial read independently from *IDN?"
+        required: true
+        default: ""
+      verified_options:
+        description: "Operator verified option inventory, or NONE"
+        required: true
+        default: ""
+      ch1_probe_comp_confirmed:
+        description: "Operator confirms CH1 connected to Probe Comp"
+        type: boolean
+        required: true
+        default: false
       authorized_bench:
         description: "Bench owner authorizes access to this reserved scope, including read-only discovery"
         required: true
@@ -91,6 +109,10 @@ jobs:
       DPO4000_ENABLE_WRITE_TESTS: ${{ inputs.profile != 'read-only' }}
       DPO4000_TEST_CHANNEL: ${{ inputs.test_channel }}
       DPO4000_WAVEFORM_POINTS: ${{ inputs.waveform_points }}
+      DPO4000_EXPECT_SERIAL: ${{ inputs.expected_serial }}
+      DPO4000_READONLY_AUTHORIZED: ${{ inputs.authorized_readonly == true && '1' || '0' }}
+      DPO4000_PROBE_COMP_CONFIRMED: ${{ inputs.ch1_probe_comp_confirmed == true && '1' || '0' }}
+      DPO4000_EVIDENCE_DIR: hardware_verification_reports/github-actions
 
     steps:
       - name: Verify profile-specific bench authorization
@@ -103,7 +125,19 @@ jobs:
           DISRUPTIVE: ${{ inputs.authorized_disruptive }}
           REF_OVERWRITE: ${{ inputs.allow_reference_overwrite }}
           REF_DEST: ${{ inputs.reference_destination }}
+          READONLY_AUTHORIZED: ${{ inputs.authorized_readonly }}
+          SERIAL: ${{ inputs.expected_serial }}
+          VERIFIED_OPTIONS: ${{ inputs.verified_options }}
+          VISA_RESOURCE: ${{ inputs.visa_resource }}
         run: |
+          if [[ -z "${VISA_RESOURCE// /}" ]]; then
+            echo "::error::An operator-supplied VISA resource is required."
+            exit 1
+          fi
+          if [[ "$PROFILE" == "read-only" && ( "$READONLY_AUTHORIZED" != "true" || -z "${SERIAL// /}" || -z "${VERIFIED_OPTIONS// /}" ) ]]; then
+            echo "::error::Strict read-only HIL requires separate authorization, exact serial and option inventory."
+            exit 1
+          fi
           if [[ "$BENCH_APPROVED" != "true" ]]; then
             echo "::error::Explicit bench reservation authorization required."
             exit 1
@@ -168,6 +202,9 @@ jobs:
             --artifact-record-length "${{ inputs.artifact_record_length }}"
             --output-dir hardware_verification_reports/github-actions
           )
+          if [[ "${{ inputs.profile }}" == "read-only" ]]; then
+            args+=(--authorize-read-only --expected-serial "$DPO4000_EXPECT_SERIAL" --verified-options "${{ inputs.verified_options }}")
+          fi
           if [[ "${{ inputs.authorized_reversible }}" == "true" ]]; then
             args+=(--authorize-reversible-writes)
           fi
@@ -180,10 +217,27 @@ jobs:
           fi
           python scripts/run_hardware_verification.py "${args[@]}"
 
-      - name: Run focused pytest hardware suite
-        # A rejected authorization or failed preflight must never trigger writes.
-        if: steps.verifier.outcome == 'success'
-        run: pytest -q -m hardware tests/hardware
+      - name: Run reviewed strict read-only pytest modules
+        # A rejected admission, failed verifier or write-capable suite must never trigger.
+        if: ${{ inputs.profile == 'read-only' && steps.verifier.outcome == 'success' }}
+        env:
+          DPO4000_ENABLE_WRITE_TESTS: "0"
+        run: |
+          mkdir -p hardware_verification_reports/github-actions
+          pytest -q -m hardware \
+            tests/hardware/test_a15_recipe_hardware.py \
+            tests/hardware/test_a16_rule_hardware.py \
+            tests/hardware/test_a20_measurement_trend_hardware.py \
+            tests/hardware/test_a25_headless_job_hardware.py \
+            tests/hardware/test_dpo4054_readonly_waveform_hardware.py \
+            --junitxml=hardware_verification_reports/github-actions/pytest.xml
+
+      - name: Run separately write-authorized pytest hardware suite
+        if: ${{ inputs.profile != 'read-only' && steps.verifier.outcome == 'success' }}
+        run: |
+          mkdir -p hardware_verification_reports/github-actions
+          pytest -q -m hardware tests/hardware \
+            --junitxml=hardware_verification_reports/github-actions/pytest.xml
 
       - name: Upload hardware verification evidence
         if: always()
