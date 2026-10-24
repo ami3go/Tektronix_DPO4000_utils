@@ -38,21 +38,32 @@ def validate_soak_report(
     }
     for name, path in paths.items():
         try:
+            if path.is_symlink() or report_dir.is_symlink():
+                raise ValueError(f"Symlink qualification evidence rejected: {path}")
             raw = path.read_bytes()
-        except OSError as exc:
-            reasons.append(f"Missing {name} evidence: {exc}")
+        except (OSError, ValueError) as exc:
+            reasons.append(f"Missing or unsafe {name} evidence: {exc}")
             continue
-        if not raw:
-            reasons.append(f"Empty {name} evidence")
+        if not raw or len(raw) > 100_000_000:
+            reasons.append(f"Empty or oversized {name} evidence")
             continue
         evidence[name] = hashlib.sha256(raw).hexdigest()
     if len(evidence) != 2:
         return reasons, evidence
 
+    def unique_keys(pairs: list[tuple[str, Any]]) -> dict:
+        item = {}
+        for key, value in pairs:
+            if key in item:
+                raise ValueError(f"Duplicate JSON key: {key}")
+            item[key] = value
+        return item
+
     try:
         payload = json.loads(paths["json"].read_text(encoding="utf-8"),
                              parse_constant=lambda value: (_ for _ in ()).throw(
-                                 ValueError(f"Nonstandard number {value}")))
+                                 ValueError(f"Nonstandard number {value}")),
+                             object_pairs_hook=unique_keys)
     except (ValueError, UnicodeError, OSError) as exc:
         return [*reasons, f"Invalid JSON evidence: {exc}"], evidence
     if not isinstance(payload, dict):
@@ -95,13 +106,20 @@ def validate_soak_report(
         reasons.append("Reported total cycle count differs from raw evidence")
     if not samples:
         reasons.append("No successful instrument cycles")
+    if not isinstance(summary.get("cleanup_errors"), list):
+        reasons.append("Missing cleanup diagnostics")
+    if not isinstance(summary.get("failure_reasons"), list):
+        reasons.append("Missing completion diagnostics")
+    if not isinstance(summary.get("resource"), str) or not summary["resource"].strip():
+        reasons.append("Missing VISA resource identity")
 
     cycles = []
     latencies = []
     elapsed_samples = []
     ordered_records = sorted(
         [*samples, *failures],
-        key=lambda item: item.get("cycle", -1) if isinstance(item, dict) else -1,
+        key=lambda item: (item.get("cycle") if type(item.get("cycle")) is int else -1)
+        if isinstance(item, dict) else -1,
     )
     for record in ordered_records:
         if not isinstance(record, dict) or type(record.get("cycle")) is not int:
@@ -141,6 +159,32 @@ def validate_soak_report(
             duration * 3600.0 / interval
         ):
             reasons.append("Inconsistent expected cycle count")
+    # A lone sample plus forged 86400s duration previously passed. The runner
+    # schedules one cycle per interval; all periods must be accounted for.
+    if type(expected_cycles) is int and type(missed) is int and missed >= 0:
+        accounted_for = len(ordered_records) + missed
+        if accounted_for < expected_cycles - 1:
+            reasons.append("Scheduled sample coverage incomplete")
+        if accounted_for > expected_cycles + 1:
+            reasons.append("Cycle/deadline accounting exceeds planned schedule")
+    if (_finite_nonnegative(interval) and interval > 0
+        and elapsed_samples and _finite_nonnegative(elapsed)):
+        # Allow one cycle period plus the maximum accepted operation latency.
+        max_latency = summary.get("acceptance_limits", {})
+        max_latency = (max_latency.get("max_cycle_latency_s") if isinstance(max_latency, dict)
+                       else None)
+        if not _finite_nonnegative(max_latency):
+            reasons.append("Missing safe cycle-latency bound")
+        else:
+            grace = interval + max_latency
+            if elapsed_samples[0] > grace:
+                reasons.append("Soak has no initial scheduled-cycle evidence")
+            if elapsed_samples[-1] < required_s - grace:
+                reasons.append("Soak has no final scheduled-cycle evidence")
+            for earlier, later in zip(elapsed_samples, elapsed_samples[1:]):
+                if later - earlier > 2 * (interval + max_latency):
+                    reasons.append("Unexplained gap in scheduled cycles")
+                    break
     limits = summary.get("acceptance_limits")
     if not isinstance(limits, dict):
         reasons.append("Acceptance limits not retained")
@@ -154,16 +198,54 @@ def validate_soak_report(
             len(failures) > limits.get("max_failures", -1)
         ):
             reasons.append("Failure count violates retained limit")
-        if latencies and (
-            not _finite_nonnegative(limits.get("max_cycle_latency_s"))
-            or max(latencies) > limits["max_cycle_latency_s"]
-        ):
+        if not _finite_nonnegative(limits.get("max_cycle_latency_s")):
+            reasons.append("Invalid retained cycle-latency bound")
+        elif latencies and max(latencies) > limits["max_cycle_latency_s"]:
             reasons.append("Cycle latency violates retained limit")
+        for key in ("max_rss_growth_mib", "max_python_growth_mib",
+                    "max_fd_growth", "max_thread_growth", "max_latency_drift_factor"):
+            if not _finite_nonnegative(limits.get(key)):
+                reasons.append(f"Missing or invalid acceptance limit: {key}")
+        for metric, limit, scale in (
+            ("rss_bytes", "max_rss_growth_mib", 1024 * 1024),
+            ("python_current_bytes", "max_python_growth_mib", 1024 * 1024),
+            ("fd_count", "max_fd_growth", 1),
+            ("thread_count", "max_thread_growth", 1),
+        ):
+            values = [sample.get(metric) for sample in samples if isinstance(sample, dict)
+                      and sample.get(metric) is not None]
+            if any(not _finite_nonnegative(value) for value in values):
+                reasons.append(f"Invalid resource metric: {metric}")
+            elif values and _finite_nonnegative(limits.get(limit)):
+                if max(values) - values[0] > limits[limit] * scale:
+                    reasons.append(f"Resource growth exceeded bound: {metric}")
+            if metric in ("python_current_bytes", "thread_count") and len(values) != len(samples):
+                reasons.append(f"Missing mandatory resource metric: {metric}")
+        if len(latencies) >= 100 and _finite_nonnegative(
+            limits.get("max_latency_drift_factor")
+        ):
+            import statistics
+            quarter = max(10, len(latencies) // 4)
+            chronological = [record.get("cycle_duration_s") for record in samples
+                             if isinstance(record, dict)]
+            if all(_finite_nonnegative(value) for value in chronological):
+                early = statistics.median(chronological[:quarter])
+                late = statistics.median(chronological[-quarter:])
+                if late > early * limits["max_latency_drift_factor"] and late - early > 0.5:
+                    reasons.append("Progressive cycle-latency drift exceeds bound")
     try:
         began = datetime.fromisoformat(summary["started_at"])
         finished = datetime.fromisoformat(summary["finished_at"])
         if began.tzinfo is None or finished.tzinfo is None or finished <= began:
             reasons.append("Invalid UTC start/end timestamps")
+        elif _finite_nonnegative(elapsed):
+            wall_seconds = (finished - began).total_seconds()
+            # Allow bounded host clock/NTP corrections. These timestamps are
+            # consistency evidence, not a substitute for monotonic coverage.
+            if abs(wall_seconds - elapsed) > max(120.0, required_s * 0.005):
+                reasons.append("Wall duration contradicts reported monotonic duration")
+            if wall_seconds < required_s - 120.0:
+                reasons.append("Real-time evidence shorter than requested soak")
     except (KeyError, TypeError, ValueError):
         reasons.append("Missing or malformed start/end timestamps")
     markdown = paths["markdown"].read_text(encoding="utf-8")
