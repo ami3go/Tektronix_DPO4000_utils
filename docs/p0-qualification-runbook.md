@@ -248,7 +248,9 @@ The input manifest contract requires:
   All `REQUIRED_HIL` entries must be `PASS`. A `SKIP`, even if claimed
   capability-absent, blocks release pending a separately approved, documented
   scope reduction and updated policy. Case artifacts must be nonempty local
-  files, with no traversal or symbolic-link components.
+  files, with no traversal or symbolic-link components. Every case
+  requires `artifact_sha256` containing the exact lowercase SHA-256 digest of
+  the referenced retained file; missing/mismatched hashes fail P0-G1.
 - `performance/{usb,tcpip}/baseline/r0_{functional,timing}_baseline.json`:
   immutable, separately approved real-device R0 references. Each candidate
   folder has a `comparison_report.json` and raw
