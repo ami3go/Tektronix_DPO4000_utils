@@ -165,6 +165,52 @@ def test_invalid_recipe_never_opens_session(tmp_path: Path, method: str) -> None
     assert (recorder.opened, recorder.closed) == (0, 0)
 
 
+
+@pytest.mark.parametrize(
+    "method",
+    [
+        "save_scope_settings",
+        "save_image_path",
+        "save_waveform_to_csv",
+        "save_all_channels_to_csv",
+        "save_all_channels_to_single_csv",
+    ],
+)
+def test_headless_recipe_refuses_arbitrary_local_file_writes_before_visa(
+    tmp_path: Path, method: str
+) -> None:
+    recorder = Recorder()
+    result = recorder.runner().run(
+        JobConfig(recipe_path=_recipe(tmp_path, (method,)), resource="FAKE::INSTR")
+    )
+    assert result.exit_code is JobExitCode.VALIDATION_ERROR
+    assert "not available to headless jobs" in result.message
+    assert (recorder.opened, recorder.closed) == (0, 0)
+
+
+@pytest.mark.parametrize(
+    "identity",
+    [
+        "OTHER,OTHER,FAKE,0",
+        "TEKTRONIX,AFG3102,FAKE,0",
+        "TEKTRONIX,DPO4054X-SPOOF,FAKE,0",
+        "",
+    ],
+)
+def test_unexpected_identity_is_rejected_before_recipe(
+    tmp_path: Path, identity: str
+) -> None:
+    recorder = Recorder()
+    recorder.scope.query_identity = lambda: identity
+    result = recorder.runner().run(
+        JobConfig(recipe_path=_recipe(tmp_path), resource="FAKE::INSTR")
+    )
+    assert result.exit_code is JobExitCode.RUNTIME_ERROR
+    assert "unsupported instrument identity" in result.message
+    assert recorder.scope.calls == 0
+    assert (recorder.opened, recorder.closed) == (1, 1)
+
+
 def test_report_cannot_overwrite_recipe_or_rules(tmp_path: Path) -> None:
     recipe = _recipe(tmp_path)
     with pytest.raises(JobValidationError, match="must not replace"):
