@@ -55,7 +55,7 @@ permissions:
   contents: read
 
 jobs:
-  read-only-hil:
+  reversible-write-hil:
     name: A22 reversible-write scope snapshot qualification
     runs-on: [self-hosted, dpo4000]
     timeout-minutes: 270
