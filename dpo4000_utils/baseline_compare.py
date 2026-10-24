@@ -16,6 +16,7 @@ separate, explicit ``scripts/capture_r0_baseline.py`` run (section 16).
 from __future__ import annotations
 
 import fnmatch
+import math
 from dataclasses import dataclass
 from typing import Any
 
@@ -190,11 +191,24 @@ def diff_timing(
 
 def load_thresholds(payload: dict[str, Any]) -> dict[str, OperationThreshold]:
     """Parse a thresholds JSON payload (see tests/baselines/r0_timing_thresholds.json)."""
+    operations = payload.get("operations")
+    if not isinstance(operations, dict):
+        raise ValueError("Timing acceptance thresholds must contain an operations map")
     thresholds: dict[str, OperationThreshold] = {}
-    for operation, entry in payload.get("operations", {}).items():
+    for operation, entry in operations.items():
+        if not isinstance(operation, str) or not operation or not isinstance(entry, dict):
+            raise ValueError(f"Malformed timing threshold for {operation!r}")
+        try:
+            absolute = float(entry["absolute_tolerance_s"])
+            relative = float(entry.get("relative_limit", DEFAULT_RELATIVE_LIMIT))
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"Missing/malformed timing limits for {operation!r}") from exc
+        if not math.isfinite(absolute) or absolute < 0:
+            raise ValueError(f"Invalid absolute tolerance for {operation!r}")
+        if not math.isfinite(relative) or relative < 1:
+            raise ValueError(f"Invalid relative acceptance limit for {operation!r}")
         thresholds[operation] = OperationThreshold(
-            absolute_tolerance_s=float(entry["absolute_tolerance_s"]),
-            relative_limit=float(entry.get("relative_limit", DEFAULT_RELATIVE_LIMIT)),
+            absolute_tolerance_s=absolute, relative_limit=relative
         )
     return thresholds
 
