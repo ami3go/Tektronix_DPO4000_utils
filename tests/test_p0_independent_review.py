@@ -475,3 +475,56 @@ def test_duplicate_ci_json_key_is_fail_not_blocked(tmp_path: Path) -> None:
     gate = release.evaluate(tmp_path, commit=COMMIT)["gates"]["P0-G0"]
     assert gate["state"] == "FAIL"
     assert "Duplicate JSON key" in " ".join(gate["reasons"])
+
+
+def _a25_metadata(tmp_path: Path, *, status: str = "pass",
+                  review_status: str = "APPROVED") -> None:
+    _json(tmp_path, "a25/qualification.json", {
+        "commit_sha": COMMIT, "review_status": review_status,
+        "installed_cli": True, "session_released": True,
+    })
+    _json(tmp_path, "a25/hardware-cli-report.json", {
+        "commit_sha": COMMIT, "status": status, "exit_code": 0 if status == "pass" else 1,
+        "identity": IDN,
+    })
+
+
+def test_a25_missing_physical_junit_is_blocked(tmp_path: Path) -> None:
+    _a25_metadata(tmp_path)
+    gate = release.evaluate(tmp_path, commit=COMMIT)["gates"]["P0-G4"]
+    assert gate["state"] == "BLOCKED"
+    assert "JUnit missing" in " ".join(gate["reasons"])
+
+
+def test_a25_real_cli_failure_outweighs_missing_junit(tmp_path: Path) -> None:
+    _a25_metadata(tmp_path, status="fail")
+    gate = release.evaluate(tmp_path, commit=COMMIT)["gates"]["P0-G4"]
+    assert gate["state"] == "FAIL"
+    assert "not PASS" in " ".join(gate["reasons"])
+
+
+def test_a25_pending_human_review_does_not_qualify_valid_synthetic_xml(tmp_path: Path) -> None:
+    _a25_metadata(tmp_path, review_status="PENDING")
+    (tmp_path / "a25/hardware-junit.xml").write_text(
+        '<testsuite tests="1" failures="0" errors="0" skipped="0">'
+        '<testcase name="synthetic-only"/></testsuite>', encoding="utf-8",
+    )
+    gate = release.evaluate(tmp_path, commit=COMMIT)["gates"]["P0-G4"]
+    assert gate["state"] == "BLOCKED"
+    assert "review pending" in " ".join(gate["reasons"])
+
+
+def test_independent_review_pending_is_blocked(tmp_path: Path) -> None:
+    _json(tmp_path, "review.json", {
+        "commit_sha": COMMIT, "status": "PENDING",
+        "critical_open": 0, "high_open": 0,
+    })
+    assert release.evaluate(tmp_path, commit=COMMIT)["gates"]["REVIEW"]["state"] == "BLOCKED"
+
+
+def test_rejected_review_remains_failed(tmp_path: Path) -> None:
+    _json(tmp_path, "review.json", {
+        "commit_sha": COMMIT, "status": "REJECTED",
+        "critical_open": 0, "high_open": 0,
+    })
+    assert release.evaluate(tmp_path, commit=COMMIT)["gates"]["REVIEW"]["state"] == "FAIL"
