@@ -221,14 +221,6 @@ class HardwareVerifier:
     def __init__(self, config: VerificationConfig):
         self.config = config
         self.config.output_dir = Path(self.config.output_dir)
-        if self.config.profile >= VerificationRisk.REVERSIBLE:
-            expected = self.config.expected_idn.strip()
-            if ("DPO4054" not in expected.upper()
-                or len(expected.split(",")) < 3):
-                raise ValueError(
-                    "Write-capable HIL requires a complete exact DPO4054 *IDN? "
-                    "with model and serial number before opening VISA"
-                )
         self.config.output_dir.mkdir(parents=True, exist_ok=True)
         self.results: list[VerificationResult] = []
         self.scope: DPO4054 | None = None
@@ -851,6 +843,14 @@ class HardwareVerifier:
         )
 
     def run(self) -> dict[str, Any]:
+        if self.config.profile >= VerificationRisk.REVERSIBLE:
+            expected = self.config.expected_idn.strip()
+            if ("DPO4054" not in expected.upper()
+                or len(expected.split(",")) < 3):
+                raise ValueError(
+                    "Write-capable HIL requires a complete exact DPO4054 *IDN? "
+                    "with model and serial number before opening VISA"
+                )
         self._register_and_run(
             VerificationCase("manifest", "Public API manifest completeness", VerificationRisk.READ_ONLY),
             self._case_manifest,
