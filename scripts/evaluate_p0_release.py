@@ -474,57 +474,79 @@ def evaluate(root: Path, *, commit: str) -> dict:
             tracked[f"soak/soak_report.{ 'json' if typ == 'json' else 'md' }"] = digest
         return problems
 
-    def a25() -> list[str]:
+    def a25() -> dict:
         qualification = load("a25/qualification.json")
         result = load("a25/hardware-cli-report.json")
-        reasons = []
+        failed: list[str] = []
+        blocked: list[str] = []
         if qualification.get("commit_sha") != commit:
-            reasons.append("A25 qualification commit mismatch")
-        if qualification.get("review_status") != "APPROVED":
-            reasons.append("A25 independent review not approved")
-        if qualification.get("installed_cli") is not True:
-            reasons.append("Installed CLI not qualified")
-        if qualification.get("session_released") is not True:
-            reasons.append("Independent post-job connection evidence absent")
+            failed.append("A25 qualification commit mismatch")
+        review_state = qualification.get("review_status")
+        if review_state in (None, "PENDING", "NOT_RUN"):
+            blocked.append("A25 independent review pending")
+        elif review_state != "APPROVED":
+            failed.append("A25 independent review rejected or malformed")
+        installed = qualification.get("installed_cli")
+        if installed is not True:
+            (blocked if installed in (None, False) else failed).append(
+                "Installed CLI not qualified"
+            )
+        released = qualification.get("session_released")
+        if released is not True:
+            (blocked if released is None else failed).append(
+                "Independent post-job connection evidence absent or failed"
+            )
         if result.get("commit_sha") != commit:
-            reasons.append("A25 installed CLI result commit mismatch")
-        if result.get("status") != "pass" or result.get("exit_code") != 0:
-            reasons.append("A25 CLI hardware result not PASS")
+            failed.append("A25 installed CLI result commit mismatch")
+        run_status = result.get("status")
+        if run_status in (None, "not_run", "pending", "skipped"):
+            blocked.append("A25 physical CLI run not executed")
+        elif run_status != "pass" or result.get("exit_code") != 0:
+            failed.append("A25 CLI hardware result not PASS")
         if "DPO4054" not in str(result.get("identity", "")).upper():
-            reasons.append("A25 real scope identity missing")
+            (blocked if run_status in (None, "not_run", "pending", "skipped")
+             else failed).append("A25 real scope identity missing")
         xml_path = _evidence_path(root, "a25/hardware-junit.xml")
         if not xml_path.is_file():
-            reasons.append("A25 physical pytest JUnit missing")
+            blocked.append("A25 physical pytest JUnit missing")
         else:
             tracked[str(xml_path.relative_to(root))] = _sha(xml_path)
             parsed = ET.parse(xml_path).getroot()
             suites = [parsed] if parsed.tag == "testsuite" else list(parsed.findall("testsuite"))
             if not suites:
-                reasons.append("A25 JUnit has no test suite")
+                failed.append("A25 JUnit has no test suite")
             elif (sum(int(s.get("tests", "0")) for s in suites) < 1
                   or not any(s.findall(".//testcase") for s in suites)):
-                reasons.append("A25 JUnit has no real hardware test cases")
+                failed.append("A25 JUnit has no real hardware test cases")
             elif (any(int(s.get(field, "0")) for s in suites
                       for field in ("failures", "errors", "skipped"))
                   or any(s.findall(".//failure") or s.findall(".//error")
                          or s.findall(".//skipped") for s in suites)):
-                reasons.append("A25 physical pytest failures/errors/skips")
-        return reasons
+                failed.append("A25 physical pytest failures/errors/skips")
+        return _findings(failed=failed, blocked=blocked)
 
-    def review() -> list[str]:
+    def review() -> dict:
         data = load("review.json")
-        issues = []
+        failed: list[str] = []
+        blocked: list[str] = []
         if data.get("commit_sha") != commit:
-            issues.append("Independent review applies to a different commit")
-        if (data.get("status") != "APPROVED"
-            or not isinstance(data.get("reviewer"), str)
-            or not data["reviewer"].strip()
-            or not isinstance(data.get("approval_url"), str)
-            or not data["approval_url"].startswith("https://github.com/")):
-            issues.append("Independent human approval and traceable review URL required")
-        if data.get("critical_open") != 0 or data.get("high_open") != 0:
-            issues.append("Unresolved CRITICAL/HIGH review findings")
-        return issues
+            failed.append("Independent review applies to a different commit")
+        status = data.get("status")
+        if status in (None, "PENDING", "NOT_RUN"):
+            blocked.append("Independent qualified human approval pending")
+        elif status != "APPROVED":
+            failed.append("Independent review rejected or malformed")
+        else:
+            if (not isinstance(data.get("reviewer"), str)
+                or not data["reviewer"].strip()
+                or not isinstance(data.get("approval_url"), str)
+                or not data["approval_url"].startswith("https://github.com/")):
+                failed.append("Independent human approval and traceable review URL required")
+        if data.get("critical_open") is None or data.get("high_open") is None:
+            blocked.append("Independent review finding counts pending")
+        elif data.get("critical_open") != 0 or data.get("high_open") != 0:
+            failed.append("Unresolved CRITICAL/HIGH review findings")
+        return _findings(failed=failed, blocked=blocked)
 
     gates = {
         "P0-G0": _gate(software),
