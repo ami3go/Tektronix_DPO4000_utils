@@ -198,10 +198,11 @@ def _no_duplicate_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 
 MAX_JOB_JSON_DEPTH = 64
 
-# A15 recipes can use public driver helpers which write directly to caller-chosen
-# local files. Headless jobs must use the controlled A21 export/report destinations
-# instead; otherwise a recipe step could bypass JobConfig collision safeguards.
-HEADLESS_DENIED_LOCAL_WRITE_METHODS = frozenset({
+# A15 includes public helpers for arbitrary filesystem output and replaying
+# user-supplied setup strings as raw SCPI. A25 must not expose either route:
+# use controlled A21 destinations and validated driver operations instead.
+HEADLESS_DENIED_UNRESTRICTED_METHODS = frozenset({
+    "apply_scope_settings",
     "save_scope_settings",
     "save_image_path",
     "save_waveform_to_csv",
@@ -403,10 +404,10 @@ class HeadlessJobRunner:
 
     def _preflight(self, recipe: Recipe, config: JobConfig) -> None:
         for step in recipe.steps:
-            if step.method in HEADLESS_DENIED_LOCAL_WRITE_METHODS:
+            if step.method in HEADLESS_DENIED_UNRESTRICTED_METHODS:
                 raise JobValidationError(
                     f"method {step.method!r} is not available to headless jobs; "
-                    "use the controlled A21 export destination"
+                    "use controlled A21 outputs or typed driver methods"
                 )
         target = self._validation_target_factory(
             config.resource or "A25::VALIDATION_ONLY",
