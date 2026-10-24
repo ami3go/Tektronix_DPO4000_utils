@@ -11,12 +11,14 @@ import argparse
 import hashlib
 import json
 import os
+import math
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 from dpo4000_utils.baseline_capture import BaselineConfig, HardwareBaselineCapture, build_baseline_header
+from dpo4000_utils.r0_qualification import VerifiedSetupGuard
 from dpo4000_utils.baseline_compare import (
     diff_functional,
     diff_timing,
@@ -77,6 +79,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument("--timeout-ms", type=int, default=20_000)
+    parser.add_argument("--expected-idn",
+                        help="Exact *IDN? independently verified before any live configuration writes.")
+    parser.add_argument("--confirm-restore-plan", action="store_true",
+                        help="Operator verified the restoration procedure and approved its use.")
     parser.add_argument(
         "--capability-probe-timeout-ms",
         type=int,
@@ -103,6 +109,8 @@ def _load_candidate_from_files(functional_path: Path, timing_path: Path) -> tupl
 
 def _capture_candidate_live(args: argparse.Namespace, output_dir: Path) -> tuple[dict, dict]:
     waveform_sizes = tuple(int(item) for item in args.waveform_sizes.split(","))
+    if not waveform_sizes or any(size <= 0 for size in waveform_sizes):
+        raise ValueError("Waveform sizes must be positive")
     config = BaselineConfig(
         resource=args.resource,
         output_dir=output_dir,
@@ -117,20 +125,21 @@ def _capture_candidate_live(args: argparse.Namespace, output_dir: Path) -> tuple
     capture = HardwareBaselineCapture(config)
     capture.connect()
     try:
-        assert capture.scope is not None
-        idn = capture.scope.query_identity()
-        print(f"  idn: {idn}")
-        functional = {**build_baseline_header(config.resource, idn), **capture.capture_functional()}
-        timing_data = capture.capture_timing()
-        timing = {
-            **build_baseline_header(config.resource, idn),
-            "transport": config.resource.split("::")[0],
-            "operations": timing_data,
-        }
+        with VerifiedSetupGuard(capture, output_dir, args.expected_idn) as guard:
+            idn = guard.expected_idn
+            print(f"  verified idn: {idn}")
+            functional = {**build_baseline_header(config.resource, idn), **capture.capture_functional()}
+            timing_data = capture.capture_timing()
+            timing = {
+                **build_baseline_header(config.resource, idn),
+                "transport": config.resource.split("::")[0],
+                "operations": timing_data,
+            }
+        functional["setup_restoration"] = dict(guard.report)
+        timing["setup_restoration"] = dict(guard.report)
     finally:
         capture.disconnect()
     return functional, timing
-
 
 def _resource_family(document: dict) -> str:
     resource = str(document.get("resource") or "")
@@ -180,8 +189,58 @@ def _identity_differences(
     return issues
 
 
+def _timing_quality_issues(operations: dict, label: str) -> list[str]:
+    """Refuse malformed distributions and discarded raw duration observations."""
+    issues: list[str] = []
+    if not isinstance(operations, dict):
+        return [f"{label}: timing operations must be an object"]
+    stats_by_name: dict[str, dict] = {}
+    for name, value in operations.items():
+        if name == "not_yet_covered":
+            continue
+        if name == "waveform_acquisition" and isinstance(value, dict):
+            stats_by_name.update({f"{name}.{size}": record for size, record in value.items()})
+        else:
+            stats_by_name[name] = value
+    for name, value in stats_by_name.items():
+        if not isinstance(value, dict):
+            issues.append(f"{label}: malformed operation {name}")
+            continue
+        samples = value.get("samples_s")
+        count = value.get("sample_count")
+        if not isinstance(samples, list) or not samples or type(count) is not int or count != len(samples):
+            issues.append(f"{label}: missing/mismatched raw timing observations for {name}")
+            continue
+        if any(not isinstance(x, (int, float)) or isinstance(x, bool) or
+               not math.isfinite(x) or x < 0 for x in samples):
+            issues.append(f"{label}: invalid raw timing sample in {name}")
+            continue
+        for metric in ("min", "p50", "p95", "max"):
+            v = value.get(metric)
+            if not isinstance(v, (int, float)) or isinstance(v, bool) or not math.isfinite(v) or v < 0:
+                issues.append(f"{label}: invalid {metric} in {name}")
+    for size in (1000, 10000, 100000, 1000000):
+        if f"waveform_acquisition.{size}" not in stats_by_name:
+            issues.append(f"{label}: required waveform size {size} not measured")
+    return issues
+
+
+def _restoration_issues(*documents: dict) -> list[str]:
+    return [
+        f"Document {index}: missing or unverified setup-restoration evidence"
+        for index, document in enumerate(documents, start=1)
+        if not isinstance(document.get("setup_restoration"), dict)
+        or document["setup_restoration"].get("status") != "VERIFIED"
+        or document["setup_restoration"].get("verified") is not True
+    ]
+
+
 def main() -> int:
     args = build_parser().parse_args()
+    if args.resource and (not args.expected_idn or not args.confirm_restore_plan):
+        raise SystemExit(
+            "Live R0 needs --expected-idn and --confirm-restore-plan before physical writes"
+        )
     if args.resource and not args.authorize_reversible_writes:
         raise SystemExit(
             "Live R0 comparison issues physical configuration writes; "
@@ -195,8 +254,10 @@ def main() -> int:
         raise SystemExit("--capability-probe-timeout-ms must be positive")
 
     output_dir = args.output_dir or default_output_dir()
-    if output_dir.resolve() == args.baseline_dir.resolve():
-        raise SystemExit("Candidate output must not overwrite the approved baseline directory")
+    if output_dir.resolve().is_relative_to(args.baseline_dir.resolve()):
+        raise SystemExit("Candidate output must not lie within the approved baseline directory")
+    if output_dir.exists() and any(output_dir.iterdir()):
+        raise SystemExit("Use a new empty output directory to retain immutable candidate evidence")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     baseline_functional = json.loads(
@@ -213,6 +274,8 @@ def main() -> int:
     print(f"  output directory: {output_dir}")
 
     if args.resource:
+        if args.expected_idn != baseline_functional.get("idn"):
+            raise SystemExit("Preflight expected IDN differs from approved baseline identity")
         print(f"  candidate: live capture against {args.resource}")
         candidate_functional, candidate_timing = _capture_candidate_live(args, output_dir)
     else:
@@ -230,6 +293,13 @@ def main() -> int:
 
     identity_issues = _identity_differences(
         baseline_functional, baseline_timing, candidate_functional, candidate_timing
+    )
+    restoration_issues = _restoration_issues(
+        baseline_functional, baseline_timing, candidate_functional, candidate_timing
+    )
+    timing_quality_issues = (
+        _timing_quality_issues(baseline_timing.get("operations"), "baseline")
+        + _timing_quality_issues(candidate_timing.get("operations"), "candidate")
     )
     functional_diffs = diff_functional(baseline_functional, candidate_functional)
     timing_regressions, new_operations, missing_operations = diff_timing(
@@ -250,12 +320,19 @@ def main() -> int:
         set(baseline_ops.get("not_yet_covered", []))
         | set(candidate_ops.get("not_yet_covered", []))
     )
+    unmeasured_thresholds = sorted(
+        set(thresholds) - (_operation_names(baseline_ops) & _operation_names(candidate_ops))
+    )
 
     report = {
         "status": "NOT_EVALUATED",
         "candidate_functional_sha256": functional_candidate_hash,
         "candidate_timing_sha256": timing_candidate_hash,
         "identity_issues": identity_issues,
+        "restoration_issues": restoration_issues,
+        "timing_quality_issues": timing_quality_issues,
+        "unmeasured_thresholds": unmeasured_thresholds,
+        "thresholds_sha256": hashlib.sha256(args.thresholds.read_bytes()).hexdigest(),
         "unthresholded_operations": unthresholded_operations,
         "known_coverage_gaps": missing_coverage,
         "baseline_dir": str(args.baseline_dir),
@@ -267,13 +344,16 @@ def main() -> int:
         "missing_operations": missing_operations,
     }
     exit_code = int(bool(
-        identity_issues or missing_operations or functional_diffs
+        identity_issues or restoration_issues or timing_quality_issues
+        or unmeasured_thresholds or missing_operations or functional_diffs
         or unthresholded_operations or missing_coverage
         or any(result.regressed for result in timing_regressions)
     ))
     report["status"] = "FAIL" if exit_code else "PASS"
     report["failure_reasons"] = (
-        identity_issues
+        identity_issues + restoration_issues + timing_quality_issues
+        + ([f"Unmeasured threshold operations: {unmeasured_thresholds}"]
+           if unmeasured_thresholds else [])
         + ([f"Missing candidate timing operations: {missing_operations}"] if missing_operations else [])
         + ([f"Unthresholded timing operations: {unthresholded_operations}"]
            if unthresholded_operations else [])
@@ -285,6 +365,9 @@ def main() -> int:
 
     print("\nComparison summary")
     print(f"  identity/transport issues: {identity_issues}")
+    print(f"  setup restoration issues: {restoration_issues}")
+    print(f"  timing observation integrity issues: {timing_quality_issues}")
+    print(f"  unmeasured threshold operations: {unmeasured_thresholds}")
     print(f"  timing metrics lacking acceptance thresholds: {unthresholded_operations}")
     print(f"  remaining coverage gaps: {missing_coverage}")
     print(f"  functional diffs: {len(functional_diffs)}")
