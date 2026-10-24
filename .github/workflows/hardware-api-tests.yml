@@ -1,5 +1,13 @@
 name: Hardware API Tests
 
+permissions:
+  contents: read
+
+# One physical bench, including alternate USB/TCPIP resource aliases.
+concurrency:
+  group: dpo4000-physical-bench
+  cancel-in-progress: false
+
 on:
   workflow_dispatch:
     inputs:
@@ -8,9 +16,14 @@ on:
         required: true
         default: "USB0::0x0699::0x0401::C011280::INSTR"
       expected_idn:
-        description: "Expected substring in *IDN? response"
+        description: "Exact DPO4054 *IDN? including instrument serial; required for all write-capable profiles"
         required: false
-        default: "TEKTRONIX"
+        default: ""
+      authorized_bench:
+        description: "Bench owner authorizes access to this reserved scope, including read-only discovery"
+        required: true
+        type: boolean
+        default: false
       profile:
         description: "Hardware verification safety profile"
         required: true
@@ -20,6 +33,16 @@ on:
           - reversible
           - full
         default: read-only
+      authorized_reversible:
+        description: "Bench owner explicitly authorizes reversible instrument writes"
+        type: boolean
+        required: true
+        default: false
+      authorized_disruptive:
+        description: "Separate physical bench approval for full/disruptive profile"
+        type: boolean
+        required: true
+        default: false
       test_channel:
         description: "Analog channel used by qualification checks"
         required: true
@@ -48,11 +71,12 @@ on:
         required: true
         type: choice
         options:
+          - "none"
           - "1"
           - "2"
           - "3"
           - "4"
-        default: "4"
+        default: "none"
 
 jobs:
   hardware-api:
@@ -69,6 +93,41 @@ jobs:
       DPO4000_WAVEFORM_POINTS: ${{ inputs.waveform_points }}
 
     steps:
+      - name: Verify profile-specific bench authorization
+        shell: bash
+        env:
+          PROFILE: ${{ inputs.profile }}
+          BENCH_APPROVED: ${{ inputs.authorized_bench }}
+          TARGET_IDN: ${{ inputs.expected_idn }}
+          REVERSIBLE: ${{ inputs.authorized_reversible }}
+          DISRUPTIVE: ${{ inputs.authorized_disruptive }}
+          REF_OVERWRITE: ${{ inputs.allow_reference_overwrite }}
+          REF_DEST: ${{ inputs.reference_destination }}
+        run: |
+          if [[ "$BENCH_APPROVED" != "true" ]]; then
+            echo "::error::Explicit bench reservation authorization required."
+            exit 1
+          fi
+          if [[ "$PROFILE" != "read-only" && "$TARGET_IDN" != *"DPO4054"* ]]; then
+            echo "::error::Write-capable HIL requires an exact approved DPO4054 serial IDN."
+            exit 1
+          fi
+          if [[ "$PROFILE" != "read-only" && "$REVERSIBLE" != "true" ]]; then
+            echo "::error::Reversible configuration writes require explicit authorization."
+            exit 1
+          fi
+          if [[ "$PROFILE" == "full" && "$DISRUPTIVE" != "true" ]]; then
+            echo "::error::Full/disruptive profile requires a separate authorization."
+            exit 1
+          fi
+          if [[ "$REF_OVERWRITE" == "true" && "$PROFILE" != "full" ]]; then
+            echo "::error::REF overwrite requires separately authorized full profile."
+            exit 1
+          fi
+          if [[ "$REF_OVERWRITE" == "true" && "$REF_DEST" == "none" ]]; then
+            echo "::error::Explicit disposable REF slot required; no default destination."
+            exit 1
+          fi
       - name: Check out repository
         uses: actions/checkout@v7
 
@@ -103,19 +162,27 @@ jobs:
           args=(
             --resource "${{ inputs.visa_resource }}"
             --profile "${{ inputs.profile }}"
+            --expected-idn "${{ inputs.expected_idn }}"
             --test-channel "${{ inputs.test_channel }}"
             --waveform-points "${{ inputs.waveform_points }}"
             --artifact-record-length "${{ inputs.artifact_record_length }}"
-            --reference-destination "${{ inputs.reference_destination }}"
             --output-dir hardware_verification_reports/github-actions
           )
+          if [[ "${{ inputs.authorized_reversible }}" == "true" ]]; then
+            args+=(--authorize-reversible-writes)
+          fi
+          if [[ "${{ inputs.authorized_disruptive }}" == "true" ]]; then
+            args+=(--authorize-disruptive-tests)
+          fi
           if [[ "${{ inputs.allow_reference_overwrite }}" == "true" ]]; then
             args+=(--allow-reference-overwrite)
+            args+=(--reference-destination "${{ inputs.reference_destination }}")
           fi
           python scripts/run_hardware_verification.py "${args[@]}"
 
       - name: Run focused pytest hardware suite
-        if: always()
+        # A rejected authorization or failed preflight must never trigger writes.
+        if: steps.verifier.outcome == 'success'
         run: pytest -q -m hardware tests/hardware
 
       - name: Upload hardware verification evidence

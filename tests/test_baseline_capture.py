@@ -16,20 +16,24 @@ from dpo4000_utils.control import MeasurementSetup
 
 def test_distribution_computes_known_percentiles():
     stats = distribution([1.0, 2.0, 3.0, 4.0, 5.0])
-    assert stats == {
-        "min": 1.0,
-        "p50": 3.0,
-        "p95": 5.0,
-        "p99": 5.0,
-        "max": 5.0,
-        "sample_count": 5,
-    }
+    assert stats["min"] == 1.0
+    assert stats["p50"] == 3.0
+    assert stats["p95"] == 5.0
+    assert stats["p99"] is None  # n=5 cannot resolve a p99
+    assert stats["max"] == 5.0
+    assert stats["sample_count"] == 5
+    assert stats["samples_s"] == [1.0, 2.0, 3.0, 4.0, 5.0]
+    assert stats["stdev"] > 0
+    assert stats["timeout_count"] == stats["error_count"] == 0
 
 
 def test_distribution_single_sample_is_degenerate():
     stats = distribution([0.25])
-    assert stats["min"] == stats["p50"] == stats["p95"] == stats["p99"] == stats["max"] == 0.25
+    assert stats["min"] == stats["p50"] == stats["p95"] == stats["max"] == 0.25
+    assert stats["p99"] is None
+    assert stats["stdev"] is None
     assert stats["sample_count"] == 1
+    assert stats["samples_s"] == [0.25]
 
 
 def test_distribution_rejects_empty_input():

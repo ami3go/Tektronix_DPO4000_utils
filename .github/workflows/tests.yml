@@ -81,3 +81,49 @@ jobs:
 
       - name: Run full test suite with PySide6
         run: pytest -q
+
+  r0_offline_batch:
+    name: Offline R0 regression and benchmark smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install offline test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .[dev]
+
+      - name: Run complete software regression batch without hardware
+        run: |
+          mkdir -p ci-evidence
+          timeout 240s python scripts/run_regression_batch.py \
+            --hardware skip --all-tests --summary ci-evidence/r0-regression.json
+
+      - name: Benchmark A18 evidence creation and verification (synthetic)
+        run: timeout 240s python scripts/benchmark_a18_evidence.py --output ci-evidence/a18-benchmark.json
+
+      - name: Benchmark A20 in-memory trends (synthetic)
+        run: timeout 240s python scripts/benchmark_a20_trends.py --output ci-evidence/a20-benchmark.json
+
+      - name: Benchmark A21 scientific export roundtrip (synthetic)
+        run: timeout 240s python scripts/benchmark_a21_export.py --output ci-evidence/a21-benchmark.json
+
+      - name: Benchmark A25 fake-session headless CLI (synthetic)
+        run: timeout 240s python scripts/benchmark_a25_job_runner.py --output ci-evidence/a25-benchmark.json
+
+      - name: Upload offline qualification outputs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: dpo4000-offline-regression-benchmarks
+          path: ci-evidence/
+          if-no-files-found: warn
+          retention-days: 30

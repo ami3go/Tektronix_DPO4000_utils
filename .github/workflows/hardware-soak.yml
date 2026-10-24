@@ -1,8 +1,21 @@
 name: DPO4000 Hardware Soak
 
+permissions:
+  contents: read
+
+# Do not allow two runs of this workflow against the same selected VISA resource.
+concurrency:
+  group: dpo4000-physical-bench
+  cancel-in-progress: false
+
 on:
   workflow_dispatch:
     inputs:
+      authorized_bench:
+        description: "I explicitly authorize this reserved DPO4054 for a continuous read-only qualification"
+        required: true
+        type: boolean
+        default: false
       visa_resource:
         description: "VISA resource for the oscilloscope"
         required: true
@@ -35,6 +48,16 @@ jobs:
     timeout-minutes: 4440
 
     steps:
+      - name: Refuse unapproved physical soak
+        shell: bash
+        env:
+          BENCH_APPROVED: ${{ inputs.authorized_bench }}
+        run: |
+          if [[ "$BENCH_APPROVED" != "true" ]]; then
+            echo "::error::Physical bench authorization is required."
+            exit 1
+          fi
+
       - name: Check out repository
         uses: actions/checkout@v7
 
@@ -48,7 +71,15 @@ jobs:
           python -m pip install "pip==26.2.1"
           python -m pip install -c constraints-release.txt -e .
 
+      - name: Fail fast on software qualification smoke
+        run: |
+          python -m pip install -c constraints-release.txt -e .[dev]
+          python -m pytest -q tests/test_p0_qualification_guards.py
+          python -m ruff check scripts/run_hardware_soak.py scripts/validate_soak_report.py
+
       - name: Run long-duration read-only qualification
+        id: soak
+        shell: bash
         run: |
           python scripts/run_hardware_soak.py \
             --resource "${{ inputs.visa_resource }}" \
@@ -57,6 +88,15 @@ jobs:
             --max-failures "${{ inputs.max_failures }}" \
             --max-rss-growth-mib "${{ inputs.max_rss_growth_mib }}" \
             --output-dir "hardware_verification_reports/soak-${{ inputs.duration_hours }}h-${{ github.run_number }}"
+
+      - name: Independently validate final soak evidence
+        if: always()
+        shell: bash
+        run: |
+          python scripts/validate_soak_report.py \
+            --report-dir "hardware_verification_reports/soak-${{ inputs.duration_hours }}h-${{ github.run_number }}" \
+            --min-hours "${{ inputs.duration_hours }}" \
+            --expected-commit "${{ github.sha }}"
 
       - name: Upload soak evidence
         if: always()
