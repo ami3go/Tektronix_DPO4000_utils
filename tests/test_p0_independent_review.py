@@ -327,3 +327,24 @@ def test_manual_hardware_workflow_requires_bench_reservation_and_serial() -> Non
     assert "TARGET_IDN" in workflow
     assert '--expected-idn "' in workflow
     assert "default: \"none\"" in workflow
+
+
+def test_hil_artifact_hash_mismatch_cannot_claim_coverage(tmp_path: Path) -> None:
+    artifact = tmp_path / "hardware/case.log"
+    artifact.parent.mkdir(parents=True, exist_ok=True)
+    artifact.write_text("fake physical evidence", encoding="utf-8")
+    _json(tmp_path, "hardware/qualification.json", {
+        "schema_version": 1, "commit_sha": COMMIT,
+        "idn": IDN, "setup_restored": True,
+        "cases": [
+            {
+                "id": name, "status": "PASS",
+                "artifact": "hardware/case.log",
+                "artifact_sha256": "0" * 64,
+            }
+            for name in release.REQUIRED_HIL
+        ],
+    })
+    gate = release.evaluate(tmp_path, commit=COMMIT)["gates"]["P0-G1"]
+    assert gate["state"] == "FAIL"
+    assert "SHA256 missing/mismatch" in " ".join(gate["reasons"])
