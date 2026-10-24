@@ -1,13 +1,17 @@
 """Opt-in real DPO4054 A22 snapshot throughput qualification.
 
-This test sends only existing driver's DATA transfer configuration and queries.
-It does not reconfigure trigger/acquisition or claim lossless ADC streaming.
+This test writes DATA:* transfer settings through the existing public driver.
+Operator authorization and verified restoration are mandatory. It does not
+reconfigure trigger/acquisition or claim lossless ADC streaming.
 """
 from __future__ import annotations
 
+import gc
 import json
 import os
+import re
 import time
+import tracemalloc
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -19,25 +23,88 @@ from dpo4000_utils.live_stream import (
 )
 
 
+_DATA_QUERIES = {
+    "SOURCE": "DATA:SOURCE?",
+    "START": "DATA:START?",
+    "STOP": "DATA:STOP?",
+    "WIDTH": "DATA:WIDTH?",
+    "ENCDG": "DATA:ENCDG?",
+}
+
+
+def _data_setup(instrument) -> dict[str, str]:
+    session = instrument.ensure_connected()
+    values = {key: str(session.query(query)).strip().strip('"')
+              for key, query in _DATA_QUERIES.items()}
+    for key, value in values.items():
+        if not re.fullmatch(r"[A-Za-z0-9]+", value):
+            raise AssertionError(f"Unsafe or missing initial DATA:{key} response")
+    if not all(values[key].isdigit() for key in ("START", "STOP", "WIDTH")):
+        raise AssertionError("Invalid numeric DATA transfer setup")
+    return values
+
+
+def _restore_data_setup(instrument, initial: dict[str, str]) -> bool:
+    session = instrument.ensure_connected()
+    session.write(f"DATA:SOURCE {initial['SOURCE']}")
+    session.write("DATA:START 1")
+    session.write(f"DATA:STOP {initial['STOP']}")
+    session.write(f"DATA:START {initial['START']}")
+    session.write(f"DATA:WIDTH {initial['WIDTH']}")
+    session.write(f"DATA:ENCDG {initial['ENCDG']}")
+    return _data_setup(instrument) == initial
+
+
 @pytest.fixture(scope="module")
 def scope():
     if os.getenv("DPO4000_HARDWARE") != "1":
         pytest.skip("A22 DPO4054 HIL requires DPO4000_HARDWARE=1")
+    for key in ("DPO4000_A22_REVERSIBLE_WRITES", "DPO4000_A22_EXCLUSIVE",
+                "DPO4000_A22_RESTORE_APPROVED"):
+        if os.getenv(key) != "YES":
+            pytest.fail(f"Explicit operator authorization required: {key}=YES")
     resource = os.getenv("DPO4000_RESOURCE", "").strip()
     if not resource:
-        pytest.skip("Set DPO4000_RESOURCE for explicit hardware qualification")
+        pytest.fail("Set DPO4000_RESOURCE for explicit hardware qualification")
     instrument = DPO4054(
         resource, auto_connect=False,
         timeout_ms=int(os.getenv("DPO4000_TIMEOUT_MS", "20000")),
     )
+    initial = None
+    identity = None
     instrument.connect()
     try:
         identity = instrument.query_identity()
         expected = os.getenv("DPO4000_EXPECT_IDN", "TEKTRONIX,DPO4054")
         assert expected.upper() in identity.upper(), identity
+        initial = _data_setup(instrument)
         yield instrument
     finally:
-        instrument.disconnect()
+        verified = False
+        restore_error = None
+        try:
+            if initial is not None:
+                verified = _restore_data_setup(instrument, initial)
+                if not verified:
+                    restore_error = "DATA:* settings did not match initial snapshot"
+        except Exception as exc:
+            restore_error = f"{type(exc).__name__}: {exc}"
+        finally:
+            instrument.disconnect()
+            output_dir = os.getenv("DPO4000_A22_EVIDENCE_DIR", "").strip()
+            if output_dir:
+                folder = Path(output_dir)
+                folder.mkdir(parents=True, exist_ok=True)
+                (folder / "a22-setup-restore.json").write_text(
+                    json.dumps({
+                        "kind": "dpo4054_data_setup_restoration",
+                        "identity": identity, "initial": initial,
+                        "verified": verified, "error": restore_error,
+                        "completed_at_utc": datetime.now(timezone.utc).isoformat(),
+                    }, indent=2) + "\n", encoding="utf-8"
+                )
+        if initial is not None and not verified:
+            pytest.fail(f"CRITICAL: physical scope DATA setup restoration failed: {restore_error}")
 
 
 @pytest.mark.hardware
@@ -48,6 +115,18 @@ def test_a22_read_only_sustained_snapshots(scope, point_count):
         allowed = {int(v.strip()) for v in selected.split(",")}
         if point_count not in allowed:
             pytest.skip(f"A22 HIL point_count={point_count} excluded by opt-in selection")
+    try:
+        import psutil
+    except ImportError:
+        pytest.fail("A22 hardware metrics require psutil for RSS measurements")
+    process = psutil.Process()
+    gc.collect()
+    rss_before = process.memory_info().rss
+    tracing_started_here = not tracemalloc.is_tracing()
+    if tracing_started_here:
+        tracemalloc.start()
+    allocated_before, _ = tracemalloc.get_traced_memory()
+    rss_peak = rss_before
     seconds = max(1, int(os.getenv("DPO4000_A22_RUN_SECONDS", "30")))
     target_hz = float(os.getenv("DPO4000_A22_TARGET_HZ", "5"))
     config = StreamConfig(point_count=point_count, target_hz=target_hz)
@@ -83,6 +162,7 @@ def test_a22_read_only_sustained_snapshots(scope, point_count):
             assert frame.acquired_monotonic_s >= previous_timestamp
         previous_timestamp = frame.acquired_monotonic_s
         frames_observed += 1
+        rss_peak = max(rss_peak, process.memory_info().rss)
         engine.take_latest()
         assert engine.pending_frames <= 1
     assert max_in_flight == 1 and frames_observed > 0
@@ -97,6 +177,10 @@ def test_a22_read_only_sustained_snapshots(scope, point_count):
     frame = capture_frame(scope, config, *token)
     assert engine.complete(token, frame)
     engine.stop()
+    allocated_after, allocated_peak = tracemalloc.get_traced_memory()
+    if tracing_started_here:
+        tracemalloc.stop()
+    rss_after = process.memory_info().rss
     resource = os.getenv("DPO4000_RESOURCE", "")
     transport = "USB" if resource.upper().startswith("USB") else (
         "TCPIP/VXI-11" if resource.upper().startswith("TCPIP") else "OTHER"
@@ -114,6 +198,13 @@ def test_a22_read_only_sustained_snapshots(scope, point_count):
         "frames_replaced": result.frames_replaced,
         "errors": result.acquisition_errors,
         "max_in_flight": max_in_flight,
+        "identity": scope.query_identity(),
+        "rss_initial_bytes": rss_before,
+        "rss_final_bytes": rss_after,
+        "rss_peak_bytes": rss_peak,
+        "rss_growth_bytes": rss_after - rss_before,
+        "python_alloc_growth_bytes": allocated_after - allocated_before,
+        "python_alloc_peak_over_initial_bytes": allocated_peak - allocated_before,
     }
     output_dir = os.getenv("DPO4000_A22_EVIDENCE_DIR", "").strip()
     if output_dir:
