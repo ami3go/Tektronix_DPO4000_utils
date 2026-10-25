@@ -111,6 +111,8 @@ Supported scalar operators:
 
 For `rel_delta<=`, a zero reference is `INVALID` rather than risking division by zero or silently changing semantics. Relative tolerance is a ratio (`0.01` = 1%).
 
+Every compare node may also carry an optional `unit` label (for example `"V"`, `"Hz"`, `"s"`; printable, at most 32 characters). The unit is copied into each `RuleEvaluation.unit`, the A18 rule result, the A25 report and the Desk rule table. It is a label only: values are compared exactly as supplied and no unit conversion is performed. Documents without `unit` load unchanged.
+
 ## A15 recipe integration
 
 `recipe_result_values()` converts completed `StepResult.value` fields into rule inputs:
@@ -123,6 +125,10 @@ For `rel_delta<=`, a zero reference is `INVALID` rather than risking division by
 Example: a step named `MEAS1` returning `5.001` can be consumed directly by an A16 rule with `"input": "MEAS1"`.
 
 Duplicate step names are deliberately not exposed as ambiguous direct names; use `step.<index>` instead.
+
+## Performance smoke benchmark
+
+`scripts/benchmark_a16_rules.py` evaluates one AND group over 10 / 100 / 1,000 / 9,999 always-passing compare rules and reports median, p95, p99 and max evaluation latency plus rules/second as JSON (`--sizes`, `--evaluations`, `--output`). Shared-runner numbers are smoke evidence only (`"authoritative_baseline": false`); approved p95/p99 limits belong on the controlled regression runner.
 
 ## Safety / limits
 
