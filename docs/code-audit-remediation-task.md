@@ -835,30 +835,30 @@ Do not label the implementation 24/7 production-ready until the following qualif
 
 The audit remediation program is complete when all of the following are true:
 
-- [ ] Disconnect is exception-safe and idempotent.
-- [ ] Temporary VISA settings are always restored.
-- [ ] Public APIs expose consistent DPO-specific exceptions.
-- [ ] Optional unsupported fields are distinguishable from transport failure.
-- [ ] Hardcopy capture does not unnecessarily clear or permanently alter scope state.
-- [ ] Settings restore validates payload format and instrument compatibility.
-- [ ] Generic driver defaults are not tied to one physical scope serial number.
-- [ ] Driver construction does not unexpectedly connect/write to disk.
-- [ ] BUS/REF capability discovery is owned by public driver APIs.
-- [ ] `get_all_bus_configurations()` never probes unavailable BUS slots when capability count is known.
-- [ ] Editable values cannot inject additional SCPI commands.
-- [ ] Default waveform transfer is deterministic binary acquisition.
-- [ ] Duplicate channel labels cannot lose data.
-- [ ] Multi-channel sample alignment is validated.
-- [ ] GUI uses one persistent worker-owned VISA session while connected.
-- [ ] Production GUI uses no nested `QEventLoop` for instrument operations.
-- [ ] Application close during active I/O is safe.
-- [ ] Full parameter refresh uses one instrument session.
-- [ ] Final GUI no longer depends on the historical deep window inheritance chain.
-- [ ] Architecture tests cover the complete production GUI dependency graph.
-- [ ] Release dependency set is reproducible.
-- [ ] Driver layer contains no interactive `input()` and avoids `print()` for normal operation.
-- [ ] Python 3.10, 3.11, 3.12, and 3.13 CI passes.
-- [ ] PySide6 offscreen CI passes.
+- [x] Disconnect is exception-safe and idempotent.
+- [x] Temporary VISA settings are always restored.
+- [x] Public APIs expose consistent DPO-specific exceptions.
+- [x] Optional unsupported fields are distinguishable from transport failure.
+- [x] Hardcopy capture does not unnecessarily clear or permanently alter scope state.
+- [x] Settings restore validates payload format and instrument compatibility.
+- [x] Generic driver defaults are not tied to one physical scope serial number.
+- [x] Driver construction does not unexpectedly connect/write to disk.
+- [x] BUS/REF capability discovery is owned by public driver APIs.
+- [x] `get_all_bus_configurations()` never probes unavailable BUS slots when capability count is known.
+- [x] Editable values cannot inject additional SCPI commands.
+- [x] Default waveform transfer is deterministic binary acquisition.
+- [x] Duplicate channel labels cannot lose data.
+- [x] Multi-channel sample alignment is validated.
+- [x] GUI uses one persistent worker-owned VISA session while connected.
+- [x] Production GUI uses no nested `QEventLoop` for instrument operations.
+- [x] Application close during active I/O is safe.
+- [x] Full parameter refresh uses one instrument session.
+- [x] Final GUI no longer depends on the historical deep window inheritance chain.
+- [x] Architecture tests cover the complete production GUI dependency graph.
+- [x] Release dependency set is reproducible.
+- [x] Driver layer contains no interactive `input()` and avoids `print()` for normal operation.
+- [x] Python 3.10, 3.11, 3.12, and 3.13 CI passes.
+- [x] PySide6 offscreen CI passes.
 - [ ] Required DPO4054 hardware regression tests pass.
 - [ ] 24/72-hour soak qualification shows no unbounded resource growth.
 
