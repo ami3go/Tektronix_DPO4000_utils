@@ -10,7 +10,12 @@ module is intentionally the only composition module allowed to import a legacy
 from __future__ import annotations
 
 from pathlib import Path
+import time
+from typing import Any
 
+from PySide6.QtWidgets import QBoxLayout, QCheckBox, QFormLayout
+
+from ...settings import save_scope_settings_file
 from ..milestone_a_window import QtScopeWindow as MilestoneAFeatureWindow
 from .pages import (
     attach_measurement_trend_panel,
@@ -21,8 +26,105 @@ from .pages import (
 )
 
 
+AUTOMATION_PREVIEW_MIN_INTERVAL_S = 0.5
+
+
+def automation_settings_path(artifact: Path) -> Path:
+    """Settings JSON path sharing an automation event's artifact stem."""
+    return artifact.with_name(f"{artifact.stem}.settings.json")
+
+
 class ComposedFeatureSurface(MilestoneAFeatureWindow):
     """Compatibility surface whose migrated pages are owned by composition."""
+
+    # Every legacy Automation mode records each saved event artifact in
+    # ``_automation_last_path`` (manual File-page captures never do). Intercepting
+    # that one attribute adds post-capture preview refresh and per-event settings
+    # JSON for all modes without touching the individual legacy mode classes.
+    @property
+    def _automation_last_path(self) -> Path | None:
+        return self.__dict__.get("_composed_automation_last_path")
+
+    @_automation_last_path.setter
+    def _automation_last_path(self, value: Path | None) -> None:
+        self.__dict__["_composed_automation_last_path"] = value
+        if value is None:
+            return
+        artifact = Path(value)
+        if artifact.suffix.lower() == ".png":
+            self._automation_refresh_preview(artifact)
+        self._automation_save_settings(artifact)
+
+    def _automation_option(self, name: str, default: bool) -> bool:
+        box = self.__dict__.get(name)
+        if box is None:
+            return default
+        try:
+            return bool(box.isChecked())
+        except RuntimeError:
+            # The option widget was destroyed (page rebuilt); never fail an event for it.
+            return default
+
+    def _automation_refresh_preview(self, image: Path) -> None:
+        if not self._automation_option("automation_preview_refresh_check", True):
+            return
+        if getattr(self, "preview_label", None) is None or not hasattr(self, "_load_preview"):
+            return
+        now = time.monotonic()
+        # Throttle so fast Burst/Periodic runs cannot stall the GUI thread with decodes.
+        if now - self.__dict__.get("_automation_preview_refreshed_at", float("-inf")) < AUTOMATION_PREVIEW_MIN_INTERVAL_S:
+            return
+        self.__dict__["_automation_preview_refreshed_at"] = now
+        self._load_preview(image)
+
+    def _automation_save_settings(self, artifact: Path) -> None:
+        if not self._automation_option("automation_settings_json_check", False):
+            return
+        target = automation_settings_path(artifact)
+        # Image + CSV events report two artifacts with one stem; save once per event.
+        if self.__dict__.get("_automation_settings_last_target") == target:
+            return
+        self.__dict__["_automation_settings_last_target"] = target
+
+        def execute(scope: Any) -> Path:
+            return save_scope_settings_file(scope, target, settings_folder=target.parent)
+
+        def finished(result: Any) -> None:
+            log = getattr(self, "_append_log", None)
+            if log is not None:
+                log(f"Saved automation scope settings: {result}")
+
+        def failed(exc: BaseException) -> None:
+            log = getattr(self, "_append_log", None)
+            if log is not None:
+                log(f"Automation scope settings not saved for {artifact.name}: {exc}")
+
+        self._run_action(
+            "Saving automation scope settings",
+            execute,
+            on_success=finished,
+            on_error=failed,
+            retain_session=True,
+        )
+
+    def _build_automation_output_card(self):
+        """Add post-capture preview refresh and per-event settings JSON options."""
+        card = super()._build_automation_output_card()
+        self.automation_preview_refresh_check = QCheckBox("Refresh preview after each automation PNG")
+        self.automation_preview_refresh_check.setObjectName("automationPreviewRefreshCheck")
+        self.automation_preview_refresh_check.setChecked(True)
+        self.automation_settings_json_check = QCheckBox("Also save scope settings JSON per event")
+        self.automation_settings_json_check.setObjectName("automationSettingsJsonCheck")
+        self.automation_settings_json_check.setToolTip(
+            "Read-only *LRN? setup saved as <event>.settings.json next to the event's PNG/CSV"
+        )
+        layout = card.layout()
+        for box in (self.automation_preview_refresh_check, self.automation_settings_json_check):
+            if isinstance(layout, QFormLayout):
+                layout.addRow(box)
+            elif isinstance(layout, QBoxLayout):
+                layout.addWidget(box)
+        return card
 
     def _build_connection_tab(self):
         """Use the native composed Connection page in the production surface."""
