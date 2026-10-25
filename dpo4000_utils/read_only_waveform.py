@@ -10,7 +10,6 @@ from __future__ import annotations
 from array import array
 from datetime import datetime, timezone
 import math
-from typing import Any
 
 from .read_only_guard import ReadOnlyVisaSession
 from .waveform import (
