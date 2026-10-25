@@ -408,6 +408,10 @@ def build_measurement_value_query(slot: int) -> str:
     return f"MEASUREMENT:MEAS{validate_measurement_slot(slot)}:VALUE?"
 
 
+def build_measurement_unit_query(slot: int) -> str:
+    return f"MEASUREMENT:MEAS{validate_measurement_slot(slot)}:UNITS?"
+
+
 def build_channel_config_queries(channel: int | str) -> dict[str, str]:
     valid_channel = normalize_channel(channel)
     return {
@@ -1045,6 +1049,15 @@ class ControlMixin:
     def read_measurement_value(self, slot: int) -> str:
         return self.ensure_connected().query(build_measurement_value_query(slot)).strip()
 
+    def read_measurement_unit(self, slot: int) -> str | None:
+        """Return the MEAS slot unit label (for example ``V``), or None if unavailable.
+
+        Read-only ``MEASUREMENT:MEAS<x>:UNITS?``; not yet HIL-qualified on DPO4054.
+        """
+        unit = self._query_optional(self.ensure_connected(), build_measurement_unit_query(slot))
+        unit = unit.strip()
+        return unit or None
+
     def configure_channel(self, config: ChannelConfig) -> None:
         scope = self.ensure_connected()
         for command in build_channel_config_commands(config):
@@ -1322,6 +1335,7 @@ __all__ = [
     "build_math_config_queries",
     "build_measurement_commands",
     "build_measurement_setup_queries",
+    "build_measurement_unit_query",
     "build_measurement_value_query",
     "build_record_length_command",
     "build_record_length_query",

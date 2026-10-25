@@ -12,6 +12,9 @@
   inputs.
 - Added A18 atomic evidence bundles with integrity verification and Desk integration.
 - Added the A20 bounded measurement trend dashboard with decimation and backpressure.
+- A20 trend dashboard adds a time-window selector, Freeze display (acquisition continues),
+  optional worker-side CSV logging in the A5 format, and unit-labelled legends via the new
+  read-only `read_measurement_unit()` driver query.
 - Added A21 lossless NPZ and portable DPOZ scientific export/import with exact waveform
   round trips and safe archive validation.
 - Added the A25 `dpo4000-job` headless recipe runner with deterministic reports and exit
