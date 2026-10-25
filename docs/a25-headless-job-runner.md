@@ -253,3 +253,22 @@ A25 software is complete when:
 - the installed `dpo4000-job` entry point validates a recipe without VISA;
 - full accumulated Python/Ruff/PySide6/package regression remains green;
 - read-only DPO4054 HIL is available for self-hosted qualification.
+
+## Human-readable output and integrations
+
+`--output-format text` prints a concise summary instead of the JSON result on stdout (JSON remains the default, and `--report` is always JSON):
+
+```text
+dpo4000-job: RULE FAILED (exit 5) in 1.204 s
+Recipe: Probe Comp acceptance
+Scope: TEKTRONIX,DPO4054,C000000,CF:91.1CT FV:v2.68
+Steps: completed, 4 steps, 1.180 s
+Rules: acceptance FAIL (1 FAIL, 2 PASS)
+  FAIL vpp_min: actual 0.94 — condition not satisfied
+Message: A16 rule set evaluated to FAIL
+```
+
+Integration examples using the CLI as the boundary:
+
+- `examples/robot_framework/` — Robot Framework suite (offline validation case runs without hardware; the hardware case is tagged `hardware` and skipped unless `DPO4000_RESOURCE` is set).
+- `examples/opentap/` — OpenTAP Python test step mapping exit codes to verdicts (untested; OpenTAP is not in CI).
