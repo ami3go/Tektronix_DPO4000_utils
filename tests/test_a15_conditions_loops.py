@@ -269,3 +269,19 @@ def test_cancel_during_loop_stops_promptly() -> None:
     result = sequencer.run(recipe, on_step_finish=stop_after_three)
     assert result.state is RecipeRunState.CANCELLED
     assert len(target.calls) == 3
+
+
+def test_condition_unit_label_round_trips() -> None:
+    document = {
+        "version": 2,
+        "name": "units",
+        "steps": [
+            {"kind": "call", "name": "v", "method": "read"},
+            {"kind": "call", "name": "act", "method": "act", "when": {"input": "v", "operator": ">", "value": 1.0, "unit": "V"}},
+        ],
+    }
+    recipe = recipe_from_mapping(document)
+    assert recipe.steps[1].when.unit == "V"
+    assert recipe_to_mapping(recipe)["steps"][1]["when"]["unit"] == "V"
+    result = _sequencer(_Target([2.0])).run(recipe)
+    assert [step.skipped for step in result.steps] == [False, False]
