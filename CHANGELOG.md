@@ -14,6 +14,8 @@
 - Added the A20 bounded measurement trend dashboard with decimation and backpressure.
 - Added A21 lossless NPZ and portable DPOZ scientific export/import with exact waveform
   round trips and safe archive validation.
+- A21 Desk exports record a read-only acquisition context (acquisition setup, timebase,
+  record length, enabled measurements with values and units) in dataset metadata.
 - Added the A25 `dpo4000-job` headless recipe runner with deterministic reports and exit
   semantics.
 - Added the reviewed R0 functional/timing regression framework, batch runner, performance
