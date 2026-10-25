@@ -126,6 +126,10 @@ Example: a step named `MEAS1` returning `5.001` can be consumed directly by an A
 
 Duplicate step names are deliberately not exposed as ambiguous direct names; use `step.<index>` instead.
 
+## Performance smoke benchmark
+
+`scripts/benchmark_a16_rules.py` evaluates one AND group over 10 / 100 / 1,000 / 9,999 always-passing compare rules and reports median, p95, p99 and max evaluation latency plus rules/second as JSON (`--sizes`, `--evaluations`, `--output`). Shared-runner numbers are smoke evidence only (`"authoritative_baseline": false`); approved p95/p99 limits belong on the controlled regression runner.
+
 ## Safety / limits
 
 - Maximum rule nodes: 10,000.
