@@ -1,5 +1,7 @@
 # DPO4000 Utils — Post-R0 Driver / Application TODO
 
+> **Roadmap status (2026-10-24):** This is the original execution checklist, not an up-to-date record of merged software. A14, A15, A16, A18, A20, A21, and base A25 were merged into `main` (see the [README feature matrix](../README.md#full-feature-status-matrix)). Unchecked implementation items below are historical planning entries; they must not be interpreted as missing shipped features. Real DPO4054 functional HIL, separately measured USB/TCPIP R0-T baselines, and reviewed 24-hour soak remain incomplete release gates. A22 [#51](https://github.com/ami3go/Tektronix_DPO4000_utils/pull/51), A25 hardening [#50](https://github.com/ami3go/Tektronix_DPO4000_utils/pull/50), and P0 qualification guards [#53](https://github.com/ami3go/Tektronix_DPO4000_utils/pull/53) are unmerged drafts. Do not check off any hardware gate without retained evidence.
+
 This TODO is the implementation roadmap to follow **after the R0 functional and timing regression baseline is accepted**.
 
 The rule for every stage is:

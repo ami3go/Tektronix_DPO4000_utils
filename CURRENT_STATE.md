@@ -1,6 +1,12 @@
 # Current State
 
-As of **v0.8.0**, this repository has one desktop frontend: **DPO4000 Desk**, implemented with PySide6.
+**Current repository snapshot (2026-10-24):** `main` at `8a5b6cfc` contains Python package **0.9.0rc1**, a release candidate and **not** a hardware-qualified stable 0.9.0. Software implementations of A14 (advanced triggers), A15 (recipes), A16 (rules), A18 (evidence), A20 (trends), A21 (scientific export), A25 (base headless runner), Automation A1–A12, and Logger L1–L14 are merged. BUS decoding and certain A14 leaves remain capability-limited. Final DPO4054 functional HIL, independently measured USB and TCPIP baselines, and reviewed 24-hour physical soak remain **qualification pending**; a test harness or green hosted CI is not proof of hardware qualification.
+
+**Unmerged work:** [A22 live waveform streaming PR #51](https://github.com/ami3go/Tektronix_DPO4000_utils/pull/51), [A25 hardening PR #50](https://github.com/ami3go/Tektronix_DPO4000_utils/pull/50), and [P0 fail-closed qualification/release gates PR #53](https://github.com/ami3go/Tektronix_DPO4000_utils/pull/53) are separate draft branches, not shipped main functionality. See the dated [README feature matrix](README.md#full-feature-status-matrix) and [v0.9.0 RC release note](docs/releases/v0.9.0-rc.1.md).
+
+## Desktop architecture (introduced in v0.8.0)
+
+The v0.8.0 architecture provides one desktop frontend: **DPO4000 Desk**, implemented with PySide6.
 
 The reusable `dpo4000_utils` driver owns instrument communication and behavior. The launched desktop application uses one serialized, worker-owned DPO4054/VISA session by default and completes instrument operations asynchronously through Qt callbacks. The GUI thread does not wait for scope I/O through nested `QEventLoop` calls.
 
