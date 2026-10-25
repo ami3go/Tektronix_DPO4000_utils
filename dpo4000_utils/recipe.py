@@ -14,7 +14,7 @@ import math
 from pathlib import Path
 import threading
 import time
-from typing import Any, Callable, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence, Union
 
 from .bus import BusConfig
 from .control import (
@@ -27,9 +27,22 @@ from .control import (
     TriggerConfig,
 )
 from .reference import ReferenceConfig
+from .rules import (
+    CompareOperator,
+    RuleEngine,
+    RuleSet,
+    RuleStatus,
+    RuleValidationError,
+    ScalarRule,
+    _flatten_value,
+)
 
 MAX_RECIPE_STEPS = 10_000
 MAX_RETRY_ATTEMPTS = 100
+MAX_REPEAT_COUNT = 10_000
+MAX_REPEAT_DEPTH = 4
+SUPPORTED_RECIPE_VERSIONS = (1, 2)
+_CONDITION_FIELDS = ("input", "operator", "value", "low", "high", "reference", "tolerance")
 
 # These public methods expose the transport/session lifecycle or accept arbitrary
 # SCPI. Recipes must stay above that boundary.
@@ -68,6 +81,13 @@ class RecipeCancelled(RuntimeError):
 class StepKind(str, Enum):
     CALL = "call"
     DELAY = "delay"
+
+
+class ConditionInvalidPolicy(str, Enum):
+    """What to do when a step condition cannot be evaluated (missing/non-numeric input)."""
+
+    FAIL = "fail"
+    SKIP = "skip"
 
 
 class RecipeRunState(str, Enum):
@@ -144,6 +164,8 @@ class RecipeStep:
     kwargs: Mapping[str, Any] = field(default_factory=dict)
     delay_s: float = 0.0
     retry: RetryPolicy = field(default_factory=RetryPolicy)
+    when: ScalarRule | None = None
+    when_invalid: ConditionInvalidPolicy = ConditionInvalidPolicy.FAIL
 
     @classmethod
     def call(
@@ -152,6 +174,8 @@ class RecipeStep:
         *args: Any,
         name: str | None = None,
         retry: RetryPolicy | None = None,
+        when: ScalarRule | None = None,
+        when_invalid: ConditionInvalidPolicy | str = ConditionInvalidPolicy.FAIL,
         **kwargs: Any,
     ) -> "RecipeStep":
         return cls(
@@ -161,10 +185,19 @@ class RecipeStep:
             args=tuple(args),
             kwargs=dict(kwargs),
             retry=retry or RetryPolicy(),
+            when=when,
+            when_invalid=when_invalid,
         )
 
     @classmethod
-    def delay(cls, seconds: float, *, name: str | None = None) -> "RecipeStep":
+    def delay(
+        cls,
+        seconds: float,
+        *,
+        name: str | None = None,
+        when: ScalarRule | None = None,
+        when_invalid: ConditionInvalidPolicy | str = ConditionInvalidPolicy.FAIL,
+    ) -> "RecipeStep":
         if isinstance(seconds, (int, float)) and not isinstance(seconds, bool):
             display = f"{seconds:g}s"
         else:
@@ -173,6 +206,8 @@ class RecipeStep:
             kind=StepKind.DELAY,
             name=name or f"Delay {display}",
             delay_s=seconds,
+            when=when,
+            when_invalid=when_invalid,
         )
 
     def __post_init__(self) -> None:
@@ -186,6 +221,15 @@ class RecipeStep:
 
         if not isinstance(self.name, str) or not self.name.strip():
             raise RecipeValidationError("step name must be non-empty")
+        if self.when is not None and not isinstance(self.when, ScalarRule):
+            raise RecipeValidationError("step condition must be a ScalarRule or None")
+        if not isinstance(self.when_invalid, ConditionInvalidPolicy):
+            try:
+                object.__setattr__(self, "when_invalid", ConditionInvalidPolicy(self.when_invalid))
+            except (TypeError, ValueError) as exc:
+                raise RecipeValidationError(
+                    f"unsupported condition on_invalid policy: {self.when_invalid!r}"
+                ) from exc
 
         if self.kind is StepKind.CALL:
             if (
@@ -232,17 +276,98 @@ class RecipeStep:
 
 
 @dataclass(frozen=True)
+class RepeatBlock:
+    """Run ``steps`` ``count`` times. Expanded to plain steps before execution.
+
+    Use a step ``when`` condition inside the block for "repeat until": once the
+    condition stops passing, the remaining iterations are skipped without I/O.
+    """
+
+    count: int
+    steps: tuple["RecipeItem", ...]
+    name: str = "Repeat"
+
+    def __post_init__(self) -> None:
+        if (
+            isinstance(self.count, bool)
+            or not isinstance(self.count, int)
+            or not 1 <= self.count <= MAX_REPEAT_COUNT
+        ):
+            raise RecipeValidationError(
+                f"repeat count must be an integer from 1 to {MAX_REPEAT_COUNT}"
+            )
+        if not isinstance(self.name, str) or not self.name.strip():
+            raise RecipeValidationError("repeat name must be non-empty")
+        if not isinstance(self.steps, tuple):
+            try:
+                object.__setattr__(self, "steps", tuple(self.steps))
+            except TypeError as exc:
+                raise RecipeValidationError("repeat steps must be iterable") from exc
+        if not self.steps:
+            raise RecipeValidationError("repeat block must contain at least one step")
+        if not all(isinstance(item, (RecipeStep, RepeatBlock)) for item in self.steps):
+            raise RecipeValidationError(
+                "repeat steps must be RecipeStep or RepeatBlock instances"
+            )
+
+
+RecipeItem = Union[RecipeStep, RepeatBlock]
+
+
+def _expanded_count(items: Sequence[RecipeItem], depth: int) -> int:
+    if depth > MAX_REPEAT_DEPTH:
+        raise RecipeValidationError(f"repeat blocks cannot be nested deeper than {MAX_REPEAT_DEPTH}")
+    total = 0
+    for item in items:
+        if isinstance(item, RepeatBlock):
+            total += item.count * _expanded_count(item.steps, depth + 1)
+        else:
+            total += 1
+        if total > MAX_RECIPE_STEPS:
+            raise RecipeValidationError(
+                f"recipe cannot expand to more than {MAX_RECIPE_STEPS} steps"
+            )
+    return total
+
+
+def _expand(items: Sequence[RecipeItem], output: list[RecipeStep]) -> None:
+    for item in items:
+        if isinstance(item, RepeatBlock):
+            for _iteration in range(item.count):
+                _expand(item.steps, output)
+        else:
+            output.append(item)
+
+
+def _uses_v2_features(items: Sequence[RecipeItem]) -> bool:
+    for item in items:
+        if isinstance(item, RepeatBlock):
+            return True
+        if item.when is not None:
+            return True
+    return False
+
+
+@dataclass(frozen=True)
 class Recipe:
+    """A validated recipe.
+
+    ``steps`` is always the flat, expanded execution list, so every consumer that
+    iterates it (preflight, method allow/deny checks, GUI rows) sees every call.
+    ``definition`` keeps the authored structure, including repeat blocks.
+    """
+
     name: str
     steps: tuple[RecipeStep, ...]
     version: int = 1
+    definition: tuple[RecipeItem, ...] = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if not isinstance(self.name, str) or not self.name.strip():
             raise RecipeValidationError("recipe name must be non-empty")
         if isinstance(self.version, bool) or not isinstance(self.version, int):
-            raise RecipeValidationError("recipe version must be integer 1")
-        if self.version != 1:
+            raise RecipeValidationError("recipe version must be an integer")
+        if self.version not in SUPPORTED_RECIPE_VERSIONS:
             raise RecipeValidationError(f"unsupported recipe version: {self.version}")
         if not isinstance(self.steps, tuple):
             try:
@@ -251,14 +376,18 @@ class Recipe:
                 raise RecipeValidationError("recipe steps must be iterable") from exc
         if not self.steps:
             raise RecipeValidationError("recipe must contain at least one step")
-        if len(self.steps) > MAX_RECIPE_STEPS:
+        if not all(isinstance(step, (RecipeStep, RepeatBlock)) for step in self.steps):
             raise RecipeValidationError(
-                f"recipe cannot contain more than {MAX_RECIPE_STEPS} steps"
+                "all recipe steps must be RecipeStep or RepeatBlock instances"
             )
-        if not all(isinstance(step, RecipeStep) for step in self.steps):
-            raise RecipeValidationError(
-                "all recipe steps must be RecipeStep instances"
-            )
+        _expanded_count(self.steps, 1)
+        definition = self.steps
+        if self.version == 1 and _uses_v2_features(definition):
+            object.__setattr__(self, "version", 2)
+        expanded: list[RecipeStep] = []
+        _expand(definition, expanded)
+        object.__setattr__(self, "definition", definition)
+        object.__setattr__(self, "steps", tuple(expanded))
 
 
 @dataclass(frozen=True)
@@ -269,6 +398,7 @@ class StepResult:
     started_s: float
     finished_s: float
     value: Any = None
+    skipped: bool = False
 
     @property
     def duration_s(self) -> float:
@@ -340,6 +470,31 @@ def _coerce_config_argument(
                 f"invalid {method_name} config: {exc}"
             ) from exc
     return tuple(mutable_args), kwargs
+
+
+class _ConditionInvalid(RuntimeError):
+    """Raised when a step condition is INVALID under the FAIL policy."""
+
+
+def _record_condition_values(values: dict[str, Any], result: "StepResult") -> None:
+    """Update the condition namespace; later steps with the same name win."""
+    _flatten_value(values, f"step.{result.index}", result.value)
+    _flatten_value(values, f"step.{result.name}", result.value)
+    _flatten_value(values, result.name, result.value)
+
+
+def _condition_passes(step: RecipeStep, values: Mapping[str, Any]) -> bool:
+    """Return True to run the step, False to skip it."""
+    if step.when is None:
+        return True
+    evaluation = RuleEngine().evaluate(RuleSet(f"when {step.name}", step.when), values)
+    if evaluation.status is RuleStatus.PASS:
+        return True
+    if evaluation.status is RuleStatus.FAIL:
+        return False
+    if step.when_invalid is ConditionInvalidPolicy.SKIP:
+        return False
+    raise _ConditionInvalid(f"condition for step {step.name!r} is invalid: {evaluation.root.reason}")
 
 
 class RecipeSequencer:
@@ -504,6 +659,7 @@ class RecipeSequencer:
         self._set_state(RecipeRunState.RUNNING)
         started = self._monotonic()
         results: list[StepResult] = []
+        condition_values: dict[str, Any] = {}
 
         try:
             for index, step in enumerate(recipe.steps):
@@ -513,6 +669,20 @@ class RecipeSequencer:
                 step_started = self._monotonic()
                 attempts = 1
                 value: Any = None
+
+                if not _condition_passes(step, condition_values):
+                    skipped = StepResult(
+                        index=index,
+                        name=step.name,
+                        attempts=0,
+                        started_s=step_started,
+                        finished_s=self._monotonic(),
+                        skipped=True,
+                    )
+                    results.append(skipped)
+                    if on_step_finish is not None:
+                        on_step_finish(skipped)
+                    continue
 
                 if step.kind is StepKind.DELAY:
                     self._interruptible_delay(float(step.delay_s))
@@ -540,6 +710,7 @@ class RecipeSequencer:
                     value=value,
                 )
                 results.append(step_result)
+                _record_condition_values(condition_values, step_result)
                 if on_step_finish is not None:
                     on_step_finish(step_result)
         except RecipeCancelled:
@@ -575,8 +746,139 @@ class RecipeSequencer:
         )
 
 
+def _condition_from_mapping(raw: Any, *, step_name: str) -> tuple[ScalarRule, ConditionInvalidPolicy]:
+    if not isinstance(raw, Mapping):
+        raise RecipeValidationError("step when must be a mapping")
+    unknown = set(raw) - set(_CONDITION_FIELDS) - {"on_invalid"}
+    if unknown:
+        raise RecipeValidationError(f"unknown when fields: {sorted(unknown)!r}")
+    try:
+        rule = ScalarRule(
+            id=f"when:{step_name}",
+            input=raw.get("input"),
+            operator=CompareOperator(raw.get("operator")),
+            value=raw.get("value"),
+            low=raw.get("low"),
+            high=raw.get("high"),
+            reference=raw.get("reference"),
+            tolerance=raw.get("tolerance"),
+        )
+        policy = ConditionInvalidPolicy(raw.get("on_invalid", ConditionInvalidPolicy.FAIL.value))
+    except (RuleValidationError, TypeError, ValueError) as exc:
+        raise RecipeValidationError(f"invalid when condition for {step_name!r}: {exc}") from exc
+    return rule, policy
+
+
+def _item_from_mapping(raw: Any, *, depth: int) -> RecipeItem:
+    if not isinstance(raw, Mapping):
+        raise RecipeValidationError("each step must be a mapping")
+    kind = raw.get("kind")
+
+    if kind == "repeat":
+        if depth >= MAX_REPEAT_DEPTH:
+            raise RecipeValidationError(
+                f"repeat blocks cannot be nested deeper than {MAX_REPEAT_DEPTH}"
+            )
+        unknown_step = set(raw) - {"kind", "name", "count", "steps"}
+        if unknown_step:
+            raise RecipeValidationError(f"unknown repeat fields: {sorted(unknown_step)!r}")
+        raw_children = raw.get("steps")
+        if not isinstance(raw_children, Sequence) or isinstance(raw_children, (str, bytes)):
+            raise RecipeValidationError("repeat steps must be a sequence")
+        if len(raw_children) > MAX_RECIPE_STEPS:
+            raise RecipeValidationError(
+                f"repeat block cannot contain more than {MAX_RECIPE_STEPS} steps"
+            )
+        return RepeatBlock(
+            count=raw.get("count"),
+            steps=tuple(_item_from_mapping(child, depth=depth + 1) for child in raw_children),
+            name=raw.get("name") or "Repeat",
+        )
+
+    when_raw = raw.get("when")
+
+    if kind == StepKind.DELAY.value:
+        unknown_step = set(raw) - {"kind", "name", "seconds", "when"}
+        if unknown_step:
+            raise RecipeValidationError(
+                f"unknown delay fields: {sorted(unknown_step)!r}"
+            )
+        step = RecipeStep.delay(raw.get("seconds"), name=raw.get("name"))
+        if when_raw is None:
+            return step
+        rule, policy = _condition_from_mapping(when_raw, step_name=step.name)
+        return RecipeStep.delay(step.delay_s, name=step.name, when=rule, when_invalid=policy)
+
+    if kind != StepKind.CALL.value:
+        raise RecipeValidationError(f"unsupported step kind: {kind!r}")
+
+    unknown_step = set(raw) - {
+        "kind",
+        "name",
+        "method",
+        "args",
+        "kwargs",
+        "retry",
+        "when",
+    }
+    if unknown_step:
+        raise RecipeValidationError(
+            f"unknown call fields: {sorted(unknown_step)!r}"
+        )
+
+    retry_raw = raw.get("retry", {})
+    if not isinstance(retry_raw, Mapping):
+        raise RecipeValidationError("retry must be a mapping")
+    retry_unknown = set(retry_raw) - {
+        "attempts",
+        "delay_s",
+        "backoff",
+        "max_delay_s",
+    }
+    if retry_unknown:
+        raise RecipeValidationError(
+            f"unknown retry fields: {sorted(retry_unknown)!r}"
+        )
+    try:
+        retry = RetryPolicy(**dict(retry_raw))
+    except TypeError as exc:
+        raise RecipeValidationError(f"invalid retry policy: {exc}") from exc
+
+    args = raw.get("args", ())
+    kwargs = raw.get("kwargs", {})
+    if not isinstance(args, Sequence) or isinstance(args, (str, bytes)):
+        raise RecipeValidationError("step args must be a sequence")
+    if not isinstance(kwargs, Mapping):
+        raise RecipeValidationError("step kwargs must be a mapping")
+    _validate_json_value(list(args), field_name="step args")
+    _validate_json_value(dict(kwargs), field_name="step kwargs")
+
+    method = raw.get("method")
+    step_name = raw.get("name") or method
+    when: ScalarRule | None = None
+    policy = ConditionInvalidPolicy.FAIL
+    if when_raw is not None:
+        if not isinstance(step_name, str) or not step_name.strip():
+            raise RecipeValidationError("step name must be non-empty")
+        when, policy = _condition_from_mapping(when_raw, step_name=step_name)
+    return RecipeStep(
+        kind=StepKind.CALL,
+        name=step_name,
+        method=method,
+        args=tuple(args),
+        kwargs=dict(kwargs),
+        retry=retry,
+        when=when,
+        when_invalid=policy,
+    )
+
+
 def recipe_from_mapping(data: Mapping[str, Any]) -> Recipe:
-    """Load the stable v1 recipe mapping used by Desk and future A25 CLI."""
+    """Load the stable recipe mapping used by Desk and the A25 headless runner.
+
+    Version 1 documents contain only call/delay steps. Version 2 adds optional
+    step ``when`` conditions and ``repeat`` blocks.
+    """
     if not isinstance(data, Mapping):
         raise RecipeValidationError("recipe document must be a mapping")
     allowed = {"version", "name", "steps"}
@@ -587,6 +889,8 @@ def recipe_from_mapping(data: Mapping[str, Any]) -> Recipe:
         )
 
     version = data.get("version", 1)
+    if isinstance(version, bool) or version not in SUPPORTED_RECIPE_VERSIONS:
+        raise RecipeValidationError(f"unsupported recipe version: {version!r}")
     name = data.get("name")
     raw_steps = data.get("steps")
     if not isinstance(raw_steps, Sequence) or isinstance(raw_steps, (str, bytes)):
@@ -596,80 +900,12 @@ def recipe_from_mapping(data: Mapping[str, Any]) -> Recipe:
             f"recipe cannot contain more than {MAX_RECIPE_STEPS} steps"
         )
 
-    steps: list[RecipeStep] = []
-    for raw in raw_steps:
-        if not isinstance(raw, Mapping):
-            raise RecipeValidationError("each step must be a mapping")
-        kind = raw.get("kind")
-
-        if kind == StepKind.DELAY.value:
-            unknown_step = set(raw) - {"kind", "name", "seconds"}
-            if unknown_step:
-                raise RecipeValidationError(
-                    f"unknown delay fields: {sorted(unknown_step)!r}"
-                )
-            steps.append(
-                RecipeStep.delay(raw.get("seconds"), name=raw.get("name"))
-            )
-            continue
-
-        if kind != StepKind.CALL.value:
-            raise RecipeValidationError(f"unsupported step kind: {kind!r}")
-
-        unknown_step = set(raw) - {
-            "kind",
-            "name",
-            "method",
-            "args",
-            "kwargs",
-            "retry",
-        }
-        if unknown_step:
-            raise RecipeValidationError(
-                f"unknown call fields: {sorted(unknown_step)!r}"
-            )
-
-        retry_raw = raw.get("retry", {})
-        if not isinstance(retry_raw, Mapping):
-            raise RecipeValidationError("retry must be a mapping")
-        retry_unknown = set(retry_raw) - {
-            "attempts",
-            "delay_s",
-            "backoff",
-            "max_delay_s",
-        }
-        if retry_unknown:
-            raise RecipeValidationError(
-                f"unknown retry fields: {sorted(retry_unknown)!r}"
-            )
-        try:
-            retry = RetryPolicy(**dict(retry_raw))
-        except TypeError as exc:
-            raise RecipeValidationError(f"invalid retry policy: {exc}") from exc
-
-        args = raw.get("args", ())
-        kwargs = raw.get("kwargs", {})
-        if not isinstance(args, Sequence) or isinstance(args, (str, bytes)):
-            raise RecipeValidationError("step args must be a sequence")
-        if not isinstance(kwargs, Mapping):
-            raise RecipeValidationError("step kwargs must be a mapping")
-        _validate_json_value(list(args), field_name="step args")
-        _validate_json_value(dict(kwargs), field_name="step kwargs")
-
-        method = raw.get("method")
-        step_name = raw.get("name") or method
-        steps.append(
-            RecipeStep(
-                kind=StepKind.CALL,
-                name=step_name,
-                method=method,
-                args=tuple(args),
-                kwargs=dict(kwargs),
-                retry=retry,
-            )
+    items = tuple(_item_from_mapping(raw, depth=1) for raw in raw_steps)
+    if version == 1 and _uses_v2_features(items):
+        raise RecipeValidationError(
+            "when conditions and repeat blocks require recipe version 2"
         )
-
-    return Recipe(name=name, version=version, steps=tuple(steps))
+    return Recipe(name=name, version=version, steps=items)
 
 
 def _mapping_value(value: Any) -> Any:
@@ -687,56 +923,85 @@ def _mapping_value(value: Any) -> Any:
     return value
 
 
-def recipe_to_mapping(recipe: Recipe) -> dict[str, Any]:
-    """Return a JSON-compatible stable v1 mapping."""
-    if not isinstance(recipe, Recipe):
-        raise RecipeValidationError("recipe must be a Recipe")
-    steps: list[dict[str, Any]] = []
-    for step in recipe.steps:
-        if step.kind is StepKind.DELAY:
-            steps.append(
-                {
-                    "kind": "delay",
-                    "name": step.name,
-                    "seconds": float(step.delay_s),
-                }
-            )
-            continue
+def _condition_to_mapping(step: RecipeStep) -> dict[str, Any]:
+    rule = step.when
+    assert rule is not None
+    result: dict[str, Any] = {"input": rule.input, "operator": rule.operator.value}
+    for name in _CONDITION_FIELDS[2:]:
+        value = getattr(rule, name)
+        if value is not None:
+            result[name] = value
+    if step.when_invalid is not ConditionInvalidPolicy.FAIL:
+        result["on_invalid"] = step.when_invalid.value
+    return result
 
+
+def _item_to_mapping(item: RecipeItem) -> dict[str, Any]:
+    if isinstance(item, RepeatBlock):
+        return {
+            "kind": "repeat",
+            "name": item.name,
+            "count": item.count,
+            "steps": [_item_to_mapping(child) for child in item.steps],
+        }
+    if item.kind is StepKind.DELAY:
+        mapping: dict[str, Any] = {
+            "kind": "delay",
+            "name": item.name,
+            "seconds": float(item.delay_s),
+        }
+    else:
         retry = {
-            "attempts": step.retry.attempts,
-            "delay_s": float(step.retry.delay_s),
-            "backoff": float(step.retry.backoff),
+            "attempts": item.retry.attempts,
+            "delay_s": float(item.retry.delay_s),
+            "backoff": float(item.retry.backoff),
             "max_delay_s": (
                 None
-                if step.retry.max_delay_s is None
-                else float(step.retry.max_delay_s)
+                if item.retry.max_delay_s is None
+                else float(item.retry.max_delay_s)
             ),
         }
-        steps.append(
-            {
-                "kind": "call",
-                "name": step.name,
-                "method": step.method,
-                "args": _mapping_value(step.args),
-                "kwargs": _mapping_value(dict(step.kwargs)),
-                "retry": retry,
-            }
-        )
-    return {"version": recipe.version, "name": recipe.name, "steps": steps}
+        mapping = {
+            "kind": "call",
+            "name": item.name,
+            "method": item.method,
+            "args": _mapping_value(item.args),
+            "kwargs": _mapping_value(dict(item.kwargs)),
+            "retry": retry,
+        }
+    if item.when is not None:
+        mapping["when"] = _condition_to_mapping(item)
+    return mapping
+
+
+def recipe_to_mapping(recipe: Recipe) -> dict[str, Any]:
+    """Return a JSON-compatible stable mapping that preserves repeat structure."""
+    if not isinstance(recipe, Recipe):
+        raise RecipeValidationError("recipe must be a Recipe")
+    return {
+        "version": recipe.version,
+        "name": recipe.name,
+        "steps": [_item_to_mapping(item) for item in recipe.definition],
+    }
 
 
 __all__ = [
     "MAX_RECIPE_STEPS",
+    "MAX_REPEAT_COUNT",
+    "MAX_REPEAT_DEPTH",
     "MAX_RETRY_ATTEMPTS",
     "RECIPE_DENIED_METHODS",
+    "SUPPORTED_RECIPE_VERSIONS",
+    "ConditionInvalidPolicy",
     "Recipe",
+    "RecipeItem",
     "RecipeCancelled",
     "RecipeResult",
     "RecipeRunState",
     "RecipeSequencer",
     "RecipeStep",
     "RecipeValidationError",
+    "RepeatBlock",
     "RetryPolicy",
     "StepKind",
     "StepResult",

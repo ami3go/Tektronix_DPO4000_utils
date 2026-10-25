@@ -250,8 +250,9 @@ class RecipePage(QWidget):
             self.status_label.setText(f"Invalid: {exc}")
             return
         suffix = "no rules" if rules is None else f"rules: {rules.name}"
+        expanded = "" if len(recipe.definition) == len(recipe.steps) else " after expanding repeats"
         self.status_label.setText(
-            f"Valid: {recipe.name} ({len(recipe.steps)} steps), {suffix}"
+            f"Valid: {recipe.name} ({len(recipe.steps)} steps{expanded}), {suffix}"
         )
 
     def _validate_rules_clicked(self) -> None:
@@ -408,7 +409,7 @@ class RecipePage(QWidget):
             return
         row = result.index
         if 0 <= row < self.results.rowCount():
-            self.results.item(row, 2).setText("Done")
+            self.results.item(row, 2).setText("Skipped" if result.skipped else "Done")
             self.results.item(row, 3).setText(str(result.attempts))
             self.results.item(row, 4).setText(f"{result.duration_s:.6f}")
 

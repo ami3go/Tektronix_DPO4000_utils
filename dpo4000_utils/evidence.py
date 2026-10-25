@@ -187,6 +187,7 @@ def _recipe_result_mapping(result: RecipeResult) -> dict[str, Any]:
                 "index": step.index,
                 "name": step.name,
                 "attempts": step.attempts,
+                "skipped": step.skipped,
                 "started_s": step.started_s,
                 "finished_s": step.finished_s,
                 "duration_s": step.duration_s,
