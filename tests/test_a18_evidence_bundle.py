@@ -95,7 +95,7 @@ def test_create_and_verify_complete_bundle(tmp_path: Path) -> None:
     )
     assert result.path == path
     assert result.size_bytes == path.stat().st_size
-    assert result.artifact_count == 5
+    assert result.artifact_count == 6  # includes report/summary.md
     assert len(result.sha256) == 64
     assert result.metrics.total_s >= result.metrics.finalize_s >= 0
 
@@ -122,7 +122,7 @@ def test_suffix_is_added_and_minimal_bundle_is_valid(tmp_path: Path) -> None:
     result = create_evidence_bundle(tmp_path / "minimal", recipe_result=_recipe_result())
     assert result.path.suffix == ".dpoe"
     verified = verify_evidence_bundle(result.path)
-    assert verified.artifact_count == 1
+    assert verified.artifact_count == 2  # recipe result + summary
     assert verified.manifest["rule_status"] is None
 
 
