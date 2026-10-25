@@ -111,6 +111,8 @@ Supported scalar operators:
 
 For `rel_delta<=`, a zero reference is `INVALID` rather than risking division by zero or silently changing semantics. Relative tolerance is a ratio (`0.01` = 1%).
 
+Every compare node may also carry an optional `unit` label (for example `"V"`, `"Hz"`, `"s"`; printable, at most 32 characters). The unit is copied into each `RuleEvaluation.unit`, the A18 rule result, the A25 report and the Desk rule table. It is a label only: values are compared exactly as supplied and no unit conversion is performed. Documents without `unit` load unchanged.
+
 ## A15 recipe integration
 
 `recipe_result_values()` converts completed `StepResult.value` fields into rule inputs:

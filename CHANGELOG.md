@@ -10,6 +10,8 @@
   retry/backoff, timing capture, and serialized Desk worker integration.
 - Added the A16 deterministic pass/fail rule engine with compound logic and recipe-result
   inputs.
+- A16 compare rules accept an optional `unit` label that is preserved in rule evaluations,
+  evidence, reports and the Desk rule table.
 - Added A18 atomic evidence bundles with integrity verification and Desk integration.
 - Added the A20 bounded measurement trend dashboard with decimation and backpressure.
 - Added A21 lossless NPZ and portable DPOZ scientific export/import with exact waveform
