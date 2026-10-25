@@ -25,6 +25,7 @@ from dpo4000_utils.baseline_compare import diff_functional, diff_timing, load_th
 REQUIRED_CI = (
     "python_3_10", "python_3_11", "python_3_12", "python_3_13",
     "ruff", "pyside6", "codeql", "package_windows", "package_linux",
+    "r0_offline_batch", "release_integrity",
 )
 REQUIRED_HIL = (
     "core", "channels_math_ref_bus", "waveform", "acquisition",
@@ -161,7 +162,8 @@ def _raw_timing_issues(operations: dict, label: str) -> list[str]:
                    or value < 0 for value in samples)):
             issues.append(f"{label}: invalid or absent raw duration observations: {name}")
             continue
-        if stats.get("error_count") != 0 or stats.get("timeout_count") != 0:
+        if (type(stats.get("error_count")) is not int or stats["error_count"] != 0
+            or type(stats.get("timeout_count")) is not int or stats["timeout_count"] != 0):
             issues.append(f"{label}: timing observation failures/timeouts: {name}")
         ordered = sorted(samples)
         # Matches the committed baseline_capture.distribution nearest-rank policy.
@@ -189,16 +191,29 @@ def _reject_constant(token: str):
     raise ValueError(f"Nonstandard JSON number: {token}")
 
 
+def _findings(*, failed: list[str], blocked: list[str]) -> dict:
+    """Completed failures always outrank pending/missing qualification evidence."""
+    return {
+        "state": "FAIL" if failed else "BLOCKED" if blocked else "PASS",
+        "reasons": [*failed, *blocked],
+    }
+
+
 def _gate(fn) -> dict:
     try:
-        reasons = fn()
+        findings = fn()
     except FileNotFoundError as exc:
         return {"state": "BLOCKED", "reasons": [f"Missing evidence: {exc.filename or exc}"]}
     except Exception as exc:
-        # Untrusted JSON/XML must never crash the evaluator or suppress a gate.
+        # Malformed, contradictory or unsafe evidence must never become BLOCKED.
         # KeyboardInterrupt and SystemExit still propagate.
         return {"state": "FAIL", "reasons": [f"Invalid evidence: {exc}"]}
-    return {"state": "PASS" if not reasons else "FAIL", "reasons": reasons}
+    if isinstance(findings, dict):
+        if (findings.get("state") not in {"PASS", "BLOCKED", "FAIL"}
+            or not isinstance(findings.get("reasons"), list)):
+            return {"state": "FAIL", "reasons": ["Invalid gate findings contract"]}
+        return findings
+    return {"state": "PASS" if not findings else "FAIL", "reasons": findings}
 
 
 def evaluate(root: Path, *, commit: str) -> dict:
@@ -209,29 +224,47 @@ def evaluate(root: Path, *, commit: str) -> dict:
         raise ValueError("Qualification evidence root must not be a symlink")
     root = root.resolve()
     tracked: dict[str, str] = {}
+    parsed: dict[str, dict] = {}
 
     def load(relative: str) -> dict:
-        return _load(root / relative, tracked, root)
+        # A document is read/hashed once per evaluation; never re-read the same
+        # attacker-controlled path after it has already been judged.
+        if relative not in parsed:
+            parsed[relative] = _load(root / relative, tracked, root)
+        return parsed[relative]
 
     def software() -> list[str]:
         data = load("software/ci.json")
         reasons = []
         if data.get("schema_version") != 1 or data.get("commit_sha") != commit:
             reasons.append("Software CI schema or commit mismatch")
-        jobs = data.get("jobs", {})
+        blocked = []
+        jobs = data.get("jobs")
+        if jobs is None:
+            blocked.append("Required CI jobs matrix has not been supplied")
+            return _findings(failed=reasons, blocked=blocked)
         if not isinstance(jobs, dict):
-            return [*reasons, "Missing CI jobs matrix"]
+            return _findings(failed=[*reasons, "Invalid CI jobs matrix"], blocked=blocked)
         for name in REQUIRED_CI:
             job = jobs.get(name)
-            if (not isinstance(job, dict) or job.get("status") != "PASS"
-                or job.get("commit_sha") != commit
+            if job is None:
+                blocked.append(f"Missing required CI job: {name}")
+                continue
+            if not isinstance(job, dict):
+                reasons.append(f"Invalid CI job record: {name}")
+                continue
+            status = job.get("status")
+            if status in ("NOT_RUN", "UNKNOWN", "PENDING", "SKIPPED", "CANCELLED"):
+                blocked.append(f"Required CI job not successfully executed: {name}: {status}")
+                continue
+            if (status != "PASS" or job.get("commit_sha") != commit
                 or not isinstance(job.get("url"), str)
                 or not re.fullmatch(
                     r"https://github\.com/ami3go/Tektronix_DPO4000_utils/actions/runs/[0-9]+(?:/job/[0-9]+)?",
                     job["url"],
                 )):
                 reasons.append(f"No exact-head traceable CI run: {name}")
-        return reasons
+        return _findings(failed=reasons, blocked=blocked)
 
     def hardware() -> list[str]:
         data = load("hardware/qualification.json")
@@ -242,17 +275,23 @@ def evaluate(root: Path, *, commit: str) -> dict:
             reasons.append("Missing real DPO4054 identity")
         if data.get("setup_restored") is not True:
             reasons.append("Initial instrument setup was not independently verified restored")
-        cases = data.get("cases", [])
+        cases = data.get("cases")
+        if cases is None:
+            return _findings(failed=reasons, blocked=["HIL feature cases not supplied"])
         if not isinstance(cases, list):
-            return [*reasons, "Missing HIL feature cases"]
+            return _findings(failed=[*reasons, "Invalid HIL feature cases"], blocked=[])
+        blocked = []
         by_name = {
             item["id"]: item for item in cases
             if isinstance(item, dict) and isinstance(item.get("id"), str)
         }
+        ids = [item.get("id") for item in cases if isinstance(item, dict)]
+        if len(ids) != len(cases) or len(ids) != len(set(ids)):
+            reasons.append("Invalid or duplicate HIL case IDs")
         for name in REQUIRED_HIL:
             case = by_name.get(name)
             if not case:
-                reasons.append(f"Missing physical feature qualification: {name}")
+                blocked.append(f"Missing physical feature qualification: {name}")
                 continue
             status = case.get("status")
             if status != "PASS":
@@ -261,19 +300,67 @@ def evaluate(root: Path, *, commit: str) -> dict:
                 reasons.append(f"HIL case {name} not PASS: {status}")
             artifact = case.get("artifact")
             if not isinstance(artifact, str) or not artifact.strip():
-                reasons.append(f"Missing retained case evidence path: {name}")
+                blocked.append(f"Missing retained case evidence path: {name}")
                 continue
             # Track case evidence hashes; JSON documents are already checked
             # by their respective test runners and must be reviewed on the bench.
             try:
                 _track_file(root, artifact, tracked)
-            except (FileNotFoundError, OSError, ValueError) as exc:
+                actual_digest = tracked[artifact]
+                if (not isinstance(case.get("artifact_sha256"), str)
+                    or not re.fullmatch(r"[0-9a-f]{64}", case["artifact_sha256"])
+                    or case["artifact_sha256"] != actual_digest):
+                    reasons.append(f"HIL evidence SHA256 missing/mismatch for {name}")
+            except FileNotFoundError as exc:
+                blocked.append(f"Missing HIL artifact for {name}: {exc}")
+            except (OSError, ValueError) as exc:
                 reasons.append(f"Missing/unsafe HIL artifact for {name}: {exc}")
-        return reasons
+        return _findings(failed=reasons, blocked=blocked)
 
-    def performance() -> list[str]:
+    def performance() -> list[str] | dict:
         """Recompute regression decisions from raw evidence, never trust status alone."""
         reasons = []
+        # Inspect *all* required inputs before deep comparison. Otherwise an
+        # absent USB artifact could conceal a confirmed TCPIP failure, or vice
+        # versa, depending on file evaluation order.
+        paths = ["performance/transport_comparison/transport_comparison.json"]
+        for transport in ("usb", "tcpip"):
+            base = f"performance/{transport}"
+            paths.extend([
+                f"{base}/candidate/comparison_report.json",
+                f"{base}/baseline/r0_functional_baseline.json",
+                f"{base}/baseline/r0_timing_baseline.json",
+                f"{base}/candidate/r0_candidate_functional.json",
+                f"{base}/candidate/r0_candidate_timing.json",
+                f"{base}/candidate/r0_extra_metrics.json",
+                f"{base}/baseline/r0_extra_metrics.json",
+            ])
+        missing: list[str] = []
+        failed: list[str] = []
+        for relative in paths:
+            try:
+                data = load(relative)
+            except FileNotFoundError:
+                missing.append(f"Missing R0 evidence: {relative}")
+                continue
+            except Exception as exc:
+                failed.append(f"Invalid R0 evidence {relative}: {exc}")
+                continue
+            if relative.endswith("/comparison_report.json"):
+                if data.get("status") not in ("PASS", "PENDING", "NOT_RUN"):
+                    failed.append(f"R0 comparison explicitly failed or invalid: {relative}")
+                elif data.get("status") != "PASS":
+                    missing.append(f"R0 comparison not executed: {relative}")
+            elif relative.endswith("/transport_comparison.json"):
+                if data.get("status") not in ("PASS", "PENDING", "NOT_RUN"):
+                    failed.append("USB/TCPIP comparison explicitly failed or invalid")
+                elif data.get("status") != "PASS":
+                    missing.append("USB/TCPIP rollup not yet approved")
+            elif "/candidate/r0_candidate_" in relative:
+                if data.get("commit_sha") != commit:
+                    failed.append(f"R0 candidate commit mismatch: {relative}")
+        if missing or failed:
+            return _findings(failed=failed, blocked=missing)
         # This reviewed threshold file belongs to the executing, versioned checkout.
         # A threshold change requires a code-reviewed commit, not candidate input.
         policy_path = Path(__file__).resolve().parents[1] / "tests/baselines/r0_timing_thresholds.json"
@@ -422,7 +509,11 @@ def evaluate(root: Path, *, commit: str) -> dict:
     def soak() -> list[str]:
         path = root / "soak"
         for name in ("soak_report.json", "soak_report.md"):
-            _evidence_path(root, "soak/" + name)
+            evidence = _evidence_path(root, "soak/" + name)
+            if not evidence.is_file():
+                # The validator returns diagnostics for absent reports. For a
+                # release gate, absence is pending work, not a failed run.
+                raise FileNotFoundError(evidence)
         problems, digests = validate_soak_report(
             path, min_hours=24.0, expected_commit=commit
         )
@@ -430,57 +521,85 @@ def evaluate(root: Path, *, commit: str) -> dict:
             tracked[f"soak/soak_report.{ 'json' if typ == 'json' else 'md' }"] = digest
         return problems
 
-    def a25() -> list[str]:
+    def a25() -> dict:
         qualification = load("a25/qualification.json")
         result = load("a25/hardware-cli-report.json")
-        reasons = []
+        failed: list[str] = []
+        blocked: list[str] = []
         if qualification.get("commit_sha") != commit:
-            reasons.append("A25 qualification commit mismatch")
-        if qualification.get("review_status") != "APPROVED":
-            reasons.append("A25 independent review not approved")
-        if qualification.get("installed_cli") is not True:
-            reasons.append("Installed CLI not qualified")
-        if qualification.get("session_released") is not True:
-            reasons.append("Independent post-job connection evidence absent")
+            failed.append("A25 qualification commit mismatch")
+        review_state = qualification.get("review_status")
+        if review_state in (None, "PENDING", "NOT_RUN"):
+            blocked.append("A25 independent review pending")
+        elif review_state != "APPROVED":
+            failed.append("A25 independent review rejected or malformed")
+        installed = qualification.get("installed_cli")
+        if installed is not True:
+            (blocked if installed in (None, False) else failed).append(
+                "Installed CLI not qualified"
+            )
+        released = qualification.get("session_released")
+        if released is not True:
+            (blocked if released is None else failed).append(
+                "Independent post-job connection evidence absent or failed"
+            )
         if result.get("commit_sha") != commit:
-            reasons.append("A25 installed CLI result commit mismatch")
-        if result.get("status") != "pass" or result.get("exit_code") != 0:
-            reasons.append("A25 CLI hardware result not PASS")
+            failed.append("A25 installed CLI result commit mismatch")
+        run_status = result.get("status")
+        if run_status in (None, "not_run", "pending", "skipped"):
+            blocked.append("A25 physical CLI run not executed")
+        elif run_status != "pass" or result.get("exit_code") != 0:
+            failed.append("A25 CLI hardware result not PASS")
         if "DPO4054" not in str(result.get("identity", "")).upper():
-            reasons.append("A25 real scope identity missing")
+            (blocked if run_status in (None, "not_run", "pending", "skipped")
+             else failed).append("A25 real scope identity missing")
         xml_path = _evidence_path(root, "a25/hardware-junit.xml")
         if not xml_path.is_file():
-            reasons.append("A25 physical pytest JUnit missing")
+            blocked.append("A25 physical pytest JUnit missing")
         else:
-            tracked[str(xml_path.relative_to(root))] = _sha(xml_path)
-            parsed = ET.parse(xml_path).getroot()
-            suites = [parsed] if parsed.tag == "testsuite" else list(parsed.findall("testsuite"))
+            # Interpret the same bounded bytes as the retained digest; do not
+            # hash and then reopen an attacker-controlled JUnit path.
+            xml_raw = xml_path.read_bytes()
+            if not 0 < len(xml_raw) <= 10_000_000:
+                raise ValueError("A25 JUnit is empty or oversized")
+            tracked[str(xml_path.relative_to(root))] = hashlib.sha256(xml_raw).hexdigest()
+            parsed_xml = ET.fromstring(xml_raw)
+            suites = ([parsed_xml] if parsed_xml.tag == "testsuite"
+                      else list(parsed_xml.findall("testsuite")))
             if not suites:
-                reasons.append("A25 JUnit has no test suite")
+                failed.append("A25 JUnit has no test suite")
             elif (sum(int(s.get("tests", "0")) for s in suites) < 1
                   or not any(s.findall(".//testcase") for s in suites)):
-                reasons.append("A25 JUnit has no real hardware test cases")
+                failed.append("A25 JUnit has no real hardware test cases")
             elif (any(int(s.get(field, "0")) for s in suites
                       for field in ("failures", "errors", "skipped"))
                   or any(s.findall(".//failure") or s.findall(".//error")
                          or s.findall(".//skipped") for s in suites)):
-                reasons.append("A25 physical pytest failures/errors/skips")
-        return reasons
+                failed.append("A25 physical pytest failures/errors/skips")
+        return _findings(failed=failed, blocked=blocked)
 
-    def review() -> list[str]:
+    def review() -> dict:
         data = load("review.json")
-        issues = []
+        failed: list[str] = []
+        blocked: list[str] = []
         if data.get("commit_sha") != commit:
-            issues.append("Independent review applies to a different commit")
-        if (data.get("status") != "APPROVED"
-            or not isinstance(data.get("reviewer"), str)
-            or not data["reviewer"].strip()
-            or not isinstance(data.get("approval_url"), str)
-            or not data["approval_url"].startswith("https://github.com/")):
-            issues.append("Independent human approval and traceable review URL required")
-        if data.get("critical_open") != 0 or data.get("high_open") != 0:
-            issues.append("Unresolved CRITICAL/HIGH review findings")
-        return issues
+            failed.append("Independent review applies to a different commit")
+        status = data.get("status")
+        if status in (None, "PENDING", "NOT_RUN"):
+            blocked.append("Independent qualified human approval pending")
+        elif status != "APPROVED":
+            failed.append("Independent review rejected or malformed")
+        else:
+            if (not isinstance(data.get("reviewer"), str)
+                or not data["reviewer"].strip()
+                or not isinstance(data.get("approval_url"), str)
+                or not data["approval_url"].startswith("https://github.com/")):
+                failed.append("Independent human approval and traceable review URL required")
+        if data.get("critical_open") is None or data.get("high_open") is None:
+            blocked.append("Independent review finding counts pending")
+        elif data.get("critical_open") != 0 or data.get("high_open") != 0:
+            failed.append("Unresolved CRITICAL/HIGH review findings")
+        return _findings(failed=failed, blocked=blocked)
 
     gates = {
         "P0-G0": _gate(software),
