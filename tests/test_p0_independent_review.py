@@ -273,8 +273,13 @@ def test_verifier_requires_exact_scope_setup_restore_readback(tmp_path: Path, mo
     verifier.scope = FakeScope()
     verifier.baseline_payload = {"instrument": IDN, "setup": "ACQUIRE:STATE ON"}
     writes = []
-    monkeypatch.setattr(core, "apply_setup_string", lambda _session, command, **_kw:
-                        writes.append(command))
+
+    def fake_restore(_session, command, **_kw):
+        # The scope never reads back the baseline, even after settling and a re-apply.
+        writes.append(command)
+        return False, 1, "ACQUIRE:STATE OFF"
+
+    monkeypatch.setattr(core, "restore_setup_verified", fake_restore)
     monkeypatch.setattr(core, "build_scope_settings_payload", lambda _session: {
         "instrument": IDN, "setup": "ACQUIRE:STATE OFF"
     })
