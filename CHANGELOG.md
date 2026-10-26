@@ -23,6 +23,9 @@
 
 - Improved fast single-acquisition synchronization using the scope `BUSY?` state.
 - Fixed full-waveform transfer behavior after the DPO4054 record length shrinks.
+- HIL and hardware-verifier setup restore now waits for the scope to settle and verifies the
+  `*LRN?` read-back instead of comparing immediately, so cursor positions are no longer
+  reported as unrestored after a record-length change.
 - Extended horizontal scale, advanced-trigger, scientific-export, evidence, trend, and
   headless-runner validation across fake-instrument and real-hardware test layers.
 

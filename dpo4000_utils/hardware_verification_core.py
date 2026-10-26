@@ -37,7 +37,7 @@ from .errors import DPOWaveformError
 from .hardcopy import PNG_SIGNATURE
 from .instrument import DPO4000Scope, DPO4054
 from .reference import ReferenceConfig
-from .settings import apply_setup_string, build_scope_settings_payload
+from .settings import build_scope_settings_payload, restore_setup_verified
 from .waveform import WaveformRequest
 
 
@@ -304,11 +304,9 @@ class HardwareVerifier:
     def _restore_baseline(self) -> str:
         if not self.baseline_payload or self.scope is None:
             return "No baseline setup was captured."
-        apply_setup_string(
+        exact, passes, _final = restore_setup_verified(
             self.scope.ensure_connected(),
             self.baseline_payload["setup"],
-            wait_complete=False,
-            check_error=False,
             restore_delay_s=0.5,
         )
         after = build_scope_settings_payload(self.scope.ensure_connected())
@@ -316,7 +314,12 @@ class HardwareVerifier:
             json.dumps(after, indent=2),
             encoding="utf-8",
         )
-        return "Initial *LRN? setup reapplied and post-restore setup captured."
+        if exact:
+            return f"Initial *LRN? setup restored exactly in {passes} pass(es); post-restore setup captured."
+        return (
+            f"Initial *LRN? setup reapplied {passes} time(s) but the read-back still differs; "
+            "compare scope_setup_before.json with scope_setup_after_restore.json."
+        )
 
     def _case_manifest(self) -> str:
         gaps = verification_manifest_gaps()
