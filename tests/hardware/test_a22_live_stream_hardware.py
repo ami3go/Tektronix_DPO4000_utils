@@ -306,8 +306,12 @@ def test_a22_four_channel_complete_groups(scope):
     point_count = int(os.getenv("DPO4000_A22_MULTI_POINT_COUNT", "10000"))
     _require_record_length(scope, point_count)
     run_seconds = max(1, int(os.getenv("DPO4000_A22_MULTI_RUN_SECONDS", "30")))
+    sources = tuple(
+        part.strip().upper() for part in
+        os.getenv("DPO4000_A22_MULTI_SOURCES", "CH1,CH2,CH3,CH4").split(",") if part.strip()
+    )
     config = StreamConfig(
-        sources=("CH1", "CH2", "CH3", "CH4"),
+        sources=sources,
         point_count=point_count,
         target_hz=float(os.getenv("DPO4000_A22_TARGET_HZ", "5")),
     )
@@ -338,7 +342,7 @@ def test_a22_four_channel_complete_groups(scope):
     stats = engine.stats()
     engine.stop()
     assert last_group is not None and stats.frames_acquired > 0
-    assert stats.channel_count == 4 and stats.acquisition_errors == 0
+    assert stats.channel_count == len(sources) and stats.acquisition_errors == 0
     resource = os.getenv("DPO4000_RESOURCE", "")
     transport = "USB" if resource.upper().startswith("USB") else (
         "TCPIP" if resource.upper().startswith("TCPIP") else "OTHER"
@@ -368,6 +372,6 @@ def test_a22_four_channel_complete_groups(scope):
     }
     folder = Path(os.environ["DPO4000_A22_EVIDENCE_DIR"])
     folder.mkdir(parents=True, exist_ok=True)
-    (folder / f"a22-four-channel-{transport.lower()}-{point_count}.json").write_text(
+    (folder / f"a22-{len(sources)}-channel-{transport.lower()}-{point_count}.json").write_text(
         json.dumps(payload, indent=2) + "\n", encoding="utf-8"
     )
