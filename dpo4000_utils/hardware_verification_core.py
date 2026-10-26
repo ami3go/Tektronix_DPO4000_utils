@@ -12,7 +12,9 @@ import html
 import inspect
 import json
 import platform
+import tempfile
 import time
+from array import array
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from enum import IntEnum
@@ -38,7 +40,7 @@ from .hardcopy import PNG_SIGNATURE
 from .instrument import DPO4000Scope, DPO4054
 from .reference import ReferenceConfig
 from .settings import apply_setup_string, build_scope_settings_payload
-from .waveform import WaveformRequest
+from .waveform import WaveformData, WaveformPreamble, WaveformRequest
 
 
 class VerificationRisk(IntEnum):
@@ -172,6 +174,27 @@ PUBLIC_FUNCTION_RISK: dict[str, VerificationRisk] = {
     "read_channel_waveform_data": VerificationRisk.READ_ONLY,
     "read_waveform": VerificationRisk.READ_ONLY,
 }
+
+
+# Package functions exercised by the offline "pure-functions" case; no instrument I/O.
+PURE_FUNCTION_COVERS: tuple[str, ...] = (
+    "build_tcpip_instr_resource",
+    "build_tcpip_socket_resource",
+    "extract_png_bytes",
+    "strip_ieee_block_header",
+    "parse_ascii_curve",
+    "recipe_result_values",
+    "rule_set_from_mapping",
+    "rule_set_to_mapping",
+    "scientific_dataset_from_waveforms",
+    "export_scientific_dataset",
+    "import_scientific_dataset",
+    "infer_scientific_format",
+    "normalize_scientific_format",
+)
+# Package functions exercised by the cases that talk to the scope.
+LIFECYCLE_FUNCTION_COVERS: tuple[str, ...] = ("list_visa_resources", "scope_session")
+WAVEFORM_FUNCTION_COVERS: tuple[str, ...] = ("read_waveform", "read_channel_waveform_data")
 
 
 def public_driver_methods() -> set[str]:
@@ -339,7 +362,62 @@ class HardwareVerifier:
         assert public_api.strip_ieee_block_header(block) == b"\x89PNG\r\n\x1a\n"
         assert public_api.extract_png_bytes(block).startswith(PNG_SIGNATURE)
         assert public_api.parse_ascii_curve("1,2.5,-3") == [1.0, 2.5, -3.0]
+        self._check_framework_helpers()
         return "Pure package helpers passed deterministic checks."
+
+    @staticmethod
+    def _check_framework_helpers() -> None:
+        """Exercise the rules, recipe-result and A21 export helpers with synthetic data."""
+        # A16 rule mapping round trip is stable.
+        mapping = {
+            "version": 1,
+            "name": "verifier",
+            "root": {"type": "compare", "id": "r", "input": "X", "operator": ">=", "value": 1.0},
+        }
+        rule_set = public_api.rule_set_from_mapping(mapping)
+        again = public_api.rule_set_to_mapping(rule_set)
+        assert public_api.rule_set_to_mapping(public_api.rule_set_from_mapping(again)) == again
+
+        # A15 step values become named A16 inputs.
+        from .recipe import RecipeResult, RecipeRunState, StepResult
+
+        result = RecipeResult(
+            "verifier", RecipeRunState.COMPLETED, 0.0, 1.0,
+            (StepResult(index=0, name="X", attempts=1, started_s=0.0, finished_s=0.5, value=2.5),),
+        )
+        values = public_api.recipe_result_values(result)
+        assert values["X"] == 2.5 and values["step.0"] == 2.5
+
+        # A21 format helpers and a DPOZ round trip (numpy-free); NPZ only when numpy is present.
+        formats = [public_api.normalize_scientific_format("dpoz")]
+        assert public_api.infer_scientific_format("run.dpoz") is formats[0]
+        try:
+            import numpy  # noqa: F401
+        except ImportError:
+            pass
+        else:
+            formats.append(public_api.normalize_scientific_format("npz"))
+            assert public_api.infer_scientific_format("run.npz") is formats[1]
+        samples = array("h", [-100, 0, 100, 200])
+        waveform = WaveformData(
+            source="CH1", label="verifier", start_index=1, stop_index=len(samples),
+            requested_encoding="RIBINARY",
+            preamble=WaveformPreamble(
+                byte_width=2, encoding="BINARY", binary_format="RI", byte_order="MSB",
+                record_point_count=len(samples), point_format="Y", x_unit="s",
+                x_increment=1e-6, x_zero=-1e-3, point_offset=0.0, y_unit="V",
+                y_multiplier=0.01, y_offset=0.0, y_zero=0.0,
+            ),
+            samples=samples, acquired_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        )
+        dataset = public_api.scientific_dataset_from_waveforms([waveform], metadata={"case": "verifier"})
+        with tempfile.TemporaryDirectory(prefix="dpo4000_verify_") as folder:
+            for fmt in formats:
+                target = Path(folder) / f"verifier.{fmt.value}"
+                written = public_api.export_scientific_dataset(target, dataset, format=fmt)
+                restored = public_api.import_scientific_dataset(target)
+                assert written.sample_count == len(samples)
+                assert restored.dataset.waveforms[0].samples.tolist() == samples.tolist()
 
     def _case_lifecycle(self) -> str:
         resources = public_api.list_visa_resources()
@@ -846,13 +924,7 @@ class HardwareVerifier:
                 "pure-functions",
                 "Pure package helper functions",
                 VerificationRisk.READ_ONLY,
-                covers_functions=(
-                    "build_tcpip_instr_resource",
-                    "build_tcpip_socket_resource",
-                    "extract_png_bytes",
-                    "strip_ieee_block_header",
-                    "parse_ascii_curve",
-                ),
+                covers_functions=PURE_FUNCTION_COVERS,
             ),
             self._case_pure_functions,
         )
@@ -862,7 +934,7 @@ class HardwareVerifier:
                 "VISA discovery and session lifecycle",
                 VerificationRisk.READ_ONLY,
                 covers_methods=("connect", "disconnect", "ensure_connected", "temporary_timeout", "query_identity"),
-                covers_functions=("list_visa_resources", "scope_session"),
+                covers_functions=LIFECYCLE_FUNCTION_COVERS,
             ),
             self._case_lifecycle,
         )
@@ -956,7 +1028,7 @@ class HardwareVerifier:
                         "Structured binary waveform API",
                         VerificationRisk.READ_ONLY,
                         covers_methods=("read_waveform", "read_channel_waveform_data", "read_enabled_waveforms"),
-                        covers_functions=("read_waveform", "read_channel_waveform_data"),
+                        covers_functions=WAVEFORM_FUNCTION_COVERS,
                     ),
                     self._case_waveform_readback,
                 ),
@@ -1401,4 +1473,7 @@ __all__ = [
     "public_driver_methods",
     "public_package_functions",
     "verification_manifest_gaps",
+    "LIFECYCLE_FUNCTION_COVERS",
+    "PURE_FUNCTION_COVERS",
+    "WAVEFORM_FUNCTION_COVERS",
 ]
