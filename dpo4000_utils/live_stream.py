@@ -218,13 +218,16 @@ def capture_frame(
     sequence: int,
     *,
     clock: Callable[[], float] = time.monotonic,
+    preamble_cache: PreambleCache | None = None,
 ) -> WaveformFrame:
     """Call only the public driver API; run on the existing scope worker."""
     if config.sources != (config.source,):
         raise ValueError("capture_frame requires exactly one selected source")
     started = clock()
+    if preamble_cache is not None:
+        preamble_cache.begin_cycle()
     waveform = scope.read_channel_waveform_data(
-        int(config.source[2:]), **_transfer_limits(config)
+        int(config.source[2:]), **_transfer_limits(config, preamble_cache)
     )
     end = clock()
     if not isinstance(waveform, WaveformData) or not waveform.sample_count:

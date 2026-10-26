@@ -499,3 +499,15 @@ def test_every_start_gets_a_fresh_cache(window_env, monkeypatch):
         panel.stop()
         _pump(app, lambda: not surface._composition_live_lease)
     assert caches[0] is not caches[1]
+
+
+def test_single_channel_capture_frame_also_uses_the_preamble_cache():
+    from dpo4000_utils.live_stream import capture_frame
+    from dpo4000_utils.waveform import PreambleCache
+
+    scope, cache = ScriptedScope(), PreambleCache()
+    config = StreamConfig(sources=("CH1",))
+    capture_frame(Driver(scope), config, 1, 1, preamble_cache=cache)
+    scope.log.clear()
+    frame = capture_frame(Driver(scope), config, 1, 2, preamble_cache=cache)
+    assert scope.preamble_queries() == [] and frame.waveform.sample_count == 100_000

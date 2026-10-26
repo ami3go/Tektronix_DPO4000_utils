@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 
 from dpo4000_utils import DPO4054
+from dpo4000_utils.waveform import PreambleCache
 from dpo4000_utils.live_stream import (
     LiveStreamEngine, StreamConfig, StreamState, capture_frame, capture_group,
 )
@@ -121,6 +122,11 @@ def scope():
             pytest.fail(f"CRITICAL: physical scope disconnect failed: {disconnect_error}")
 
 
+def _preamble_cache():
+    """Match production Live View (cached preamble); DPO4000_A22_PREAMBLE_CACHE=0 compares without it."""
+    return None if os.getenv("DPO4000_A22_PREAMBLE_CACHE", "1") == "0" else PreambleCache()
+
+
 def _require_record_length(scope, needed: int) -> None:
     """The record length is an operator-set precondition; A22 qualification never changes it.
 
@@ -161,6 +167,7 @@ def test_a22_read_only_sustained_snapshots(scope, point_count):
     target_hz = float(os.getenv("DPO4000_A22_TARGET_HZ", "5"))
     config = StreamConfig(point_count=point_count, target_hz=target_hz)
     engine = LiveStreamEngine()
+    cache = _preamble_cache()
     generation = engine.start(config)
     deadline = time.monotonic() + seconds
     previous_timestamp = None
@@ -178,7 +185,7 @@ def test_a22_read_only_sustained_snapshots(scope, point_count):
         assert not engine.begin_due()  # no second transfer while one is outstanding
         max_in_flight = max(max_in_flight, int(engine.in_flight))
         try:
-            frame = capture_frame(scope, config, *token)
+            frame = capture_frame(scope, config, *token, preamble_cache=cache)
         except Exception as exc:
             engine.fail(token, exc)
             raise
@@ -217,7 +224,8 @@ def test_a22_read_only_sustained_snapshots(scope, point_count):
     )
     payload = {
         "kind": "real_dpo4054_hil",
-        "point_count": point_count, "transport": transport, "target_hz": target_hz,
+        "point_count": point_count, "transport": transport,
+        "preamble_cache": cache is not None, "target_hz": target_hz,
         "run_seconds": seconds, "completed_at_utc": datetime.now(timezone.utc).isoformat(),
         "actual_fps": result.acquisition_fps,
         "p50_s": result.p50_acquisition_s, "p95_s": result.p95_acquisition_s,
@@ -316,6 +324,7 @@ def test_a22_four_channel_complete_groups(scope):
         target_hz=float(os.getenv("DPO4000_A22_TARGET_HZ", "5")),
     )
     engine = LiveStreamEngine()
+    cache = _preamble_cache()
     engine.start(config)
     deadline = time.monotonic() + run_seconds
     last_group = None
@@ -329,7 +338,7 @@ def test_a22_four_channel_complete_groups(scope):
         token = engine.begin_due()
         assert token is not None and engine.begin_due() is None
         try:
-            group = capture_group(scope, config, *token)
+            group = capture_group(scope, config, *token, preamble_cache=cache)
         except Exception as exc:
             engine.fail(token, exc)
             raise
@@ -351,6 +360,7 @@ def test_a22_four_channel_complete_groups(scope):
         "kind": "real_dpo4054_four_channel_live_view_hil",
         "identity": scope.query_identity(),
         "transport": transport,
+        "preamble_cache": cache is not None,
         "sources": list(config.sources or ()),
         "point_count_per_channel": point_count,
         "run_seconds": run_seconds,
