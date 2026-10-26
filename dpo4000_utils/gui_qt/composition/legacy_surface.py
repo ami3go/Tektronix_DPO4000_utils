@@ -251,12 +251,16 @@ class ComposedFeatureSurface(MilestoneAFeatureWindow):
             for source, check in panel.channel_checks.items():
                 check.setChecked(source in requested)
         for combo, raw in (
+            (panel.scale_combo, preferences.live_vertical_scale),
             (panel.rate_combo, preferences.live_target_hz),
             (panel.render_combo, preferences.live_render_points),
         ):
             try:
-                value = float(raw) if combo is panel.rate_combo else int(raw)
-                found = combo.findData(value)
+                if combo is panel.scale_combo:
+                    value = None if str(raw).lower() == "auto" else float(raw)
+                else:
+                    value = float(raw) if combo is panel.rate_combo else int(raw)
+                found = 0 if value is None else combo.findData(value)
                 if found >= 0:
                     combo.setCurrentIndex(found)
             except (TypeError, ValueError):
@@ -271,6 +275,10 @@ class ComposedFeatureSurface(MilestoneAFeatureWindow):
             preferences.live_sources = ",".join(
                 source for source, check in panel.channel_checks.items()
                 if check.isChecked()
+            )
+            preferences.live_vertical_scale = (
+                "auto" if panel.scale_combo.currentData() is None
+                else str(panel.scale_combo.currentData())
             )
             preferences.live_target_hz = str(panel.rate_combo.currentData())
             preferences.live_render_points = str(panel.render_combo.currentData())

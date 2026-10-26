@@ -16,6 +16,18 @@ from ....live_stream import (
     capture_group,
 )
 
+# Fixed vertical scales (volts/div); None is autoscale. Presentation only: these
+# never write a vertical setting to the scope.
+VERTICAL_SCALES: tuple[tuple[str, float | None], ...] = (
+    ("Auto", None),
+    *((f"{label}/div", volts) for label, volts in (
+        ("1 mV", 1e-3), ("2 mV", 2e-3), ("5 mV", 5e-3), ("10 mV", 1e-2),
+        ("20 mV", 2e-2), ("50 mV", 5e-2), ("100 mV", 0.1), ("200 mV", 0.2),
+        ("500 mV", 0.5), ("1 V", 1.0), ("2 V", 2.0), ("5 V", 5.0),
+        ("10 V", 10.0), ("20 V", 20.0), ("50 V", 50.0), ("100 V", 100.0),
+    )),
+)
+
 CHANNEL_COLORS = {
     "CH1": QColor("#ffd21f"),
     "CH2": QColor("#35d8ff"),
@@ -40,7 +52,17 @@ class LiveWaveformPlot(QWidget):
         self._sequence = 0
         self._skew_s = 0.0
         self._stale = False
+        self._volts_per_div: float | None = None
         self._message = "Select Live, choose channels, then Start"
+
+    def set_vertical_scale(self, volts_per_div: float | None) -> None:
+        """Fix the 8-division graticule (centred on 0 V) or return to autoscale."""
+        if volts_per_div is not None and not (
+            math.isfinite(volts_per_div) and volts_per_div > 0
+        ):
+            raise ValueError("volts_per_div must be positive and finite, or None")
+        self._volts_per_div = volts_per_div
+        self.update()
 
     @property
     def displayed_sources(self) -> tuple[str, ...]:
@@ -77,6 +99,8 @@ class LiveWaveformPlot(QWidget):
         min_y, max_y = min(ys), max(ys)
         if max_x <= min_x:
             return None
+        if self._volts_per_div is not None:
+            return min_x, max_x, -4 * self._volts_per_div, 4 * self._volts_per_div
         if max_y <= min_y:
             padding = max(1e-9, abs(min_y) * 0.01)
             min_y -= padding
@@ -141,7 +165,8 @@ class LiveWaveformPlot(QWidget):
         painter.drawText(6, int(box.bottom()), f"{min_y:.4g} V")
         painter.drawText(
             int(box.left()), self.height() - 12,
-            f"{min_x:.4g} .. {max_x:.4g} s   |   sequential group #{self._sequence}   |   skew {self._skew_s * 1000:.1f} ms",
+            f"{min_x:.4g} .. {max_x:.4g} s   |   {(max_y - min_y) / 8:.3g} V/div "
+            f"({'auto' if self._volts_per_div is None else 'fixed'})   |   sequential group #{self._sequence}   |   skew {self._skew_s * 1000:.1f} ms",
         )
         legend_x = int(box.left())
         for source in self.displayed_sources:
@@ -207,6 +232,15 @@ class LiveWaveformPanel(QGroupBox):
         layout.addLayout(channel_row)
 
         form = QFormLayout()
+        self.scale_combo = QComboBox()
+        self.scale_combo.setObjectName("liveStreamVerticalScale")
+        for label, volts in VERTICAL_SCALES:
+            self.scale_combo.addItem(label, volts)
+        self.scale_combo.setToolTip("Display only; the scope's vertical settings are never changed")
+        self.scale_combo.currentIndexChanged.connect(
+            lambda _index: self.plot.set_vertical_scale(self.scale_combo.currentData())
+        )
+        form.addRow("Vertical grid", self.scale_combo)
         self.rate_combo = QComboBox()
         self.rate_combo.setObjectName("liveStreamTargetRate")
         for hz in (1, 2, 5, 10, 20, 100):

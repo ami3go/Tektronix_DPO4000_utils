@@ -82,11 +82,13 @@ def test_live_view_preferences_round_trip(tmp_path):
     path = tmp_path / "gui.json"
     expected = GuiPreferences(
         live_sources="CH1,CH3,CH4",
+        live_vertical_scale="0.5",
         live_target_hz="10.0",
         live_render_points="5000",
     )
     save_preferences(expected, path)
     loaded = load_preferences(path)
     assert loaded.live_sources == "CH1,CH3,CH4"
+    assert loaded.live_vertical_scale == "0.5"
     assert loaded.live_target_hz == "10.0"
     assert loaded.live_render_points == "5000"

@@ -45,6 +45,7 @@ class GuiPreferences:
     trigger_level: str = "1.0"
     trigger_set_source: bool = True
     live_sources: str = "CH1,CH2,CH3,CH4"
+    live_vertical_scale: str = "auto"
     live_target_hz: str = "5"
     live_render_points: str = "2000"
 

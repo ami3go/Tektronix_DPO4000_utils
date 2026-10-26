@@ -212,3 +212,35 @@ def test_lease_gateway_admits_the_panels_own_action_name():
     )
     assert "LIVE_ACTION_DESCRIPTION, execute," in panel
     assert ".startswith(LIVE_ACTION_DESCRIPTION)" in surface
+
+
+def test_vertical_grid_auto_or_fixed_is_presentation_only(monkeypatch):
+    qt = pytest.importorskip("PySide6.QtWidgets")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from dpo4000_utils.gui_qt.composition.pages.live_waveform import (
+        LiveWaveformPanel, LiveWaveformPlot,
+    )
+
+    app = qt.QApplication.instance() or qt.QApplication([])
+    plot = LiveWaveformPlot()
+    frame = WaveformFrame.__new__(WaveformFrame)
+    object.__setattr__(frame, "render_x", (0.0, 1.0))
+    object.__setattr__(frame, "render_y", (0.2, 0.4))
+    plot._frames = {"CH1": frame}
+    auto = plot._bounds()
+    assert auto is not None and auto[2] < 0.2 and auto[3] > 0.4
+    plot.set_vertical_scale(0.5)
+    assert plot._bounds() == (0.0, 1.0, -2.0, 2.0)
+    plot.set_vertical_scale(None)
+    assert plot._bounds() == auto
+    for bad in (0, -1.0, float("nan"), float("inf")):
+        with pytest.raises(ValueError):
+            plot.set_vertical_scale(bad)
+
+    panel = LiveWaveformPanel(host=SimpleNamespace(), run_action=lambda *a, **k: None)
+    panel.scale_combo.setCurrentIndex(panel.scale_combo.findData(2.0))
+    assert panel.plot._volts_per_div == 2.0
+    panel.scale_combo.setCurrentIndex(0)
+    assert panel.plot._volts_per_div is None
+    panel.shutdown()
+    app.processEvents()
