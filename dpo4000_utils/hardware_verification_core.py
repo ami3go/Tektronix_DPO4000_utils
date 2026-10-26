@@ -137,13 +137,13 @@ PUBLIC_METHOD_RISK: dict[str, VerificationRisk] = {
     "apply_display_settings": VerificationRisk.REVERSIBLE,
     "set_screen_message": VerificationRisk.REVERSIBLE,
     "clear_display_message": VerificationRisk.REVERSIBLE,
-    "read_screen_png": VerificationRisk.READ_ONLY,
-    "save_image_path": VerificationRisk.READ_ONLY,
+    "read_screen_png": VerificationRisk.REVERSIBLE,
+    "save_image_path": VerificationRisk.REVERSIBLE,
     "save_scope_settings": VerificationRisk.READ_ONLY,
     "apply_scope_settings": VerificationRisk.DISRUPTIVE,
-    "read_waveform": VerificationRisk.READ_ONLY,
-    "read_channel_waveform_data": VerificationRisk.READ_ONLY,
-    "read_enabled_waveforms": VerificationRisk.READ_ONLY,
+    "read_waveform": VerificationRisk.REVERSIBLE,
+    "read_channel_waveform_data": VerificationRisk.REVERSIBLE,
+    "read_enabled_waveforms": VerificationRisk.REVERSIBLE,
     "save_waveform_to_csv": VerificationRisk.REVERSIBLE,
     "save_all_channels_to_csv": VerificationRisk.REVERSIBLE,
     "save_all_channels_to_single_csv": VerificationRisk.REVERSIBLE,
@@ -170,8 +170,8 @@ PUBLIC_FUNCTION_RISK: dict[str, VerificationRisk] = {
     "extract_png_bytes": VerificationRisk.READ_ONLY,
     "strip_ieee_block_header": VerificationRisk.READ_ONLY,
     "parse_ascii_curve": VerificationRisk.READ_ONLY,
-    "read_channel_waveform_data": VerificationRisk.READ_ONLY,
-    "read_waveform": VerificationRisk.READ_ONLY,
+    "read_channel_waveform_data": VerificationRisk.REVERSIBLE,
+    "read_waveform": VerificationRisk.REVERSIBLE,
 }
 
 
@@ -213,6 +213,7 @@ class VerificationConfig:
     artifact_record_length: int = 1_000
     allow_reference_overwrite: bool = False
     reference_destination: int = 4
+    expected_idn: str = ""
 
 
 class HardwareVerifier:
@@ -317,7 +318,12 @@ class HardwareVerifier:
             json.dumps(after, indent=2),
             encoding="utf-8",
         )
-        return "Initial *LRN? setup reapplied and post-restore setup captured."
+        if (after.get("instrument") != self.baseline_payload.get("instrument")
+            or after.get("setup") != self.baseline_payload.get("setup")):
+            raise AssertionError(
+                "Instrument setup restoration readback differs from the pre-test *LRN? snapshot"
+            )
+        return "Initial *LRN? setup reapplied and verified byte-for-byte by readback."
 
     def _case_manifest(self) -> str:
         gaps = verification_manifest_gaps()
@@ -840,6 +846,14 @@ class HardwareVerifier:
         )
 
     def run(self) -> dict[str, Any]:
+        if self.config.profile >= VerificationRisk.REVERSIBLE:
+            expected = self.config.expected_idn.strip()
+            if ("DPO4054" not in expected.upper()
+                or len(expected.split(",")) < 3):
+                raise ValueError(
+                    "Write-capable HIL requires a complete exact DPO4054 *IDN? "
+                    "with model and serial number before opening VISA"
+                )
         self._register_and_run(
             VerificationCase("manifest", "Public API manifest completeness", VerificationRisk.READ_ONLY),
             self._case_manifest,
@@ -880,6 +894,14 @@ class HardwareVerifier:
         try:
             self.scope.connect()
             self.idn = self.scope.query_identity().strip()
+            expected = self.config.expected_idn.strip()
+            if expected and self.idn != expected:
+                raise RuntimeError(
+                    "Connected scope identity does not exactly match approved "
+                    f"bench instrument: expected={expected!r}, actual={self.idn!r}"
+                )
+            if "DPO4054" not in self.idn.upper():
+                raise RuntimeError(f"Physical qualification target is not DPO4054: {self.idn!r}")
             self._capture_baseline()
 
             cases: list[tuple[VerificationCase, Callable[[], str | None]]] = [
@@ -957,8 +979,8 @@ class HardwareVerifier:
                 (
                     VerificationCase(
                         "waveform-readback",
-                        "Structured binary waveform API",
-                        VerificationRisk.READ_ONLY,
+                        "Structured binary waveform API (DATA setup SCPI writes)",
+                        VerificationRisk.REVERSIBLE,
                         covers_methods=("read_waveform", "read_channel_waveform_data", "read_enabled_waveforms"),
                         covers_functions=("read_waveform", "read_channel_waveform_data"),
                     ),
@@ -967,8 +989,8 @@ class HardwareVerifier:
                 (
                     VerificationCase(
                         "hardcopy",
-                        "Screen hardcopy API",
-                        VerificationRisk.READ_ONLY,
+                        "Screen hardcopy API (HARDCOPY START and image-format writes)",
+                        VerificationRisk.REVERSIBLE,
                         covers_methods=("read_screen_png", "save_image_path"),
                     ),
                     self._case_hardcopy,

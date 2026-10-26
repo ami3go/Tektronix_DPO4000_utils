@@ -32,6 +32,15 @@ NOT_YET_COVERED: tuple[str, ...] = (
     "concurrency/backpressure regression (section 8)",
     "scheduler drift/jitter regression (section 6)",
     "soak/long-duration stability (section 12)",
+    "A15 recipe execution on physical transport",
+    "A18 evidence bundle generation",
+    "A21 NPZ/DPOZ export and Python serialization overhead",
+    "A25 installed headless runner startup and execution overhead",
+    "VISA identity-query latency separated from connection",
+    "channel and measurement read-only query latency",
+    "transport raw-wire bytes/second (public waveform API reports parsed arrays)",
+    "instrument/host timeout, cancellation and error recovery measurements",
+    "peak CPU, resident memory and thread/FD counts for each timed operation",
 )
 
 
@@ -78,8 +87,8 @@ def build_baseline_header(resource: str, idn: str) -> dict[str, Any]:
     }
 
 
-def distribution(samples: list[float]) -> dict[str, float | int]:
-    """Return {min, p50, p95, p99, max, sample_count} for a list of durations."""
+def distribution(samples: list[float]) -> dict[str, Any]:
+    """Return timing distribution plus individual monotonic samples."""
     if not samples:
         raise ValueError("distribution() requires at least one sample.")
     ordered = sorted(samples)
@@ -87,9 +96,15 @@ def distribution(samples: list[float]) -> dict[str, float | int]:
         "min": ordered[0],
         "p50": statistics.median(ordered),
         "p95": _percentile(ordered, 0.95),
-        "p99": _percentile(ordered, 0.99),
+        # Five repetitions do not support a 99th-percentile estimate.
+        "p99": _percentile(ordered, 0.99) if len(ordered) >= 100 else None,
         "max": ordered[-1],
+        "mean": statistics.fmean(ordered),
+        "stdev": statistics.stdev(ordered) if len(ordered) > 1 else None,
         "sample_count": len(ordered),
+        "samples_s": list(samples),
+        "timeout_count": 0,  # any timeout would abort this complete distribution
+        "error_count": 0,  # a failed iteration raises, never silently discarded
     }
 
 
@@ -214,9 +229,13 @@ class HardwareBaselineCapture:
             restore_delay_s=0.5,
         )
         after = build_scope_settings_payload(instrument)
+        setup_matches = before["setup"] == after["setup"]
+        instrument_matches = before["instrument"] == after["instrument"]
+        if not setup_matches or not instrument_matches:
+            raise RuntimeError("R0 functional setup round-trip readback mismatch")
         return {
-            "restored": True,
-            "instrument_matches": before["instrument"] == after["instrument"],
+            "restored": setup_matches,
+            "instrument_matches": instrument_matches,
         }
 
     # ---- R0-T: timing/performance baseline ---------------------------------
@@ -230,6 +249,15 @@ class HardwareBaselineCapture:
         trigger_stats = self._time_advanced_trigger(scope)
         return {
             "connection": connection_stats,
+            "identity_query": distribution(
+                _time_repeated(scope.query_identity, self.config.reps_standard)
+            ),
+            "channel_readback": distribution(
+                _time_repeated(
+                    lambda: scope.get_channel_configuration(self.config.test_channel),
+                    self.config.reps_standard,
+                )
+            ),
             "channel_apply": distribution(self._time_channel_apply(scope)),
             "measurement_refresh": distribution(
                 _time_repeated(scope.get_all_measurement_setups, self.config.reps_standard)
@@ -359,7 +387,7 @@ class HardwareBaselineCapture:
             "readback": distribution(readback_samples),
         }
 
-    def _time_unsupported_trigger_probe(self, scope: DPO4054) -> dict[str, float | int]:
+    def _time_unsupported_trigger_probe(self, scope: DPO4054) -> dict[str, Any]:
         """Measure the known unsupported A14 probe using its dedicated timeout."""
         instrument = scope.ensure_connected()
         original_timeout = getattr(instrument, "timeout", None)
@@ -417,14 +445,15 @@ class HardwareBaselineCapture:
         original_record = scope.get_record_length()
         result: dict[str, Any] = {}
         try:
-            seen: set[int] = set()
-            for size in self.config.waveform_sizes:
-                target = min(size, original_record)
-                if target in seen:
-                    continue
-                seen.add(target)
+            for target in self.config.waveform_sizes:
                 if scope.get_record_length() != target:
                     scope.set_record_length(target)
+                actual_record = scope.get_record_length()
+                if actual_record != target:
+                    raise RuntimeError(
+                        f"Scope rejected requested {target}-point waveform; readback {actual_record}. "
+                        "Do not relabel a truncated record as the requested size."
+                    )
                 # Always force a fresh acquisition before timing this size: the last
                 # completed acquisition in scope memory can be smaller than the
                 # currently configured record length (e.g. nothing re-armed since a
@@ -453,6 +482,8 @@ class HardwareBaselineCapture:
                     )
                 stats = distribution(samples)
                 stats["samples_per_second"] = target / stats["p50"] if stats["p50"] > 0 else 0.0
+                # Parsed-point throughput is not raw transport MB/s.
+                stats["transport_mb_per_second"] = None
                 result[str(target)] = stats
         finally:
             if scope.get_record_length() != original_record:
