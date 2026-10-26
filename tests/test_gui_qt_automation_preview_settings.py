@@ -15,13 +15,29 @@ from dpo4000_utils.gui_qt.composition import legacy_surface  # noqa: E402
 from dpo4000_utils.gui_qt.composition.window import QtScopeWindow  # noqa: E402
 
 
-class _SettingsScope:
+class _SettingsSession:
+    """Raw VISA-session stand-in: the real driver reaches ``query`` only through this."""
+
     def __init__(self) -> None:
         self.queries: list[str] = []
 
     def query(self, command: str) -> str:
         self.queries.append(command)
         return {"*IDN?": "TEKTRONIX,DPO4054,C000000,v2.68", "*LRN?": ":HEADER 0;:ACQUIRE:STATE 0"}[command]
+
+
+class _SettingsScope:
+    """Shaped like the real DPO4054 driver: no ``query`` of its own."""
+
+    def __init__(self) -> None:
+        self.session = _SettingsSession()
+
+    @property
+    def queries(self) -> list[str]:
+        return self.session.queries
+
+    def ensure_connected(self) -> _SettingsSession:
+        return self.session
 
 
 @pytest.fixture
