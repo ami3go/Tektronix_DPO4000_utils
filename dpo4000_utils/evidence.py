@@ -208,6 +208,7 @@ def _rule_evaluation_mapping(item: RuleEvaluation) -> dict[str, Any]:
         "status": item.status.value,
         "timestamp": item.timestamp,
         "actual": item.actual,
+        "unit": item.unit,
         "expected": _json_safe(dict(item.expected)),
         "reason": item.reason,
         "children": [_rule_evaluation_mapping(child) for child in item.children],

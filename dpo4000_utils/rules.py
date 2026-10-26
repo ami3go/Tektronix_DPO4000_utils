@@ -14,6 +14,7 @@ from typing import Any, Mapping, Sequence
 
 MAX_RULE_NODES = 10_000
 MAX_RULE_DEPTH = 64
+MAX_UNIT_LENGTH = 32
 
 
 class RuleValidationError(ValueError):
@@ -54,6 +55,22 @@ def _finite_number(value: Any, *, field_name: str) -> float:
     return number
 
 
+def _validated_unit(value: Any) -> str | None:
+    """Return a display unit such as ``V`` or ``Hz``; units are labels, not conversions."""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise RuleValidationError("rule unit must be a string")
+    unit = value.strip()
+    if not unit:
+        return None
+    if len(unit) > MAX_UNIT_LENGTH or not value.isprintable():
+        raise RuleValidationError(
+            f"rule unit must be printable and at most {MAX_UNIT_LENGTH} characters"
+        )
+    return unit
+
+
 @dataclass(frozen=True)
 class ScalarRule:
     id: str
@@ -64,12 +81,14 @@ class ScalarRule:
     high: float | None = None
     reference: float | None = None
     tolerance: float | None = None
+    unit: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.id, str) or not self.id.strip():
             raise RuleValidationError("rule id must be non-empty")
         if not isinstance(self.input, str) or not self.input.strip():
             raise RuleValidationError("rule input must be non-empty")
+        object.__setattr__(self, "unit", _validated_unit(self.unit))
         if not isinstance(self.operator, CompareOperator):
             try:
                 object.__setattr__(self, "operator", CompareOperator(self.operator))
@@ -199,6 +218,7 @@ class RuleEvaluation:
     expected: Mapping[str, Any] = field(default_factory=dict)
     reason: str = ""
     children: tuple["RuleEvaluation", ...] = ()
+    unit: str | None = None
 
 
 @dataclass(frozen=True)
@@ -265,6 +285,7 @@ def _evaluate_scalar(rule: ScalarRule, values: Mapping[str, Any], timestamp: str
             actual=None,
             expected=expected,
             reason=error or "input unavailable",
+            unit=rule.unit,
         )
 
     op = rule.operator
@@ -297,6 +318,7 @@ def _evaluate_scalar(rule: ScalarRule, values: Mapping[str, Any], timestamp: str
                 actual=actual,
                 expected=expected,
                 reason="relative delta reference cannot be zero",
+                unit=rule.unit,
             )
         passed = abs(actual - reference) / abs(reference) <= float(rule.tolerance)
 
@@ -307,6 +329,7 @@ def _evaluate_scalar(rule: ScalarRule, values: Mapping[str, Any], timestamp: str
         actual=actual,
         expected=expected,
         reason="condition satisfied" if passed else "condition not satisfied",
+        unit=rule.unit,
     )
 
 
@@ -375,7 +398,7 @@ def _node_from_mapping(data: Mapping[str, Any]) -> RuleNode:
     if node_type == "compare":
         allowed = {
             "type", "id", "input", "operator", "value", "low", "high",
-            "reference", "tolerance",
+            "reference", "tolerance", "unit",
         }
         unknown = set(data) - allowed
         if unknown:
@@ -390,6 +413,7 @@ def _node_from_mapping(data: Mapping[str, Any]) -> RuleNode:
                 high=data.get("high"),
                 reference=data.get("reference"),
                 tolerance=data.get("tolerance"),
+                unit=data.get("unit"),
             )
         except (TypeError, ValueError) as exc:
             if isinstance(exc, RuleValidationError):
@@ -442,7 +466,7 @@ def _node_to_mapping(node: RuleNode) -> dict[str, Any]:
             "input": node.input,
             "operator": node.operator.value,
         }
-        for name in ("value", "low", "high", "reference", "tolerance"):
+        for name in ("value", "low", "high", "reference", "tolerance", "unit"):
             value = getattr(node, name)
             if value is not None:
                 result[name] = value

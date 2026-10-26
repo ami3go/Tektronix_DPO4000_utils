@@ -418,6 +418,8 @@ class RecipePage(QWidget):
         self.rule_results.setRowCount(len(evaluations))
         for row, evaluation in enumerate(evaluations):
             actual = "" if evaluation.actual is None else f"{evaluation.actual:.12g}"
+            if actual and evaluation.unit:
+                actual = f"{actual} {evaluation.unit}"
             expected = json.dumps(dict(evaluation.expected), sort_keys=True)
             values = (
                 evaluation.rule_id,
