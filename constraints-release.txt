@@ -3,7 +3,7 @@
 # Library metadata remains intentionally range-based for downstream consumers;
 # release workflows install with this constraints file to freeze the build inputs.
 
-pip==26.2.1
+pip==26.2.2
 PyVISA==1.16.2
 Pillow==12.3.0
 NumPy==2.2.6
@@ -12,8 +12,8 @@ PySide6_Addons==6.12.0
 PySide6_Essentials==6.12.0
 shiboken6==6.12.0
 pytest==9.1.1
-ruff==0.17.1
+ruff==0.17.2
 pyinstaller==6.22.3
-setuptools==84.0.0
+setuptools==84.2.1
 wheel==0.48.0
 tomli==2.5.0; python_version < '3.11'
