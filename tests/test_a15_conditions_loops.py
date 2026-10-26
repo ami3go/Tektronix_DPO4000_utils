@@ -95,6 +95,70 @@ def test_invalid_condition_can_skip() -> None:
     assert target.calls == ["act"]
 
 
+@pytest.mark.parametrize(
+    ("reply", "expected_high"),
+    [
+        ("999.8784E+0", True),  # real DPO4054 MEAS1=FREQUENCY reply
+        ("2.6258", True),
+        ("  1.0001E+3\n", True),
+        ("-4.5E-1", False),
+        (".5", False),
+        ("7.", True),
+    ],
+)
+def test_measurement_text_is_compared_as_a_number(reply: str, expected_high: bool) -> None:
+    """read_measurement_value() returns instrument text; branching on it must work."""
+    recipe = Recipe(
+        "text",
+        (
+            RecipeStep.call("read", name="v"),
+            RecipeStep.call("act", name="high", when=_when("v", ">=", 1.0)),
+            RecipeStep.call("act", name="low", when=_when("v", "<", 1.0)),
+        ),
+    )
+    result = _sequencer(_Target([reply])).run(recipe)
+    assert result.state is RecipeRunState.COMPLETED
+    assert [step.skipped for step in result.steps[1:]] == [not expected_high, expected_high]
+
+
+@pytest.mark.parametrize(
+    "reply",
+    ["9.91E+37", "9.91E37", "-9.91E+37", "nan", "inf", "-inf", "1_000", "0x10", "1e", "12 V", "", "abc"],
+)
+def test_non_measurement_text_stays_invalid(reply: str) -> None:
+    """The no-measurement sentinel and malformed text must never compare as numbers."""
+    recipe = Recipe(
+        "sentinel",
+        (
+            RecipeStep.call("read", name="v"),
+            RecipeStep.call("act", name="guarded", when=_when("v", ">=", 0.0)),
+        ),
+    )
+    target = _Target([reply])
+    result = _sequencer(target).run(recipe)
+    assert result.state is RecipeRunState.FAILED
+    assert "is not numeric" in (result.error or "")
+    assert target.calls == ["read"]
+
+
+def test_sentinel_can_be_skipped_with_on_invalid_skip() -> None:
+    recipe = Recipe(
+        "sentinel-skip",
+        (
+            RecipeStep.call("read", name="v"),
+            RecipeStep.call(
+                "act", name="guarded", when=_when("v", ">=", 0.0),
+                when_invalid=ConditionInvalidPolicy.SKIP,
+            ),
+        ),
+    )
+    target = _Target(["9.91E+37"])
+    result = _sequencer(target).run(recipe)
+    assert result.state is RecipeRunState.COMPLETED
+    assert [step.skipped for step in result.steps] == [False, True]
+    assert target.calls == ["read"]
+
+
 def test_repeat_is_expanded_and_preserved_in_definition() -> None:
     recipe = Recipe(
         "loop",
