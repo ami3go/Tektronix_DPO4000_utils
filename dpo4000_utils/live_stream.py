@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Callable
 
-from .waveform import WaveformData, validate_waveform_alignment
+from .waveform import PreambleCache, WaveformData, validate_waveform_alignment
 
 try:
     import numpy as _np  # optional speedup; core API works without NumPy
@@ -249,11 +249,17 @@ def capture_frame(
     )
 
 
-def _transfer_limits(config: StreamConfig) -> dict[str, int | None]:
+def _transfer_limits(
+    config: StreamConfig, preamble_cache: PreambleCache | None = None,
+) -> dict[str, object]:
     """Driver keywords: an explicit count, or the scope's own record with a size cap."""
-    if config.point_count is None:
-        return {"point_count": None, "max_points": MAX_POINTS}
-    return {"point_count": config.point_count}
+    limits: dict[str, object] = (
+        {"point_count": None, "max_points": MAX_POINTS}
+        if config.point_count is None else {"point_count": config.point_count}
+    )
+    if preamble_cache is not None:
+        limits["preamble_cache"] = preamble_cache
+    return limits
 
 
 def capture_group(
@@ -263,6 +269,7 @@ def capture_group(
     sequence: int,
     *,
     clock: Callable[[], float] = time.monotonic,
+    preamble_cache: PreambleCache | None = None,
 ) -> WaveformGroup:
     """Acquire selected channels sequentially and publish one validated group.
 
@@ -271,6 +278,8 @@ def capture_group(
     """
     started = clock()
     frames: list[WaveformFrame] = []
+    if preamble_cache is not None:
+        preamble_cache.begin_cycle()
     # A source that is not displayed makes WFMOUTPRE? fail with no reply (error
     # 2244), which surfaces only as a VISA timeout. Fail fast and name the cause.
     list_enabled = getattr(scope, "_enabled_channel_numbers", None)
@@ -285,7 +294,7 @@ def capture_group(
     for source in config.sources or ():
         channel_started = clock()
         waveform = scope.read_channel_waveform_data(
-            int(source[2:]), **_transfer_limits(config)
+            int(source[2:]), **_transfer_limits(config, preamble_cache)
         )
         channel_end = clock()
         if not isinstance(waveform, WaveformData) or not waveform.sample_count:

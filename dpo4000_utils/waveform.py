@@ -11,12 +11,13 @@ import csv
 import math
 import struct
 import sys
+import time
 from array import array
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from .connection import temporary_session_attributes
 from .control import normalize_scope_response_text
@@ -238,6 +239,61 @@ def _query_float(scope: Any, command: str, *, field: str) -> float:
     return value
 
 
+class PreambleCache:
+    """Reuse a waveform preamble across repeated reads while the scope setup is unchanged.
+
+    On the DPO4054 the preamble costs ~70 ms per channel while every field is
+    constant until the setup changes. A cheap fingerprint of the settings that
+    drive the preamble (horizontal scale / record length / delay / acquire mode,
+    and each channel's scale / position / offset; ~3 ms per query) decides whether
+    the cached preamble is still valid. A cached entry is also refreshed after
+    ``max_age_s`` so a dependency the fingerprint does not cover cannot go stale
+    for long. Only CH1..CH4 are cached. Not thread-safe: use it from one serialized
+    acquisition worker.
+    """
+
+    _HORIZONTAL = ("HOR:SCALE?", "HOR:RECORDLENGTH?", "HOR:DELAY:TIME?", "ACQ:MODE?")
+    _CHANNEL = ("SCALE", "POSITION", "OFFSET")
+
+    def __init__(self, *, max_age_s: float = 5.0, clock: Callable[[], float] = time.monotonic) -> None:
+        self.max_age_s = max_age_s
+        self._clock = clock
+        self._horizontal: tuple[str, ...] | None = None
+        self._entries: dict[tuple, tuple[tuple, WaveformPreamble, float]] = {}
+        self.hits = 0
+        self.misses = 0
+
+    def begin_cycle(self) -> None:
+        """Re-check the horizontal fingerprint once for the next group of reads."""
+        self._horizontal = None
+
+    def invalidate(self) -> None:
+        self._entries.clear()
+        self._horizontal = None
+
+    def _fingerprint(self, scope: Any, source: str) -> tuple[str, ...]:
+        if self._horizontal is None:
+            self._horizontal = tuple(_query_value(scope, command) for command in self._HORIZONTAL)
+        channel = tuple(_query_value(scope, f"{source}:{name}?") for name in self._CHANNEL)
+        return self._horizontal + channel
+
+    def get_or_read(
+        self, scope: Any, source: str, key: tuple, reader: Callable[[Any], WaveformPreamble],
+    ) -> WaveformPreamble:
+        if not (len(source) == 3 and source.startswith("CH") and source[2] in "1234"):
+            return reader(scope)
+        fingerprint = self._fingerprint(scope, source)
+        now = self._clock()
+        entry = self._entries.get((source,) + key)
+        if entry is not None and entry[0] == fingerprint and now - entry[2] < self.max_age_s:
+            self.hits += 1
+            return entry[1]
+        self.misses += 1
+        preamble = reader(scope)
+        self._entries[(source,) + key] = (fingerprint, preamble, now)
+        return preamble
+
+
 def _split_scpi_fields(text: str) -> list[str]:
     """Split a ``;``-separated SCPI reply, keeping quoted strings intact."""
     fields: list[str] = []
@@ -438,7 +494,44 @@ def _pyvisa_array_container(typecode: str):
     return build
 
 
-def _read_binary_curve(scope: Any, *, preamble: WaveformPreamble, expected_count: int) -> array:
+def _read_binary_curve_bytes(scope: Any, *, preamble: WaveformPreamble, expected_count: int) -> array | None:
+    """Read CURVE? as one raw block and decode it with array.frombytes (no per-sample Python).
+
+    Returns None when the session has no ``query_binary_values`` so the caller can
+    use the standard path.
+    """
+    query_binary_values = getattr(scope, "query_binary_values", None)
+    if not callable(query_binary_values):
+        return None
+    signed = preamble.binary_format == "RI"
+    try:
+        payload = query_binary_values(
+            "CURVE?", datatype="B", container=bytes, header_fmt="ieee",
+            expect_termination=True, data_points=expected_count * preamble.byte_width,
+        )
+    except DPOError:
+        raise
+    except (ValueError, TypeError, struct.error) as exc:
+        raise DPOWaveformError(f"Malformed binary CURVE block: {exc}") from exc
+    except Exception as exc:
+        if is_transport_error(exc):
+            raise transport_exception(exc, "Reading binary waveform CURVE block") from exc
+        raise
+    if not isinstance(payload, (bytes, bytearray)):
+        raise DPOWaveformError(f"Binary CURVE reader returned {type(payload)!r}, not bytes.")
+    return decode_binary_samples(
+        bytes(payload), sample_width=preamble.byte_width, signed=signed,
+        byte_order=preamble.byte_order,
+    )
+
+
+def _read_binary_curve(
+    scope: Any, *, preamble: WaveformPreamble, expected_count: int, fast: bool = False,
+) -> array:
+    if fast:
+        fast_samples = _read_binary_curve_bytes(scope, preamble=preamble, expected_count=expected_count)
+        if fast_samples is not None:
+            return fast_samples
     signed = preamble.binary_format == "RI"
     typecode = "b" if preamble.byte_width == 1 and signed else "B" if preamble.byte_width == 1 else "h" if signed else "H"
     query_binary_values = getattr(scope, "query_binary_values", None)
@@ -519,8 +612,15 @@ def _read_applied_range(scope: Any) -> tuple[int, int]:
     return start, stop
 
 
-def read_waveform(scope: Any, request: WaveformRequest) -> WaveformData:
-    """Read one deterministic waveform according to ``request``."""
+def read_waveform(
+    scope: Any, request: WaveformRequest, *, preamble_cache: PreambleCache | None = None,
+) -> WaveformData:
+    """Read one deterministic waveform according to ``request``.
+
+    With a ``preamble_cache`` (used by live streaming) an unchanged setup reuses the
+    cached preamble and the sample block is decoded from raw bytes. Without one,
+    every read re-queries the preamble, exactly as before.
+    """
     source = normalize_waveform_source(request.source)
     encoding = normalize_waveform_encoding(request.encoding)
     sample_width = normalize_sample_width(request.sample_width)
@@ -542,7 +642,14 @@ def read_waveform(scope: Any, request: WaveformRequest) -> WaveformData:
             f"Scope adjusted DATA:STOP from requested {requested_stop} to {stop}; request exceeds the available waveform."
         )
 
-    preamble = _read_preamble(scope)
+    if preamble_cache is None:
+        preamble = _read_preamble(scope)
+    else:
+        preamble = preamble_cache.get_or_read(
+            scope, source,
+            (requested_start, requested_stop, sample_width, encoding),
+            _read_preamble,
+        )
     if requested_stop is None:
         # DATA:STOP clamps to the scope's maximum acquisition memory depth, not
         # to the currently configured/acquired record length, so its echo is
@@ -572,7 +679,10 @@ def read_waveform(scope: Any, request: WaveformRequest) -> WaveformData:
             )
         samples = array("d", parse_ascii_curve(required_query(scope, "CURVE?")))
     else:
-        samples = _read_binary_curve(scope, preamble=preamble, expected_count=expected_count)
+        samples = _read_binary_curve(
+            scope, preamble=preamble, expected_count=expected_count,
+            fast=preamble_cache is not None,
+        )
     if len(samples) != expected_count:
         raise DPOWaveformError(
             f"Waveform point-count mismatch: applied range contains {expected_count} points ({start}..{stop}), received {len(samples)}."
@@ -600,6 +710,7 @@ def read_channel_waveform_data(
     encoding: str = "RIBINARY",
     sample_width: int = 2,
     max_points: int | None = None,
+    preamble_cache: PreambleCache | None = None,
 ) -> WaveformData:
     return read_waveform(
         scope,
@@ -612,6 +723,7 @@ def read_channel_waveform_data(
             sample_width=sample_width,
             max_points=max_points,
         ),
+        preamble_cache=preamble_cache,
     )
 
 

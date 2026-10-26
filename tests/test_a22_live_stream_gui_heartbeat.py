@@ -33,7 +33,7 @@ def test_a22_synthetic_qt_heartbeat(monkeypatch):
     )
 
     class SlowFakeScope:
-        def read_channel_waveform_data(self, channel, *, point_count, max_points=None):
+        def read_channel_waveform_data(self, channel, *, point_count, max_points=None, **_ignored):
             assert channel in (1, 2, 3, 4) and point_count is None
             time.sleep(.03)
             return replace(waveform, source=f"CH{channel}")

@@ -83,7 +83,7 @@ def test_public_driver_api_only():
         def __init__(self):
             self.called = []
 
-        def read_channel_waveform_data(self, channel, *, point_count, max_points=None):
+        def read_channel_waveform_data(self, channel, *, point_count, max_points=None, **_ignored):
             self.called.append((channel, point_count))
             return waveform()
 
@@ -101,7 +101,7 @@ def test_four_channel_group_is_complete_ordered_and_counted():
         def __init__(self):
             self.called = []
 
-        def read_channel_waveform_data(self, channel, *, point_count, max_points=None):
+        def read_channel_waveform_data(self, channel, *, point_count, max_points=None, **_ignored):
             self.called.append((channel, point_count))
             return waveform(source=f"CH{channel}")
 
@@ -136,7 +136,7 @@ def test_four_channel_group_is_complete_ordered_and_counted():
 
 def test_four_channel_group_rejects_partial_or_misaligned_cycle():
     class Partial:
-        def read_channel_waveform_data(self, channel, *, point_count, max_points=None):
+        def read_channel_waveform_data(self, channel, *, point_count, max_points=None, **_ignored):
             if channel == 3:
                 raise TimeoutError("CH3 transfer failed")
             return waveform(source=f"CH{channel}")
@@ -146,7 +146,7 @@ def test_four_channel_group_rejects_partial_or_misaligned_cycle():
         capture_group(Partial(), config, 1, 1)
 
     class Misaligned:
-        def read_channel_waveform_data(self, channel, *, point_count, max_points=None):
+        def read_channel_waveform_data(self, channel, *, point_count, max_points=None, **_ignored):
             return waveform(
                 source=f"CH{channel}",
                 x_increment=0.002 if channel == 4 else 0.001,
@@ -187,7 +187,7 @@ def test_minmax_pure_python_fallback_preserves_spikes(monkeypatch):
 
 def test_scope_setup_read_passes_a_size_cap_instead_of_a_count():
     class Fake:
-        def read_channel_waveform_data(self, channel, *, point_count, max_points=None):
+        def read_channel_waveform_data(self, channel, *, point_count, max_points=None, **_ignored):
             assert point_count is None and max_points == 1_000_000
             return waveform([0, 1, 2])
 
@@ -196,7 +196,7 @@ def test_scope_setup_read_passes_a_size_cap_instead_of_a_count():
 
 def test_oversized_driver_return_is_rejected_even_for_bounded_request():
     class OversizedFake:
-        def read_channel_waveform_data(self, channel, *, point_count, max_points=None):
+        def read_channel_waveform_data(self, channel, *, point_count, max_points=None, **_ignored):
             return waveform([0] * 1_000_001)
 
     with pytest.raises(ValueError, match="retention limit"):

@@ -29,6 +29,8 @@ class ScriptedScope:
         self.start = 1
         self.stop = record_length
         self.log: list[str] = []
+        self.vscale = {1: 1.0, 2: 1.0, 3: 1.0, 4: 1.0}  # V/div; drives YMULT
+        self.hscale = "200.0E-6"
         # None -> a realistic combined reply; a string overrides it (e.g. garbage).
         self.combined_reply: str | None = None
 
@@ -37,8 +39,15 @@ class ScriptedScope:
         return (
             f'2;16;BIN;RI;MSB;"{self.source.title()}, DC coupling, 1.000V/div, '
             f'200.0us/div, {self._points()} points, Hi Res mode";{self._points()};Y;LINEA;'
-            '"s";1.0E-6;-9.0E-4;0;"V";0.01;0.0E+0;0.0E+0;TIM;ANALOG;0.0E+0;0.0E+0;0.0E+0'
+            f'"s";1.0E-6;-9.0E-4;0;"V";{self._ymult()};0.0E+0;0.0E+0;TIM;ANALOG;0.0E+0;0.0E+0;0.0E+0'
         )
+
+    def _ymult(self) -> str:
+        return repr(0.01 * self.vscale[int(self.source[2:])])
+
+    def setting_queries(self) -> list[str]:
+        return [c for c in self.log if c.startswith(("HOR:", "ACQ:")) or (
+            c.startswith("CH") and c.split(":")[-1] in ("SCALE?", "POSITION?", "OFFSET?"))]
 
     def preamble_queries(self) -> list[str]:
         return [c for c in self.log if c.startswith("WFMOUTPRE")]
@@ -59,6 +68,15 @@ class ScriptedScope:
 
     def query(self, command: str) -> str:
         self.log.append(command)
+        if command.startswith("HOR:SCALE"):
+            return self.hscale
+        if command in ("HOR:RECORDLENGTH?", "HOR:DELAY:TIME?", "ACQ:MODE?"):
+            return {"HOR:RECORDLENGTH?": str(self.record_length),
+                    "HOR:DELAY:TIME?": "0.0E+0", "ACQ:MODE?": "HIR"}[command]
+        if command.startswith("CH") and command.split(":")[1] in ("SCALE?", "POSITION?", "OFFSET?"):
+            channel = int(command[2])
+            return {"SCALE?": repr(self.vscale[channel]), "POSITION?": "0.0",
+                    "OFFSET?": "0.0"}[command.split(":")[1]]
         if command.startswith("SELECT:CH"):
             return "1" if int(command[9]) in self.displayed else "0"
         if command.startswith("WFMOUTPRE") and int(self.source[2:]) not in self.displayed:
@@ -72,7 +90,7 @@ class ScriptedScope:
             "WFMOUTPRE:NR_PT?": str(self._points()), "WFMOUTPRE:PT_FMT?": "Y",
             "WFMOUTPRE:XUNIT?": "s", "WFMOUTPRE:XINCR?": "1.0E-6",
             "WFMOUTPRE:XZERO?": "-9.0E-4", "WFMOUTPRE:PT_OFF?": "0",
-            "WFMOUTPRE:YUNIT?": "V", "WFMOUTPRE:YMULT?": "0.01",
+            "WFMOUTPRE:YUNIT?": "V", "WFMOUTPRE:YMULT?": self._ymult(),
             "WFMOUTPRE:YOFF?": "0.0", "WFMOUTPRE:YZERO?": "0.0",
         }
         if command in table:
@@ -83,7 +101,11 @@ class ScriptedScope:
 
     def query_binary_values(self, command, *, container, data_points, **kwargs):
         self.log.append(command)
-        return container([i % 100 for i in range(self._points())])
+        values = [i % 100 for i in range(self._points())]
+        if kwargs.get("datatype") == "B":  # raw block: big-endian int16, as the scope sends it
+            assert container is bytes and data_points == 2 * len(values)
+            return b"".join(v.to_bytes(2, "big", signed=True) for v in values)
+        return container(values)
 
     def curve_reads(self) -> int:
         return self.log.count("CURVE?")
@@ -348,3 +370,132 @@ def test_default_is_auto_and_legacy_point_count_preference_is_ignored(window_env
     legacy.write_text('{"live_point_count": "1000000", "live_sources": "CH1"}', encoding="utf-8")
     loaded = load_preferences(legacy)
     assert loaded.live_sources == "CH1" and not hasattr(loaded, "live_point_count")
+
+
+# --- preamble cache + raw-bytes decode (live streaming fast path) -------------
+def _cycle(scope, cache, sources=("CH1", "CH2", "CH3", "CH4")):
+    return capture_group(Driver(scope), StreamConfig(sources=sources), 1, 1, preamble_cache=cache)
+
+
+def test_cache_reuses_the_preamble_while_the_setup_is_unchanged():
+    from dpo4000_utils.waveform import PreambleCache
+
+    scope, cache = ScriptedScope(displayed=(1, 2, 3, 4)), PreambleCache()
+    _cycle(scope, cache)
+    assert scope.preamble_queries() == ["WFMOUTPRE?"] * 4 and cache.misses == 4
+    scope.log.clear()
+    group = _cycle(scope, cache)
+    assert scope.preamble_queries() == [] and cache.hits == 4
+    assert [f.waveform.sample_count for f in group.frames] == [100_000] * 4
+    # the horizontal fingerprint is read once per cycle, not once per channel
+    assert scope.setting_queries().count("HOR:SCALE?") == 1
+
+
+def test_cache_notices_a_vertical_change_on_only_that_channel_and_scales_correctly():
+    from dpo4000_utils.waveform import PreambleCache
+
+    scope, cache = ScriptedScope(displayed=(1, 2, 3, 4)), PreambleCache()
+    first = _cycle(scope, cache)
+    scope.vscale[3] = 2.0
+    scope.log.clear()
+    second = _cycle(scope, cache)
+    assert scope.preamble_queries() == ["WFMOUTPRE?"]  # CH3 only
+    ymult = {f.waveform.source: f.waveform.preamble.y_multiplier for f in second.frames}
+    assert ymult == {"CH1": 0.01, "CH2": 0.01, "CH3": 0.02, "CH4": 0.01}
+    assert first.frames[2].waveform.preamble.y_multiplier == 0.01
+
+
+@pytest.mark.parametrize("change", ["hscale", "record"])
+def test_cache_refreshes_every_channel_when_the_horizontal_setup_changes(change):
+    from dpo4000_utils.waveform import PreambleCache
+
+    scope, cache = ScriptedScope(displayed=(1, 2, 3, 4)), PreambleCache()
+    _cycle(scope, cache)
+    if change == "hscale":
+        scope.hscale = "400.0E-6"
+    else:
+        scope.record_length = 50_000
+        scope.stop = 50_000
+    scope.log.clear()
+    group = _cycle(scope, cache)
+    assert scope.preamble_queries() == ["WFMOUTPRE?"] * 4
+    if change == "record":
+        assert group.frames[0].waveform.sample_count == 50_000
+
+
+def test_cache_entries_expire_after_max_age_even_if_the_fingerprint_is_unchanged():
+    from dpo4000_utils.waveform import PreambleCache
+
+    now = [0.0]
+    scope, cache = ScriptedScope(), PreambleCache(max_age_s=5.0, clock=lambda: now[0])
+    _cycle(scope, cache, ("CH1",))
+    now[0] = 4.9
+    scope.log.clear(); _cycle(scope, cache, ("CH1",))
+    assert scope.preamble_queries() == []
+    now[0] = 5.1
+    _cycle(scope, cache, ("CH1",))
+    assert scope.preamble_queries() == ["WFMOUTPRE?"]
+
+
+def test_cache_is_keyed_by_the_request_and_ignores_non_channel_sources():
+    from dpo4000_utils.waveform import PreambleCache
+
+    scope, cache = ScriptedScope(), PreambleCache()
+    driver = Driver(scope)
+    driver.read_channel_waveform_data(1, point_count=1_000, preamble_cache=cache)
+    scope.log.clear()
+    driver.read_channel_waveform_data(1, point_count=2_000, preamble_cache=cache)
+    assert scope.preamble_queries() == ["WFMOUTPRE?"]  # different range -> not reused
+    calls = []
+    cache.get_or_read(scope, "MATH", (1, None, 2, "RIBINARY"), lambda s: calls.append(1) or "p")
+    cache.get_or_read(scope, "MATH", (1, None, 2, "RIBINARY"), lambda s: calls.append(1) or "p")
+    assert calls == [1, 1]
+
+
+def test_fast_raw_bytes_decode_matches_the_standard_path_sample_for_sample():
+    from dpo4000_utils.waveform import PreambleCache
+
+    scope = ScriptedScope(record_length=5_000)
+    standard = Driver(scope).read_channel_waveform_data(1)
+    fast = Driver(scope).read_channel_waveform_data(1, preamble_cache=PreambleCache())
+    assert list(fast.samples) == list(standard.samples) and fast.preamble == standard.preamble
+    assert fast.samples.typecode == standard.samples.typecode == "h"
+
+
+def test_fast_path_rejects_a_short_or_misaligned_block_with_a_driver_error():
+    from dpo4000_utils.waveform import PreambleCache
+
+    scope = ScriptedScope(record_length=1_000)
+    scope.query_binary_values = lambda *a, **k: b"\x00" * 1_999  # odd byte count
+    with pytest.raises(DPOWaveformError):
+        Driver(scope).read_channel_waveform_data(1, preamble_cache=PreambleCache())
+    scope.query_binary_values = lambda *a, **k: [1, 2, 3]  # not bytes
+    with pytest.raises(DPOWaveformError, match="not bytes"):
+        Driver(scope).read_channel_waveform_data(1, preamble_cache=PreambleCache())
+
+
+def test_hidden_channel_still_fails_fast_with_the_cache_enabled():
+    from dpo4000_utils.waveform import PreambleCache
+
+    scope = ScriptedScope(displayed=(1,))
+    with pytest.raises(ValueError, match="CH2 not displayed"):
+        _cycle(scope, PreambleCache(), ("CH1", "CH2"))
+    assert scope.curve_reads() == 0
+
+
+def test_every_start_gets_a_fresh_cache(window_env, monkeypatch):
+    app, build = window_env
+    _window, surface = build()
+    _patch_base_dispatch(monkeypatch, surface, ScriptedScope(displayed=(1,)))
+    panel = surface._composition_live_stream_panel
+    for source in ("CH2", "CH3", "CH4"):
+        panel.channel_checks[source].setChecked(False)
+    caches = []
+    for _ in range(2):
+        panel.start()
+        assert _pump(app, lambda: panel.engine.stats().frames_acquired >= 2)
+        caches.append(panel._preamble_cache)
+        assert caches[-1].hits >= 1 and caches[-1].misses == 1
+        panel.stop()
+        _pump(app, lambda: not surface._composition_live_lease)
+    assert caches[0] is not caches[1]

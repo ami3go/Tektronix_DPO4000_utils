@@ -15,6 +15,7 @@ from ....live_stream import (
     LiveStreamEngine, StreamConfig, StreamState, WaveformFrame, WaveformGroup,
     capture_group,
 )
+from ....waveform import PreambleCache
 
 # Fixed vertical scales (volts/div); None is autoscale. Presentation only: these
 # never write a vertical setting to the scope.
@@ -300,6 +301,7 @@ class LiveWaveformPanel(QGroupBox):
         self._closed = False
         self._restart_requested = False
         self._last_actual_points: dict[str, int] = {}
+        self._preamble_cache = PreambleCache()
         self._transport = "not connected"
         self._cadence = QTimer(self)
         self._cadence.setSingleShot(True)
@@ -429,6 +431,7 @@ class LiveWaveformPanel(QGroupBox):
             except Exception:  # validation is repeated by the dispatch boundary
                 self._transport = "unresolved"
         self._last_actual_points = {}
+        self._preamble_cache = PreambleCache()  # every Start re-reads the setup
         self.error_label.clear()
         self._sync_lease()
         self._render_timer.start()
@@ -495,9 +498,10 @@ class LiveWaveformPanel(QGroupBox):
             self._schedule()
             return
         config = self.engine.config
+        cache = self._preamble_cache
 
         def execute(scope: Any) -> WaveformGroup:
-            return capture_group(scope, config, token[0], token[1])
+            return capture_group(scope, config, token[0], token[1], preamble_cache=cache)
 
         def success(result: Any) -> None:
             if not isinstance(result, (WaveformFrame, WaveformGroup)):
