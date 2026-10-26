@@ -23,14 +23,54 @@ qualifying evidence yet, not an implied pass.
 | GUI 50ms heartbeat with synthetic four-channel activity | `test_a22_live_stream_gui_heartbeat.py` | Software PASS; final-head CI required |
 | Synthetic 1k / 10k / 100k / 1M | Permanent `Tests` PySide6 job / benchmark artifact | Final-head CI required |
 | Linux/Windows package startup | existing release build workflows | CI required |
-| CH1 1k/10k/100k/1M USB | Reversible-write authorized HIL, mandatory DATA snapshot/restore | **PENDING** |
-| CH1 1k/10k/100k/1M TCPIP | Separate reversible-write authorized HIL resource/run | **PENDING** |
-| CH1–CH4 complete groups, USB | `DPO4000_A22_MULTI_CHANNELS=YES` hardware test | **PENDING exact-head run** |
-| CH1–CH4 complete groups, TCPIP | Same test on separate TCPIP resource | **PENDING exact-head run** |
+| CH1 1k/10k/100k USB | Reversible-write authorized HIL, mandatory DATA snapshot/restore | **Bench PASS** (2026-10-26, non-RC commit, see below); 1M **PENDING** |
+| CH1 1k/10k/100k TCPIP | Separate reversible-write authorized HIL resource/run | **Bench PASS** (2026-10-26, non-RC commit, see below); 1M **PENDING** |
+| CH1–CH4 complete groups, USB | `DPO4000_A22_MULTI_CHANNELS=YES` hardware test | **Bench PASS** at 1k/10k/100k (non-RC commit); **PENDING exact-head run** |
+| CH1–CH4 complete groups, TCPIP | Same test on separate TCPIP resource | **Bench PASS** at 1k/10k/100k (non-RC commit); **PENDING exact-head run** |
 | 30–60 min soak (CH1/10k/5Hz) | Opt-in bench, JSON memory metrics and setup restoration | **PENDING** |
 | Physical GUI heartbeat / shared-session conflict | Supervised GUI and instrument verification | **PENDING** |
 | Timeout / disconnect physical negative tests | Authorized fault injection and verified cleanup | **PENDING** |
 | Independent reviewer approval | Human reviewer not author | **PENDING** |
+
+## Bench results, 2026-10-26 (not release-candidate evidence)
+
+DPO4054 `C011280`, FV v2.68, record length 100,000, all four channels fed from the
+internal generator (~2.6 Vpp square wave). Code at `934aa97` (single `WFMOUTPRE?`
+preamble read); hardware test harness `23c505c`. 30 s per case, requested rate 5
+groups/s, `GITHUB_SHA` recorded in each JSON. A full `SET?` snapshot (492 lines)
+was identical before and after each transport's run and the `DATA:*` restoration
+JSON reported `verified: true`. The JSON evidence is **not committed** (`*.json`
+is git-ignored); it was retained on the bench PC only. These are bench
+measurements, not reviewed baselines, and not an exact-head release run.
+
+Single-channel suite (sustained 1k/10k/100k, Stop during transfer, Pause/Resume):
+5 passed, 1 skipped on **both** transports. The skip is 1M points: the scope record
+was 100,000 and A22 never changes it.
+
+Complete sequential groups, 0 errors in every case (p50/p99 are group cycle time;
+skew is first-to-last channel read):
+
+| Ch | Points | USB groups/s | USB p50/p99 ms | USB skew ms | TCPIP groups/s | TCPIP p50/p99 ms | TCPIP skew ms |
+|---|---|---|---|---|---|---|---|
+| 1 | 1k | 5.00 | 174 / 185 | 0 | 5.00 | 170 / 174 | 0 |
+| 1 | 10k | 5.00 | 175 / 190 | 0 | 4.97 | 178 / 192 | 0 |
+| 1 | 100k | 2.53 | 212 / 221 | 0 | 2.50 | 259 / 316 | 0 |
+| 2 | 1k | 2.50 | 326 / 336 | 158 | 2.50 | 319 / 338 | 151 |
+| 2 | 10k | 2.50 | 342 / 359 | 164 | 2.49 | 341 / 387 | 160 |
+| 2 | 100k | 1.79 | 407 / 463 | 192 | 1.65 | 496 / 754 | 401 |
+| 4 | 1k | 1.26 | 666 / 673 | 479 | 1.26 | 645 / 656 | 470 |
+| 4 | 10k | 1.25 | 685 / 710 | 515 | 1.25 | 678 / 706 | 493 |
+| 4 | 100k | 1.05 | 804 / 836 | 591 | 0.95 | 988 / 1030 | 740 |
+
+Reading the table: at 1 channel the 5 groups/s request is the limit up to 10k
+points; beyond that, and for every extra channel, the sequential per-channel cost
+(about 165 ms at 1k, about 210–260 ms at 100k) sets the rate. USB and TCPIP match
+at small records; USB is faster and steadier at 100k. Channel skew is a property of
+sequential reads and grows with channel count.
+
+Reproduce: `DPO4000_A22_MULTI_SOURCES=CH1,CH2` and `DPO4000_A22_MULTI_POINT_COUNT`
+select channels and size for the multi-channel test (default CH1..CH4); evidence
+files are named `a22-<n>-channel-<transport>-<points>.json`.
 
 **Prerequisite:** each point count needs `HORIZONTAL:RECORDLENGTH` at least that large, set by the operator before the run (A22 never changes the record length; the DATA:* restoration evidence covers only the DATA registers). A count the scope cannot supply is reported as SKIP with the required setting, never as PASS, so the 1M row stays unqualified until it is run with a 1M record. The pause/resume and stop-in-flight tests use 10,000 points.
 
