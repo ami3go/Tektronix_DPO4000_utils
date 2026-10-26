@@ -29,6 +29,8 @@ qualifying evidence yet, not an implied pass.
 | Timeout / disconnect physical negative tests | Authorized fault injection and verified cleanup | **PENDING** |
 | Independent reviewer approval | Human reviewer not author | **PENDING** |
 
+**Prerequisite:** each point count needs `HORIZONTAL:RECORDLENGTH` at least that large, set by the operator before the run (A22 never changes the record length; the DATA:* restoration evidence covers only the DATA registers). A count the scope cannot supply is reported as SKIP with the required setting, never as PASS, so the 1M row stays unqualified until it is run with a 1M record. The pause/resume and stop-in-flight tests use 10,000 points.
+
 Real hardware qualification records are transport-scoped JSON files. Required
 fields: target/actual FPS, point count, transfer latency p50/p95/p99,
 samples/s, MB/s, missed deadlines, replacement and errors, scope identity,
