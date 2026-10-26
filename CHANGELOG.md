@@ -4,6 +4,8 @@
 
 ### Added
 
+- Automation (all modes): optional per-event scope settings JSON saved beside the event's
+  PNG/CSV, and post-capture preview refresh (throttled).
 - Added advanced A-trigger and Sequence/B-trigger configuration, including holdoff and
   bounded capability probing for option-dependent trigger families.
 - Added the A15 validated JSON recipe sequencer with pause, resume, cancellation,

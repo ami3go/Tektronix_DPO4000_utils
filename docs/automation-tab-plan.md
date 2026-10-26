@@ -164,14 +164,16 @@ Phase-1 actions:
 
 - [x] Save PNG image
 - [x] Save enabled-channel CSV
-- [ ] Save scope settings JSON
-- [ ] Refresh on-screen preview after PNG capture
+- [x] Save scope settings JSON
+- [x] Refresh on-screen preview after PNG capture
 
 Later actions:
 
 - [x] Log measurement values to a time-series CSV
 - [x] Save a combined run manifest (`.json`)
-- [ ] Save image + waveform + settings as one capture bundle
+- [x] Save image + waveform + settings as one capture bundle
+
+Implemented for every mode by the Output & Retention options (v0.9): **Refresh preview after each automation PNG** (on by default, throttled to one decode per 0.5 s) and **Also save scope settings JSON per event** (off by default; read-only `*LRN?` saved as `<event>.settings.json` beside the event's PNG/CSV, once per event, so an Image + CSV event forms a PNG + CSV + settings bundle). Settings files are saved by a separate serialized worker action right after the event, so they are not covered by A9 retention ownership.
 
 At least one persistent or logging action must be selected before Start is enabled.
 
