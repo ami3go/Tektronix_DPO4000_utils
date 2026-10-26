@@ -18,17 +18,31 @@ from dpo4000_utils.job_runner import (
 from test_a25_job_runner import FakeScope, SessionRecorder, _recipe, _rules, _runner, _write_json
 
 
+class _SetupSession:
+    """Raw VISA-session stand-in: only the session answers the read-only *LRN? query."""
+
+    def __init__(self, owner: "SetupScope") -> None:
+        self._owner = owner
+
+    def query(self, command: str) -> str:
+        assert command == "*LRN?", command
+        self._owner.setup_reads += 1
+        return f":SETUP {self._owner.setup_reads}"
+
+
 class SetupScope(FakeScope):
-    """Fake scope that answers the read-only *LRN? setup query and records reads."""
+    """Fake driver shaped like the real DPO4054: no ``query`` of its own.
+
+    The real driver only reaches the instrument through ``ensure_connected()``; a fake that
+    answered ``query`` directly hid a bug that failed on real hardware.
+    """
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.setup_reads = 0
 
-    def query(self, command: str) -> str:
-        assert command == "*LRN?", command
-        self.setup_reads += 1
-        return f":SETUP {self.setup_reads}"
+    def ensure_connected(self) -> _SetupSession:
+        return _SetupSession(self)
 
 
 def _run(tmp_path: Path, *, operator: str = ">=", method: str = "read_value", scope=None):
@@ -40,6 +54,10 @@ def _run(tmp_path: Path, *, operator: str = ">=", method: str = "read_value", sc
         evidence_path=tmp_path / "out" / "run",
     )
     return config, recorder, _runner(recorder).run(config)
+
+
+def test_setup_fake_matches_real_driver_shape() -> None:
+    assert not hasattr(SetupScope(), "query")
 
 
 def test_evidence_bundle_for_passing_job(tmp_path: Path) -> None:
