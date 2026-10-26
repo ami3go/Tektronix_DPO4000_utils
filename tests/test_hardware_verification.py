@@ -3,6 +3,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from dpo4000_utils.hardware_verification_core import (
+    LIFECYCLE_FUNCTION_COVERS,
+    PURE_FUNCTION_COVERS,
+    WAVEFORM_FUNCTION_COVERS,
+)
 from dpo4000_utils.hardware_verification import (
     HardwareVerifier,
     PUBLIC_FUNCTION_RISK,
@@ -31,6 +36,30 @@ def test_hardware_verification_manifest_matches_public_api_exactly():
     assert verification_manifest_gaps() == {"methods": [], "functions": []}
     assert set(PUBLIC_METHOD_RISK) == public_driver_methods()
     assert set(PUBLIC_FUNCTION_RISK) == public_package_functions()
+
+
+def test_every_public_package_function_is_covered_by_a_case():
+    """An uncovered symbol is reported UNVERIFIED and makes the verifier exit 1."""
+    groups = (PURE_FUNCTION_COVERS, LIFECYCLE_FUNCTION_COVERS, WAVEFORM_FUNCTION_COVERS)
+    covered = [name for group in groups for name in group]
+    assert len(covered) == len(set(covered)), "a function is claimed by two cases"
+    assert set(covered) == public_package_functions()
+
+
+def test_pure_function_case_exercises_framework_helpers_offline(tmp_path):
+    detail = _verifier(tmp_path)._case_pure_functions()
+    assert "passed" in detail
+
+
+def test_pure_function_case_fails_when_a_helper_is_broken(tmp_path, monkeypatch):
+    import dpo4000_utils as public_api
+
+    monkeypatch.setattr(public_api, "recipe_result_values", lambda _result: {})
+    try:
+        _verifier(tmp_path)._case_pure_functions()
+    except (AssertionError, KeyError):
+        return
+    raise AssertionError("a broken helper must fail the pure-function case")
 
 
 def test_reduced_profile_skips_write_case_without_executing_callback(tmp_path):
