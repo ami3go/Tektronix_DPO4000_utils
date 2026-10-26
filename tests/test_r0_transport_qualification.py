@@ -11,6 +11,7 @@ import pytest
 from dpo4000_utils.baseline_compare import load_thresholds
 from dpo4000_utils.r0_qualification import VerifiedSetupGuard
 import dpo4000_utils.r0_qualification as r0
+import dpo4000_utils.settings as settings
 
 
 def _script(name: str):
@@ -55,9 +56,11 @@ def _mock_settings(monkeypatch: pytest.MonkeyPatch) -> None:
         r0, "build_scope_settings_payload",
         lambda scope: {"instrument": scope.query_identity(), "setup": scope.setup},
     )
-    monkeypatch.setattr(r0, "read_scope_setup_string", lambda scope: scope.setup)
+    # The guard restores through settings.restore_setup_verified(), which looks these up
+    # in the settings module.
+    monkeypatch.setattr(settings, "read_scope_setup_string", lambda scope: scope.setup)
     monkeypatch.setattr(
-        r0, "apply_setup_string",
+        settings, "apply_setup_string",
         lambda scope, setup, **kwargs: setattr(scope, "setup", setup),
     )
 
@@ -75,10 +78,13 @@ def test_guard_recovers_original_setup_and_keeps_evidence(tmp_path: Path, monkey
 
 def test_guard_cannot_certify_failed_restore(tmp_path: Path, monkeypatch) -> None:
     _mock_settings(monkeypatch)
-    monkeypatch.setattr(r0, "apply_setup_string", lambda scope, setup, **kwargs: None)
+    monkeypatch.setattr(settings, "apply_setup_string", lambda scope, setup, **kwargs: None)
     capture = _FakeCapture()
     with pytest.raises(RuntimeError, match="NOT verified"):
-        with VerifiedSetupGuard(capture, tmp_path, capture.scope.query_identity()):
+        with VerifiedSetupGuard(
+            capture, tmp_path, capture.scope.query_identity(),
+            settle_timeout_s=0.05, poll_interval_s=0.01,
+        ):
             capture.scope.setup = "changed"
     assert json.loads((tmp_path / "r0_setup_restoration.json").read_text())["status"] == "RESTORATION_FAILED"
 
@@ -122,3 +128,23 @@ def test_rollup_rejects_fabricated_samples() -> None:
                                   "p50": 1, "p95": 1, "max": 1})
     assert not reporting._raw_ok({"samples_s": [1], "sample_count": 2,
                                   "p50": 1, "p95": 1, "max": 1})
+
+
+def test_guard_waits_for_the_scope_to_settle_before_judging_the_restore(tmp_path: Path, monkeypatch) -> None:
+    """A transient read-back (cursor positions) must not be reported as a failed restoration."""
+    _mock_settings(monkeypatch)
+    reads = {"count": 0}
+
+    def transient_read(scope):
+        reads["count"] += 1
+        # Wrong for the first three reads after the restore write, then settled.
+        return scope.setup if scope.setup != "original setup" or reads["count"] > 4 else "original setup;UNSETTLED"
+
+    monkeypatch.setattr(settings, "read_scope_setup_string", transient_read)
+    capture = _FakeCapture()
+    with VerifiedSetupGuard(
+        capture, tmp_path, capture.scope.query_identity(), settle_timeout_s=5.0, poll_interval_s=0.001
+    ) as guard:
+        capture.scope.setup = "changed setup"
+    assert guard.report["status"] == "VERIFIED"
+    assert guard.report["restore_passes"] == 1
