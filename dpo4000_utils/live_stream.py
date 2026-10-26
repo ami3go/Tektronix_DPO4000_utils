@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Callable
 
-from .waveform import WaveformData
+from .waveform import WaveformData, validate_waveform_alignment
 
 try:
     import numpy as _np  # optional speedup; core API works without NumPy
@@ -37,18 +37,33 @@ class StreamState(str, Enum):
 
 @dataclass(frozen=True)
 class StreamConfig:
+    # ``source`` remains as a compatibility alias for callers that select one
+    # channel. New code should use ``sources``; __post_init__ normalizes both.
     source: str = "CH1"
     point_count: int | None = 10_000
     target_hz: float = 5.0
     render_points: int = 2_000
     buffer_frames: int = 2
     reconnect: bool = False
+    sources: tuple[str, ...] | None = None
 
     def __post_init__(self) -> None:
-        if not isinstance(self.source, str) or self.source not in {
-            "CH1", "CH2", "CH3", "CH4"
-        }:
-            raise ValueError("A22 source must be CH1..CH4")
+        selected = (self.source,) if self.sources is None else self.sources
+        if isinstance(selected, str) or not isinstance(selected, (tuple, list)):
+            raise ValueError("A22 sources must be an ordered channel sequence")
+        normalized = tuple(selected)
+        if not normalized:
+            raise ValueError("A22 requires at least one source")
+        if len(normalized) > 4 or len(set(normalized)) != len(normalized):
+            raise ValueError("A22 sources must contain 1..4 unique channels")
+        if any(
+            not isinstance(channel, str)
+            or channel not in {"CH1", "CH2", "CH3", "CH4"}
+            for channel in normalized
+        ):
+            raise ValueError("A22 sources must be selected from CH1..CH4")
+        object.__setattr__(self, "sources", normalized)
+        object.__setattr__(self, "source", normalized[0])
         # Unlimited Full transfers can allocate many megabytes inside the VISA
         # driver before A22 can reject an oversized return value. Permit only
         # explicitly bounded requests until a pre-transfer size gate exists.
@@ -82,6 +97,45 @@ class WaveformFrame:
 
 
 @dataclass(frozen=True)
+class WaveformGroup:
+    """One complete sequential acquisition cycle for the selected channels.
+
+    The group is published atomically. Individual frames retain their own
+    acquisition timestamps so the UI can report, rather than hide, channel skew.
+    """
+
+    generation: int
+    sequence: int
+    acquired_monotonic_s: float
+    acquired_wall_time: datetime
+    frames: tuple[WaveformFrame, ...]
+    acquisition_duration_s: float
+    channel_skew_s: float
+
+    @property
+    def sources(self) -> tuple[str, ...]:
+        return tuple(frame.waveform.source for frame in self.frames)
+
+    @property
+    def sample_count(self) -> int:
+        return sum(frame.waveform.sample_count for frame in self.frames)
+
+    @property
+    def byte_count(self) -> int:
+        return sum(
+            frame.waveform.sample_count * frame.waveform.samples.itemsize
+            for frame in self.frames
+        )
+
+    @property
+    def channel_durations_s(self) -> tuple[tuple[str, float], ...]:
+        return tuple(
+            (frame.waveform.source, frame.acquisition_duration_s)
+            for frame in self.frames
+        )
+
+
+@dataclass(frozen=True)
 class StreamStats:
     generation: int
     frames_acquired: int
@@ -99,6 +153,9 @@ class StreamStats:
     transfer_samples_per_s: float
     transfer_bytes_per_s: float
     last_error: str | None
+    channel_count: int = 1
+    latest_channel_skew_s: float = 0.0
+    latest_channel_durations_s: tuple[tuple[str, float], ...] = ()
 
 
 def minmax_indices(samples: array, budget: int) -> tuple[int, ...]:
@@ -162,6 +219,8 @@ def capture_frame(
     clock: Callable[[], float] = time.monotonic,
 ) -> WaveformFrame:
     """Call only the public driver API; run on the existing scope worker."""
+    if config.sources != (config.source,):
+        raise ValueError("capture_frame requires exactly one selected source")
     started = clock()
     waveform = scope.read_channel_waveform_data(
         int(config.source[2:]), point_count=config.point_count
@@ -186,6 +245,67 @@ def capture_frame(
         render_x=x,
         render_y=y,
         decimation_duration_s=decimation_seconds,
+    )
+
+
+def capture_group(
+    scope: object,
+    config: StreamConfig,
+    generation: int,
+    sequence: int,
+    *,
+    clock: Callable[[], float] = time.monotonic,
+) -> WaveformGroup:
+    """Acquire selected channels sequentially and publish one validated group.
+
+    Each transfer uses the public driver method. No partial result escapes this
+    function: a failed source or incompatible X axis fails the complete cycle.
+    """
+    started = clock()
+    frames: list[WaveformFrame] = []
+    for source in config.sources or ():
+        channel_started = clock()
+        waveform = scope.read_channel_waveform_data(
+            int(source[2:]), point_count=config.point_count
+        )
+        channel_end = clock()
+        if not isinstance(waveform, WaveformData) or not waveform.sample_count:
+            raise ValueError(f"Scope returned an empty or malformed WaveformData for {source}")
+        if waveform.sample_count > MAX_POINTS:
+            raise ValueError(
+                f"Scope returned more than A22's 1,000,000-sample retention limit for {source}"
+            )
+        if waveform.source != source:
+            raise ValueError(
+                f"Scope returned {waveform.source or 'an unknown source'} while {source} was requested"
+            )
+        render_start = clock()
+        x, y = prepare_render(waveform, config.render_points)
+        frames.append(WaveformFrame(
+            generation=generation,
+            sequence=sequence,
+            acquired_monotonic_s=channel_end,
+            acquired_wall_time=datetime.now(timezone.utc),
+            waveform=waveform,
+            acquisition_duration_s=max(0.0, channel_end - channel_started),
+            render_x=x,
+            render_y=y,
+            decimation_duration_s=max(0.0, clock() - render_start),
+        ))
+
+    if not frames:
+        raise ValueError("A22 acquired no channels")
+    validate_waveform_alignment([frame.waveform for frame in frames])
+    completed = clock()
+    channel_times = [frame.acquired_monotonic_s for frame in frames]
+    return WaveformGroup(
+        generation=generation,
+        sequence=sequence,
+        acquired_monotonic_s=completed,
+        acquired_wall_time=datetime.now(timezone.utc),
+        frames=tuple(frames),
+        acquisition_duration_s=max(0.0, completed - started),
+        channel_skew_s=max(channel_times) - min(channel_times),
     )
 
 
@@ -214,7 +334,7 @@ class LiveStreamEngine:
         self.config = StreamConfig()
         self._busy_token: tuple[int, int] | None = None
         self._deadline: float | None = None
-        self._pending: WaveformFrame | None = None
+        self._pending: WaveformFrame | WaveformGroup | None = None
         self._started_at = clock()
         self._sequence = 0
         self._acquired = 0
@@ -226,6 +346,9 @@ class LiveStreamEngine:
         self._bytes = 0
         self._latencies: deque[float] = deque(maxlen=512)
         self._latest_acquisition = 0.0
+        self._latest_channel_count = 1
+        self._latest_channel_skew = 0.0
+        self._latest_channel_durations: tuple[tuple[str, float], ...] = ()
         self.last_error: str | None = None
 
     @property
@@ -252,6 +375,9 @@ class LiveStreamEngine:
         self._skipped = self._errors = self._samples = self._bytes = 0
         self._latencies.clear()
         self._latest_acquisition = 0.0
+        self._latest_channel_count = len(self.config.sources or ())
+        self._latest_channel_skew = 0.0
+        self._latest_channel_durations = ()
         self.last_error = None
         return self.generation
 
@@ -316,7 +442,9 @@ class LiveStreamEngine:
                 self._deadline += missed * period
         return token[0] == self.generation
 
-    def complete(self, token: tuple[int, int], frame: WaveformFrame) -> bool:
+    def complete(
+        self, token: tuple[int, int], frame: WaveformFrame | WaveformGroup
+    ) -> bool:
         current = self._release(token)
         if not current or self.state is not StreamState.RUNNING:
             return False
@@ -328,8 +456,21 @@ class LiveStreamEngine:
         self._acquired += 1
         self._latest_acquisition = frame.acquisition_duration_s
         self._latencies.append(frame.acquisition_duration_s)
-        self._samples += frame.waveform.sample_count
-        self._bytes += frame.waveform.sample_count * frame.waveform.samples.itemsize
+        if isinstance(frame, WaveformGroup):
+            self._samples += frame.sample_count
+            self._bytes += frame.byte_count
+            self._latest_channel_count = len(frame.frames)
+            self._latest_channel_skew = frame.channel_skew_s
+            self._latest_channel_durations = frame.channel_durations_s
+        else:
+            self._samples += frame.waveform.sample_count
+            self._bytes += frame.waveform.sample_count * frame.waveform.samples.itemsize
+            self._latest_channel_count = 1
+            self._latest_channel_skew = 0.0
+            self._latest_channel_durations = ((
+                getattr(frame.waveform, "source", self.config.source),
+                frame.acquisition_duration_s,
+            ),)
         if self._pending is not None:
             self._replaced += 1
         self._pending = frame
@@ -345,7 +486,7 @@ class LiveStreamEngine:
         self._pending = None
         return True
 
-    def take_latest(self) -> WaveformFrame | None:
+    def take_latest(self) -> WaveformFrame | WaveformGroup | None:
         frame = self._pending
         self._pending = None
         if (
@@ -372,10 +513,14 @@ class LiveStreamEngine:
             transfer_samples_per_s=self._samples / elapsed,
             transfer_bytes_per_s=self._bytes / elapsed,
             last_error=self.last_error,
+            channel_count=self._latest_channel_count,
+            latest_channel_skew_s=self._latest_channel_skew,
+            latest_channel_durations_s=self._latest_channel_durations,
         )
 
 
 __all__ = [
-    "StreamConfig", "StreamState", "StreamStats", "WaveformFrame",
-    "LiveStreamEngine", "capture_frame", "minmax_indices", "prepare_render",
+    "StreamConfig", "StreamState", "StreamStats", "WaveformFrame", "WaveformGroup",
+    "LiveStreamEngine", "capture_frame", "capture_group", "minmax_indices",
+    "prepare_render",
 ]

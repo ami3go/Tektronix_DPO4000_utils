@@ -76,3 +76,19 @@ def test_preferences_ignore_unknown_keys_and_coerce_bool_strings(tmp_path):
     assert loaded.png_add_timestamp is False
     assert loaded.csv_add_timestamp is True
     assert not hasattr(loaded, "unknown_old_key")
+
+
+def test_live_view_preferences_round_trip(tmp_path):
+    path = tmp_path / "gui.json"
+    expected = GuiPreferences(
+        live_sources="CH1,CH3,CH4",
+        live_point_count="100000",
+        live_target_hz="10.0",
+        live_render_points="5000",
+    )
+    save_preferences(expected, path)
+    loaded = load_preferences(path)
+    assert loaded.live_sources == "CH1,CH3,CH4"
+    assert loaded.live_point_count == "100000"
+    assert loaded.live_target_hz == "10.0"
+    assert loaded.live_render_points == "5000"

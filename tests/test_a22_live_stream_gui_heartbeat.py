@@ -4,6 +4,7 @@ from __future__ import annotations
 import time
 from array import array
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
@@ -33,9 +34,9 @@ def test_a22_synthetic_qt_heartbeat(monkeypatch):
 
     class SlowFakeScope:
         def read_channel_waveform_data(self, channel, *, point_count):
-            assert channel == 1 and point_count == 10_000
+            assert channel in (1, 2, 3, 4) and point_count == 10_000
             time.sleep(.03)
-            return waveform
+            return replace(waveform, source=f"CH{channel}")
 
     pool = ThreadPoolExecutor(max_workers=1)
     fake = SlowFakeScope()
@@ -73,7 +74,10 @@ def test_a22_synthetic_qt_heartbeat(monkeypatch):
                 completer.completed.emit((on_success, on_error, None, exc))
         pool.submit(run)
 
-    panel = LiveWaveformPanel(host=host, run_action=dispatch)
+    panel = LiveWaveformPanel(
+        host=host, run_action=dispatch,
+        default_sources=("CH1", "CH2", "CH3", "CH4"),
+    )
     panel.resize(900, 600)
     panel.show()  # exercise paintEvent, not only offscreen timers
     app.processEvents()
@@ -103,6 +107,7 @@ def test_a22_synthetic_qt_heartbeat(monkeypatch):
         assert p99 < 0.25
         assert max(gaps) < 1.0
         assert panel.engine.stats().frames_acquired > 2
+        assert panel.engine.stats().channel_count == 4
     finally:
         heartbeat.stop()
         panel.shutdown()

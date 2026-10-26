@@ -4,6 +4,12 @@
 
 ### Added
 
+- Added the A22.1 first-class Live workspace: a large central scope-style canvas,
+  atomic sequential CH1-CH4 waveform groups, conventional channel colors, shared
+  time/voltage axes, explicit inter-channel skew, per-channel timing, transport and
+  group-throughput metrics, and immediately visible four-channel controls.
+- Added Qt-independent multi-channel stream models and an opt-in exact-transport
+  DPO4054 four-channel HIL path while retaining the original single-channel API.
 - Automation (all modes): optional per-event scope settings JSON saved beside the event's
   PNG/CSV, and post-capture preview refresh (throttled).
 - Added advanced A-trigger and Sequence/B-trigger configuration, including holdoff and
@@ -57,8 +63,11 @@
 
 ### Changed
 
+- Package version prepared as `0.9.0rc2`. The original A22 Measurement-card plot is
+  replaced in production by the dedicated Live workspace; Preview remains available
+  and is restored when the user leaves Live.
 - Release builds use the refreshed pinned Python dependency set verified on 2026-10-22.
-- Package version prepared as `0.9.0rc1`; it will become `0.9.0` only after the retained
+- The candidate will become stable only after the retained
   DPO4054 HIL, transport timing, and 24-hour soak evidence passes review.
 
 ## v0.6.1 - 2026-08-28

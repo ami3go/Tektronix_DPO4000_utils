@@ -9,6 +9,8 @@ qualifying evidence yet, not an implied pass.
 
 | Gate | Automated path | Current qualification |
 |---|---|---|
+| 1/2/4-channel config and complete-group integrity | `tests/test_a22_live_stream.py` | Software PASS; final-head CI required |
+| Partial/misaligned group rejection | `tests/test_a22_live_stream.py` | Software PASS; final-head CI required |
 | Config finite/ranges | `tests/test_a22_live_stream.py` | CI required |
 | State Start/Pause/Resume/Stop/Restart | `test_a22_live_stream*.py` | CI required |
 | Single in flight / slow driver | `test_a22_live_stream_scheduler.py` | CI required |
@@ -17,13 +19,14 @@ qualifying evidence yet, not an implied pass.
 | Latest frame/backpressure | `test_a22_live_stream_scheduler.py` | CI required |
 | Spike-preserving min/max | `test_a22_live_stream.py` | CI required |
 | Driver boundary, Stop-in-flight lease, dispatch exceptions | `test_a22_live_stream_safety.py`, `test_a22_live_stream_gui_contract.py` | Final-head CI required |
-| PySide6 layout, lifecycle, callbacks | `test_a22_live_stream_gui_contract.py` | CI required |
-| GUI 50ms heartbeat with synthetic activity | `test_a22_live_stream_gui_heartbeat.py` | CI required |
+| Production Live page, large central canvas, CH1–CH4 controls | `test_a22_live_stream_gui_contract.py` | Software PASS; final-head CI required |
+| GUI 50ms heartbeat with synthetic four-channel activity | `test_a22_live_stream_gui_heartbeat.py` | Software PASS; final-head CI required |
 | Synthetic 1k / 10k / 100k / 1M | Permanent `Tests` PySide6 job / benchmark artifact | Final-head CI required |
 | Linux/Windows package startup | existing release build workflows | CI required |
 | CH1 1k/10k/100k/1M USB | Reversible-write authorized HIL, mandatory DATA snapshot/restore | **PENDING** |
 | CH1 1k/10k/100k/1M TCPIP | Separate reversible-write authorized HIL resource/run | **PENDING** |
-| CH2–CH4 | future HIL profile | **PENDING** |
+| CH1–CH4 complete groups, USB | `DPO4000_A22_MULTI_CHANNELS=YES` hardware test | **PENDING exact-head run** |
+| CH1–CH4 complete groups, TCPIP | Same test on separate TCPIP resource | **PENDING exact-head run** |
 | 30–60 min soak (CH1/10k/5Hz) | Opt-in bench, JSON memory metrics and setup restoration | **PENDING** |
 | Physical GUI heartbeat / shared-session conflict | Supervised GUI and instrument verification | **PENDING** |
 | Timeout / disconnect physical negative tests | Authorized fault injection and verified cleanup | **PENDING** |
@@ -46,6 +49,6 @@ measured p95/p99 lateness must be reported, with p99 <250 ms and worst-case
 <1000 ms. This is a conservative provisional CI threshold; revise only with
 real baseline evidence from runner noise and documented reasoning.
 
-The A22 production merge gate additionally requires the accumulated
+The A22 stable-release gate additionally requires the accumulated
 A14/A15/A16/A18/A20/A21/A25 regressions, all four Python versions, Ruff,
 offscreen PySide6 and Linux/Windows packaging to remain passing.

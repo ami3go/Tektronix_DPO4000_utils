@@ -1,4 +1,4 @@
-"""Canonical 11-page desktop layout with A15 Recipe and Logger pages."""
+"""Canonical desktop layout with Recipe, Logger, and A22.1 Live pages."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ LOGGER_PAGE_INDEX = 7
 FILE_PAGE_INDEX = 8
 DISPLAY_PAGE_INDEX = 9
 LOG_PAGE_INDEX = 10
+LIVE_PAGE_INDEX = 11
 CONTROL_TAB_TITLES = (
     "Connection",
     "Channels",
@@ -21,6 +22,7 @@ CONTROL_TAB_TITLES = (
     "File",
     "Display",
     "Log",
+    "Live",
 )
 CONTROL_PAGE_BUILDERS = (
     "_build_connection_tab",
@@ -34,6 +36,7 @@ CONTROL_PAGE_BUILDERS = (
     "_build_file_tab",
     "_build_display_tab",
     "_build_log_tab",
+    "_build_live_tab",
 )
 
 # Preserve every pre-A15 page shortcut. Recipe gets a new non-conflicting shortcut.
@@ -49,6 +52,7 @@ PAGE_SHORTCUTS = (
     ("Ctrl+8", FILE_PAGE_INDEX, "File"),
     ("Ctrl+9", DISPLAY_PAGE_INDEX, "Display"),
     ("Ctrl+0", LOG_PAGE_INDEX, "Log"),
+    ("Ctrl+Shift+L", LIVE_PAGE_INDEX, "Live"),
 )
 
 
@@ -105,6 +109,7 @@ __all__ = [
     "DISPLAY_PAGE_INDEX",
     "FILE_PAGE_INDEX",
     "LOGGER_PAGE_INDEX",
+    "LIVE_PAGE_INDEX",
     "LOG_PAGE_INDEX",
     "PAGE_SHORTCUTS",
     "RECIPE_PAGE_INDEX",

@@ -5,22 +5,22 @@ from datetime import datetime, timezone
 import pytest
 
 from dpo4000_utils.live_stream import (
-    LiveStreamEngine, StreamConfig, StreamState, capture_frame, minmax_indices,
-    prepare_render,
+    LiveStreamEngine, StreamConfig, StreamState, WaveformGroup, capture_frame,
+    capture_group, minmax_indices, prepare_render,
 )
 from dpo4000_utils.waveform import WaveformData, WaveformPreamble
 
 
-def waveform(samples=None):
+def waveform(samples=None, *, source="CH1", x_increment=0.001):
     raw = array("h", samples if samples is not None else range(1000))
     preamble = WaveformPreamble(
         byte_width=2, encoding="BINARY", binary_format="RI", byte_order="MSB",
         record_point_count=len(raw), point_format="Y", x_unit="s",
-        x_increment=0.001, x_zero=-0.1, point_offset=0,
+        x_increment=x_increment, x_zero=-0.1, point_offset=0,
         y_unit="V", y_multiplier=0.01, y_offset=0, y_zero=0,
     )
     return WaveformData(
-        source="CH1", label="", start_index=1, stop_index=len(raw),
+        source=source, label="", start_index=1, stop_index=len(raw),
         requested_encoding="RIBINARY", preamble=preamble,
         samples=raw, acquired_at=datetime.now(timezone.utc),
     )
@@ -33,6 +33,9 @@ def waveform(samples=None):
     {"target_hz": float("nan")}, {"target_hz": float("inf")},
     {"target_hz": 101}, {"render_points": 99}, {"render_points": 50_001},
     {"buffer_frames": 0}, {"buffer_frames": 9}, {"reconnect": True},
+    {"sources": ()}, {"sources": ("CH1", "CH1")},
+    {"sources": ("CH1", "CH2", "CH3", "CH4", "CH1")},
+    {"sources": ("CH1", "MATH")},
 ])
 def test_invalid_config(override):
     with pytest.raises(ValueError):
@@ -45,6 +48,9 @@ def test_default_acceptance_configuration():
         "CH1", 10_000, 5.0, 2_000
     )
     assert StreamConfig(point_count=1_000_000, target_hz=100, buffer_frames=8)
+    multi = StreamConfig(sources=("CH1", "CH2", "CH3", "CH4"))
+    assert multi.sources == ("CH1", "CH2", "CH3", "CH4")
+    assert multi.source == "CH1"  # compatibility alias
 
 
 @pytest.mark.parametrize("n", [0, 1, 100, 2000, 2001, 1_000_000])
@@ -88,6 +94,66 @@ def test_public_driver_api_only():
     assert len(frame.render_x) <= 2000
     assert frame.acquired_monotonic_s >= 0
     assert frame.acquired_wall_time.tzinfo is not None
+
+
+def test_four_channel_group_is_complete_ordered_and_counted():
+    class Fake:
+        def __init__(self):
+            self.called = []
+
+        def read_channel_waveform_data(self, channel, *, point_count):
+            self.called.append((channel, point_count))
+            return waveform(source=f"CH{channel}")
+
+    fake = Fake()
+    config = StreamConfig(sources=("CH1", "CH2", "CH3", "CH4"))
+    group = capture_group(fake, config, 7, 9)
+    assert isinstance(group, WaveformGroup)
+    assert group.sources == ("CH1", "CH2", "CH3", "CH4")
+    assert fake.called == [(1, 10_000), (2, 10_000), (3, 10_000), (4, 10_000)]
+    assert group.sample_count == 4_000
+    assert group.byte_count == 8_000
+    engine = LiveStreamEngine(lambda: 0.0)
+    engine.start(config)
+    token = engine.begin_due()
+    equivalent = WaveformGroup(
+        token[0], token[1], group.acquired_monotonic_s, group.acquired_wall_time,
+        tuple(
+            type(frame)(
+                token[0], token[1], frame.acquired_monotonic_s,
+                frame.acquired_wall_time, frame.waveform,
+                frame.acquisition_duration_s, frame.render_x, frame.render_y,
+                frame.decimation_duration_s,
+            )
+            for frame in group.frames
+        ),
+        group.acquisition_duration_s, group.channel_skew_s,
+    )
+    assert engine.complete(token, equivalent)
+    assert engine.stats().channel_count == 4
+    assert isinstance(engine.take_latest(), WaveformGroup)
+
+
+def test_four_channel_group_rejects_partial_or_misaligned_cycle():
+    class Partial:
+        def read_channel_waveform_data(self, channel, *, point_count):
+            if channel == 3:
+                raise TimeoutError("CH3 transfer failed")
+            return waveform(source=f"CH{channel}")
+
+    config = StreamConfig(sources=("CH1", "CH2", "CH3", "CH4"))
+    with pytest.raises(TimeoutError, match="CH3"):
+        capture_group(Partial(), config, 1, 1)
+
+    class Misaligned:
+        def read_channel_waveform_data(self, channel, *, point_count):
+            return waveform(
+                source=f"CH{channel}",
+                x_increment=0.002 if channel == 4 else 0.001,
+            )
+
+    with pytest.raises(Exception, match="mismatch"):
+        capture_group(Misaligned(), config, 1, 1)
 
 
 def test_invalid_state_transitions():

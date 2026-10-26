@@ -21,7 +21,7 @@ import pytest
 
 from dpo4000_utils import DPO4054
 from dpo4000_utils.live_stream import (
-    LiveStreamEngine, StreamConfig, StreamState, capture_frame,
+    LiveStreamEngine, StreamConfig, StreamState, capture_frame, capture_group,
 )
 
 
@@ -296,3 +296,78 @@ def test_a22_pause_resume_real_scope_transfer(scope):
     assert engine.take_latest() is not None
     engine.stop()
     assert "DPO4054" in scope.query_identity().upper()
+
+
+@pytest.mark.hardware
+def test_a22_four_channel_complete_groups(scope):
+    """Retain exact transport evidence for atomic sequential CH1..CH4 groups."""
+    if os.getenv("DPO4000_A22_MULTI_CHANNELS") != "YES":
+        pytest.skip("Set DPO4000_A22_MULTI_CHANNELS=YES for four-channel HIL")
+    point_count = int(os.getenv("DPO4000_A22_MULTI_POINT_COUNT", "10000"))
+    _require_record_length(scope, point_count)
+    run_seconds = max(1, int(os.getenv("DPO4000_A22_MULTI_RUN_SECONDS", "30")))
+    config = StreamConfig(
+        sources=("CH1", "CH2", "CH3", "CH4"),
+        point_count=point_count,
+        target_hz=float(os.getenv("DPO4000_A22_TARGET_HZ", "5")),
+    )
+    engine = LiveStreamEngine()
+    engine.start(config)
+    deadline = time.monotonic() + run_seconds
+    last_group = None
+    while time.monotonic() < deadline:
+        delay = engine.due_in()
+        if delay is None:
+            raise AssertionError("Four-channel scheduler lost acquisition eligibility")
+        if delay:
+            time.sleep(min(delay, 0.05))
+            continue
+        token = engine.begin_due()
+        assert token is not None and engine.begin_due() is None
+        try:
+            group = capture_group(scope, config, *token)
+        except Exception as exc:
+            engine.fail(token, exc)
+            raise
+        assert group.sources == config.sources
+        assert all(frame.waveform.sample_count == point_count for frame in group.frames)
+        assert engine.complete(token, group)
+        last_group = group
+        engine.take_latest()
+
+    stats = engine.stats()
+    engine.stop()
+    assert last_group is not None and stats.frames_acquired > 0
+    assert stats.channel_count == 4 and stats.acquisition_errors == 0
+    resource = os.getenv("DPO4000_RESOURCE", "")
+    transport = "USB" if resource.upper().startswith("USB") else (
+        "TCPIP" if resource.upper().startswith("TCPIP") else "OTHER"
+    )
+    payload = {
+        "kind": "real_dpo4054_four_channel_live_view_hil",
+        "identity": scope.query_identity(),
+        "transport": transport,
+        "sources": list(config.sources or ()),
+        "point_count_per_channel": point_count,
+        "run_seconds": run_seconds,
+        "complete_groups": stats.frames_acquired,
+        "actual_group_fps": stats.acquisition_fps,
+        "latest_cycle_s": stats.latest_acquisition_s,
+        "latest_channel_skew_s": stats.latest_channel_skew_s,
+        "latest_channel_durations_s": dict(stats.latest_channel_durations_s),
+        "p50_cycle_s": stats.p50_acquisition_s,
+        "p95_cycle_s": stats.p95_acquisition_s,
+        "p99_cycle_s": stats.p99_acquisition_s,
+        "samples_per_second": stats.transfer_samples_per_s,
+        "payload_mb_per_second": stats.transfer_bytes_per_s / 1e6,
+        "deadlines_skipped": stats.deadlines_skipped,
+        "groups_replaced": stats.frames_replaced,
+        "errors": stats.acquisition_errors,
+        "commit_sha": os.getenv("GITHUB_SHA"),
+        "completed_at_utc": datetime.now(timezone.utc).isoformat(),
+    }
+    folder = Path(os.environ["DPO4000_A22_EVIDENCE_DIR"])
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / f"a22-four-channel-{transport.lower()}-{point_count}.json").write_text(
+        json.dumps(payload, indent=2) + "\n", encoding="utf-8"
+    )

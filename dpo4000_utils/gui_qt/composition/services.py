@@ -25,6 +25,7 @@ DEFAULT_PAGE_TITLES = (
     "File",
     "Display",
     "Log",
+    "Live",
 )
 
 

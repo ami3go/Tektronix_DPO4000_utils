@@ -30,11 +30,73 @@ def test_stable_object_names_and_throttled_render_path():
     assert "self.engine.take_latest()" in text
 
 
-def test_attach_at_existing_measurement_page():
+def test_dedicated_live_page_replaces_measurement_card_embedding():
     text = (ROOT / "dpo4000_utils/gui_qt/composition/legacy_surface.py").read_text(
         encoding="utf-8"
     )
-    assert "attach_live_waveform_panel(self, attach_measurement_trend_panel(self, page))" in text
+    assert "def _build_live_tab" in text
+    assert "_composition_live_plot" in text
+    assert "attach_live_waveform_panel(self, attach_measurement_trend_panel" not in text
+
+
+def test_production_window_exposes_large_four_channel_live_view(monkeypatch):
+    qt = pytest.importorskip("PySide6.QtWidgets")
+    from dpo4000_utils.gui_qt.composition.window import QtScopeWindow
+
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    app = qt.QApplication.instance() or qt.QApplication([])
+    window = QtScopeWindow()
+    window.resize(1280, 760)
+    window.show()
+    window.page_controller.by_title["Live"].activate()
+    app.processEvents()
+    try:
+        surface = window.feature_surface
+        panel = window.findChild(qt.QWidget, "liveWaveformPanel")
+        plot = window.findChild(qt.QWidget, "liveStreamPlot")
+        assert panel is not None and plot is not None
+        assert surface._composition_viewport_stack.currentWidget().objectName() == "liveWaveformViewport"
+        assert plot.width() >= panel.width()
+        for channel in range(1, 5):
+            check = window.findChild(qt.QCheckBox, f"liveStreamSourceCH{channel}")
+            assert check is not None and check.isChecked()
+        window.page_controller.by_title["Measurement"].activate()
+        app.processEvents()
+        assert surface._composition_viewport_stack.currentWidget() is surface._composition_preview_view
+    finally:
+        window.close()
+        app.processEvents()
+
+
+def test_production_live_view_applies_and_collects_preferences(monkeypatch, tmp_path):
+    qt = pytest.importorskip("PySide6.QtWidgets")
+    from dpo4000_utils.gui.preferences import GuiPreferences, save_preferences
+    from dpo4000_utils.gui_qt.composition.window import QtScopeWindow
+
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    path = tmp_path / "gui.json"
+    save_preferences(GuiPreferences(
+        live_sources="CH2,CH4", live_point_count="100000",
+        live_target_hz="10.0", live_render_points="5000",
+    ), path)
+    app = qt.QApplication.instance() or qt.QApplication([])
+    window = QtScopeWindow(preferences_path=path)
+    window.page_controller.by_title["Live"].activate()
+    app.processEvents()
+    try:
+        panel = window.feature_surface._composition_live_stream_panel
+        assert tuple(
+            source for source, check in panel.channel_checks.items() if check.isChecked()
+        ) == ("CH2", "CH4")
+        assert panel.points_combo.currentData() == 100_000
+        assert panel.rate_combo.currentData() == 10.0
+        assert panel.render_combo.currentData() == 5_000
+        collected = window.feature_surface._collect_preferences()
+        assert collected.live_sources == "CH2,CH4"
+        assert collected.live_point_count == "100000"
+    finally:
+        window.close()
+        app.processEvents()
 
 
 def test_offscreen_panel_start_pause_resume_stop(monkeypatch):

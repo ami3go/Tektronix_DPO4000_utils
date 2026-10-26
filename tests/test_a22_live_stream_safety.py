@@ -15,7 +15,7 @@ def test_qt_does_not_issue_raw_scpi_or_own_visa():
     text = PANEL.read_text(encoding="utf-8")
     for forbidden in ("scope.scope", ".write(", ".query(", "ResourceManager(", "eval(", "exec("):
         assert forbidden not in text
-    assert "capture_frame(scope, config" in text
+    assert "capture_group(scope, config" in text
     assert "retain_session=True" in text
 
 

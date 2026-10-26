@@ -1,8 +1,17 @@
 # Current State
 
-**Current repository snapshot (2026-10-24):** `main` at `8a5b6cfc` contains Python package **0.9.0rc1**, a release candidate and **not** a hardware-qualified stable 0.9.0. Software implementations of A14 (advanced triggers), A15 (recipes), A16 (rules), A18 (evidence), A20 (trends), A21 (scientific export), A25 (base headless runner), Automation A1–A12, and Logger L1–L14 are merged. BUS decoding and certain A14 leaves remain capability-limited. Final DPO4054 functional HIL, independently measured USB and TCPIP baselines, and reviewed 24-hour physical soak remain **qualification pending**; a test harness or green hosted CI is not proof of hardware qualification.
+**Current repository snapshot (2026-10-26):** the working candidate is Python
+package **0.9.0rc2**, a release candidate and **not** a hardware-qualified stable
+release. Software implementations of A14, A15, A16, A18, A20, A21, A22.1
+four-channel Live View, A25, Automation A1–A12, Logger L1–L14, and the P0 release
+guards are merged. BUS decoding and certain A14 leaves remain capability-limited.
+Exact-head four-channel USB/TCPIP HIL, reviewed performance baselines, and the
+24-hour physical soak remain **qualification pending**; software tests are not proof
+of hardware qualification.
 
-**Unmerged work:** [A22 live waveform streaming PR #51](https://github.com/ami3go/Tektronix_DPO4000_utils/pull/51), [A25 hardening PR #50](https://github.com/ami3go/Tektronix_DPO4000_utils/pull/50), and [P0 fail-closed qualification/release gates PR #53](https://github.com/ami3go/Tektronix_DPO4000_utils/pull/53) are separate draft branches, not shipped main functionality. See the dated [README feature matrix](README.md#full-feature-status-matrix) and [v0.9.0 RC release note](docs/releases/v0.9.0-rc.1.md).
+See the [README feature matrix](README.md#full-feature-status-matrix),
+[A22.1 task](docs/a22-four-channel-live-view-task.md), and
+[v0.9.0 draft release notes](docs/releases/v0.9.0.md).
 
 ## Desktop architecture (introduced in v0.8.0)
 
@@ -30,6 +39,8 @@ Current desktop capabilities include:
 - Automation A1..A12, including periodic/triggered capture, waveform/measurement logging, conditional and burst workflows, retention, profiles, recovery and reports.
 - Logger modes for waveform, measurements, decoded-BUS capability-gated input, and synchronized mixed records, with buffered/rotated output, recovery, health and reports.
 - Streaming DPO4LOG inspection/conversion.
+- Dedicated large CH1–CH4 Live View with complete sequential waveform groups,
+  visible timing/skew, bounded rendering, and retained Preview state.
 - Persistent output naming and connection preferences.
 
 Decoded BUS transaction extraction remains explicitly capability-gated until a programmer-manual command path is qualified on real DPO4000 hardware. BUS configuration support does not imply decoded transaction export support.

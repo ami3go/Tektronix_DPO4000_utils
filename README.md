@@ -13,7 +13,7 @@ PySide6 DPO4000 Desk
         +-- A15 RecipeSequencer
         +-- A16 RuleEngine (local, no instrument I/O)
         +-- A21 Scientific Export (NPZ / DPOZ)
-        +-- A22 Live Waveform Engine (one-in-flight, latest-frame)
+        +-- A22.1 Four-Channel Live View (one-in-flight, latest-group)
         |
         v
 DPO4054 / DPO4000Scope public API
@@ -28,12 +28,15 @@ See `docs/architecture.md`, `docs/a15-recipe-sequencer-plan.md`, `docs/a16-pass-
 
 ## Features
 
-- PySide6 desktop application with Connection, Channels, Measurement, Trigger, Acquisition, Automation, Recipe, Logger, File, Display, and Log pages.
+- PySide6 desktop application with Connection, Channels, Measurement, Trigger, Acquisition, Automation, Recipe, Logger, File, Display, Log, and Live pages.
 - USB/VISA and Ethernet VISA resources with a worker-owned retained session option.
 - Advanced A-trigger configuration, verified time holdoff, and Sequence/B-trigger controls.
 - A15 Test Recipe / Sequencer with versioned JSON recipes, validation, public-driver call steps, deterministic Delay steps, pause/resume/cancel, bounded retry/backoff, live step status, and timing results.
 - A16 Pass/Fail Rule Engine with versioned JSON rule sets, `PASS` / `FAIL` / `INVALID`, numeric/range/delta operators, AND/OR/NOT rule trees, recipe-result inputs, and Desk rule-result presentation.
-- A22 Live Waveform Streaming: repeated CH1–CH4 waveform snapshots, bounded 1k–1M transfer choices, absolute deadline scheduling, one in-flight scope call, spike-preserving bounded Qt rendering, and observable frame replacement. This is not lossless ADC streaming.
+- A22.1 Four-Channel Live View: a large central scope-style canvas with selectable
+  CH1–CH4 traces, atomic sequential waveform groups, bounded 1k–1M transfers,
+  spike-preserving rendering, explicit skew/timing metrics, and one in-flight scope
+  call. This is not lossless or simultaneous ADC streaming.
 - A21 Scientific Export with lossless NumPy `.npz` and portable `.dpoz` archives, exact raw/preamble round-trip import, atomic file replacement, throughput metrics, and a File-page Desk panel.
 - Automation and Logger workflows for unattended capture/logging with recovery, limits, retention, and run reporting.
 - PNG screen capture with preview and clipboard copy.
@@ -61,7 +64,7 @@ See `docs/architecture.md`, `docs/a15-recipe-sequencer-plan.md`, `docs/a16-pass-
 | Deferred | Deliberately not exposed pending hardware/protocol evidence |
 | Qualification pending | Test machinery exists, but required retained hardware evidence is not verified complete |
 
-**Release posture:** Python package version 0.9.0rc1; a release candidate, **not** the hardware-qualified stable 0.9.0. Hosted main-branch test and CodeQL workflows passed at baseline commit [8a5b6cf](https://github.com/ami3go/Tektronix_DPO4000_utils/commit/8a5b6cfcf794104a3f428799bd415874a8392d72). Hardware qualification requires independently recorded results, transport-specific baselines, and a reviewed 24-hour soak. Open draft branches [A22 #51](https://github.com/ami3go/Tektronix_DPO4000_utils/pull/51), [A25 hardening #50](https://github.com/ami3go/Tektronix_DPO4000_utils/pull/50), and [P0 qualification hardening #53](https://github.com/ami3go/Tektronix_DPO4000_utils/pull/53) are **not** part of main until merged. Existing test runners and baselines are software infrastructure, not independently accepted DPO4054 HIL evidence.
+**Release posture:** Python package version 0.9.0rc2; a release candidate, **not** the hardware-qualified stable release. A22, A25 hardening, and P0 release guards are merged. Stable publication still requires exact-head CI/package evidence, independently reviewed transport-specific hardware results, and the formal 24-hour soak.
 
 ### Core driver / instrument control
 
@@ -119,7 +122,7 @@ See [waveform API](docs/waveform-acquisition.md), [usage](docs/usage.md), and [d
 | Lazy GUI page construction | Implemented | Composed window and page controllers |
 | Connection/output preferences | Implemented | Persistent settings |
 | Keyboard shortcuts | Implemented | Capture, acquisition and navigation |
-| A22 live waveform plot | In progress | Implementation and tests on draft [PR #51](https://github.com/ami3go/Tektronix_DPO4000_utils/pull/51), not main |
+| A22.1 four-channel Live View | Implemented | Dedicated Live page and large central CH1–CH4 canvas; exact-head four-channel USB/TCPIP HIL and release soak pending |
 | Remaining legacy GUI extraction | Planned | Incremental migration of compatibility implementation shims |
 
 ### Automation A1–A12
@@ -225,27 +228,29 @@ See [A14 qualification backlog](docs/a14-advanced-trigger-backlog.md).
 
 ### A22 live waveform streaming
 
-A22 is *repeated waveform record transfer*, not lossless continuous ADC sample streaming. Its implemented work is on draft [PR #51](https://github.com/ami3go/Tektronix_DPO4000_utils/pull/51), not main.
+A22 is *repeated sequential waveform record transfer*, not lossless continuous ADC
+sample streaming. Selected CH1–CH4 records are validated and published atomically as
+one complete display group; measured channel skew remains visible.
 
 | Feature | Status | Current branch capability / limitation |
 |---|---|---|
-| Framework-neutral stream engine | In progress | Config, frame/state/stats models |
-| CH1–CH4 source choice | In progress | One source at a time; additional channels await HIL |
-| Simultaneous aligned multi-channel stream | Planned | Deliberately deferred |
-| 1k/10k/100k/1M and Full | In progress | Limited by connected scope record size |
-| Adjustable request cadence | In progress | Not a guaranteed delivered frame rate |
-| Single in-flight acquisition | In progress | Shared worker lease |
-| Latest-frame buffering | In progress | Drop/replace and missed-deadline accounting |
-| Decimation and live plot | In progress | Worker-side peak preserving; bounded GUI rendering |
-| Pause/Resume/Stop | In progress | Generation-token stale-callback protection |
-| FPS, latency, throughput metrics | In progress | Stats and instrumentation |
-| Automated software tests | In progress | PR adds engine, GUI heartbeat, scheduler and safety tests |
-| HIL workflow and tests | In progress | Test infrastructure is present; live USB/TCPIP evidence pending |
+| Framework-neutral stream engine | Implemented | Single- and multi-channel group/state/stats models |
+| CH1–CH4 selection and display | Implemented | Any non-empty selection, including all four together |
+| Multi-channel group integrity | Implemented | Sequential reads; complete aligned groups only, with measured skew |
+| 1k/10k/100k/1M | Implemented | Limited by connected scope record size |
+| Adjustable request cadence | Implemented | Requested separately from measured group rate |
+| Single in-flight acquisition | Implemented | Shared worker lease |
+| Latest-group buffering | Implemented | Atomic replacement and missed-deadline accounting |
+| Large live plot | Implemented | Central scope-style grid, colors, labels and shared axes |
+| Pause/Resume/Stop/Restart | Implemented | Generation-token stale-callback protection |
+| FPS, latency, skew, throughput metrics | Implemented | Group and per-channel instrumentation |
+| Automated software tests | Implemented | Domain, production-window, four-channel heartbeat, scheduler and safety |
+| HIL workflow and tests | Qualification pending | Four-channel USB/TCPIP exact-head evidence pending |
 | Automatic stream reconnect | Deferred | v1 fail-fast/manual restart policy |
 | Per-frame A18/A21 recording | Deferred | Separate follow-up work |
 | WebSocket/browser streaming | Planned | Remote streaming follow-on |
 
-See [A22 plan](docs/a22-live-waveform-streaming-plan.md) and [draft implementation](https://github.com/ami3go/Tektronix_DPO4000_utils/tree/feat/a22-live-waveform-streaming).
+See [A22 plan](docs/a22-live-waveform-streaming-plan.md) and [A22.1 implementation task](docs/a22-four-channel-live-view-task.md).
 
 ### Verification, packaging and release
 
@@ -280,7 +285,7 @@ The table below describes **test infrastructure** and **release evidence** separ
 | BUS/Logger | Fully qualified decoded BUS extraction | Partial |
 | A15 | Conditional execution and bounded loop/repeat blocks | Planned |
 | A15/A16 | Branching driven by evaluated rules | Planned |
-| A22 | Multi-channel alignment, reconnect, remote streaming | Planned/deferred |
+| A22 | Automatic reconnect, recording, remote/WebSocket streaming | Deferred |
 | Qt architecture | Retire remaining compatibility window implementations | Planned |
 | Qualification | Complete HIL, USB/TCPIP R0-T and long-duration soak | Pending |
 | Release | Stable v0.9.0 after reviewed evidence | Pending |
@@ -449,7 +454,14 @@ See `docs/a21-scientific-export.md` and `docs/a21-test-matrix.md`.
 
 ## A22 live waveform streaming
 
-Open the **Measurement** page and use **Live Waveform (A22)**. Initial qualified-software target: CH1, 10k samples, requested 5 Hz, 2k render points. Acquisition is asynchronously serialized on the retained worker, and the plot is capped at 10 FPS. Requested throughput is not a hardware guarantee. Other instrument operations remain blocked until an in-flight Stop completes or times out; Stop/Restart generation tokens discard stale completions.
+Open the top-level **Live** page. The large central canvas displays any selected
+combination of CH1–CH4; all four are selected by default. The right panel controls
+per-channel transfer size, requested group rate, render budget, and
+Start/Pause/Resume/Stop/Restart. Channels are transferred sequentially through the
+retained worker and published only as a complete aligned group. The UI reports actual
+group rate, per-channel timings, and first-to-last channel skew, so it does not imply
+simultaneous ADC streaming. Other instrument operations remain blocked until the live
+operation stops and any in-flight transfer returns.
 
 Run the synthetic benchmark via `python scripts/benchmark_a22_live_stream.py`; hardware qualification needs explicit reversible-write authorization, exclusive instrument access, and verified DATA:* setup restoration. See `docs/a22-live-waveform-streaming.md` and `docs/a22-test-matrix.md`.
 

@@ -1,18 +1,15 @@
 # DPO4054 v0.9.0 P0 qualification / release gate handoff
 
 Task: `DPO4000-P0-QUALIFICATION-RELEASE-01`  
-Status as of 2026-10-23: **BLOCKED / NOT QUALIFIED**. This document is a
+Status as of 2026-10-26: **BLOCKED / NOT QUALIFIED**. This document is a
 procedure and audit trail, not a physical-HIL pass certificate.
 
 ## Baseline and change isolation
 
-- Starting `main`: `8a5b6cfcf794104a3f428799bd415874a8392d72`.
-- `pyproject.toml`: `0.9.0rc1`; supported Python `>=3.10`.
-- A25 code hardening stays in draft PR #50, `feat/a25-headless-job-runner`.
-- A22 streaming stays in draft PR #51 and must **not** be merged as part of this gate.
-- README feature matrix stays in PR #52.
-- Cross-cutting qualification hardening is draft PR #53,
-  `feat/p0-dpo4054-qualification-release-gates`.
+- Candidate version: `0.9.0rc2`; supported Python `>=3.10`.
+- A22.1 four-channel Live View, A25 hardening, the README matrix, and P0
+  qualification guards are integrated. Resolve the exact candidate SHA at run time;
+  never substitute the historical handoff baseline.
 - Never present earlier software success as evidence from the current candidate SHA.
 
 ### Gate matrix

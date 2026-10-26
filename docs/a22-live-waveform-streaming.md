@@ -2,10 +2,9 @@
 
 ## Status and baseline
 
-Implemented on development branch `feat/a22-live-waveform-streaming` from `main` at
-`8a5b6cfcf794104a3f428799bd415874a8392d72`. All A14/A15/A16/A18/A20/A21/A25
-feature PRs were merged before work began. Baseline hosted Tests workflow:
-[39979418992](https://github.com/ami3go/Tektronix_DPO4000_utils/actions/runs/39979418992).
+The original bounded single-channel engine is merged. A22.1 extends it with a
+first-class four-channel Live workspace. Exact-head USB/TCPIP four-channel HIL and
+the release soak remain qualification gates.
 
 **This is repeated public waveform transfer from oscilloscope acquisition memory,
 not lossless access to the ADC stream.** Sustained FPS is bounded by the DPO4054,
@@ -13,20 +12,25 @@ transport, transfer length and host.
 
 ## Components
 
-- `dpo4000_utils.live_stream.StreamConfig`: immutable and fully validated request.
-  Initial target CH1, 10k samples, 5 Hz, 2k render points, latest frame wins.
+- `dpo4000_utils.live_stream.StreamConfig`: immutable, validated ordered selection
+  of one to four channels; 10k samples/channel, 5 groups/s and 2k render points/channel
+  are the GUI defaults.
 - `LiveStreamEngine`: GUI-independent state, generation tokens, one outstanding
   acquisition lease, absolute monotonic deadlines, observable frame replacement.
-- `capture_frame(scope, ...)`: consumes **only**
-  `scope.read_channel_waveform_data(channel, point_count=...)` on the existing
-  serialized worker. Public waveform decoding/preamble validation is reused.
+- `capture_group(scope, ...)`: consumes **only** public
+  `scope.read_channel_waveform_data(channel, point_count=...)` calls on the existing
+  serialized worker, validates alignment, and returns no partial group.
 - `minmax_indices`: O(N) bucket extrema with first/last endpoints. The worker
   prepares at most the configured render budget; the GUI never converts 1M
   samples into a million Python floats.
-- `LiveWaveformPanel`: attached to the existing Measurement page below A20,
-  one-shot acquisition timer, 100 ms / 10 FPS render timer, bounded Qt painter.
+- `LiveWaveformPanel`: controls in the dedicated top-level Live page, with a
+  one-shot acquisition timer and 100 ms / 10 FPS render timer.
+- `LiveWaveformPlot`: large central shared-axis canvas with a scope-style graticule,
+  CH1 yellow / CH2 cyan / CH3 magenta / CH4 green, labels and visible skew.
 
-The `WaveformFrame` dataclass is frozen and its render trace comprises tuples.
+`WaveformFrame` and the atomic `WaveformGroup` are frozen and their render traces
+comprise tuples. Individual frames retain acquisition timing so sequential capture
+skew is measurable rather than presented as simultaneity.
 The contained public `WaveformData` has a mutable compact `array`; ownership
 is transferred without mutation after the worker returns. Consumers **must not**
 alter `waveform.samples`.
@@ -49,7 +53,7 @@ as achieved acquisition FPS.
 
 ### Backpressure and generation
 
-An in-flight frame and one pending complete frame are the effective maximum,
+An in-flight group and one pending complete group are the effective maximum,
 regardless of configured capacity 1–8. This deliberately implements a stricter
 latest-only policy. A newer unrendered frame replaces the previous frame and
 increments `frames_replaced`; `frames_rendered` increments only when the GUI
@@ -88,10 +92,10 @@ timers and invalidates generations before normal serialized session teardown.
 The render budget can be 500/1k/2k/5k/10k. Extrema and endpoints are preserved. When the scientific/PySide6 extra provides NumPy, min/max buckets are computed over zero-copy array views; a GUI-independent pure-Python fallback remains available.
 The plot auto-scales both axes and paints only bounded prepared points on resize.
 
-At 1M points with 16-bit samples, raw storage is about 2 MB per frame.
-At most two complete frames may coexist along the acquisition/GUI boundary,
-or ~4 MB raw, plus any transient driver/Qt transport objects and up to
-10k tuples of render coordinates under the supplied GUI choices. The
+At 1M points with 16-bit samples, raw storage is about 2 MB per channel or 8 MB
+for four channels. At most one pending and one in-flight group may coexist along
+the acquisition/GUI boundary, or about 16 MB raw at that extreme, plus transient
+driver/Qt transport objects and up to 10k render coordinates per channel. The
 underlying PyVISA decoder may create additional transient allocations.
 RSS/tracemalloc measurements in hosted synthetic benchmarks do not bound
 third-party VISA library allocations. No A20 scalar history of waveforms
@@ -99,11 +103,12 @@ is constructed.
 
 ### Limitations and deferred
 
-- CH2–CH4 are selectable but require physical qualification.
+- Four-channel software behavior is implemented; exact-head physical USB/TCPIP
+  qualification remains pending.
 - 1k/10k/100k/1M depend on the scope's configured record length. Unbounded Full transfer is deliberately **disabled**: a driver can allocate >1M points before an A22 post-transfer limit check. A bounded size request remains capped at 1M and oversized driver responses are rejected.
 - `Maximum` uses the 100 Hz software scheduling bound, not a guaranteed rate.
-- Automatic reconnect, multi-channel aligned concurrent acquisition,
-  stream recording/A18 evidence-per-frame and WebSocket publishing are deferred.
+- Automatic reconnect, genuinely simultaneous acquisition access, stream
+  recording/A18 evidence-per-group and WebSocket publishing are deferred.
 - A22 uses the same session worker, so active conflicting workflows cannot run
   simultaneously. A future dedicated exclusive ownership service could
   further formalize cross-process arbitration.

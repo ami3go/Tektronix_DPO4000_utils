@@ -2,9 +2,12 @@
 
 ## Status
 
-**Planning only. No A22 implementation is authorized by this document.**
+**Implementation status:** the merged A22 code delivers a bounded single-channel
+streaming prototype. It does not yet satisfy this plan's multi-channel, large-view
+user experience. The remaining v1.0 work is tracked in
+[A22.1 Four-Channel Live View](a22-four-channel-live-view-task.md).
 
-A22 must not start implementation until the current feature stack has completed its qualification/integration gate:
+The original implementation order was:
 
 ```text
 A14 Advanced Trigger
@@ -18,7 +21,9 @@ A14 Advanced Trigger
 → A22 Live Waveform Streaming
 ```
 
-The immediate project priority remains testing, hardware qualification, retargeting, and merging the existing feature PR chain.
+The single-channel prototype and preceding feature stack are now merged. The
+uncompleted multi-channel user experience and its exact-head qualification remain
+release work; the historical ordering above is retained for design traceability.
 
 ---
 
