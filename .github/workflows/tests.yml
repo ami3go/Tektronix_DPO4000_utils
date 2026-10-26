@@ -53,6 +53,24 @@ jobs:
       - name: Run tests
         run: pytest -q
 
+      - name: A25 installed CLI no-VISA smoke and deterministic report
+        if: matrix.python-version == '3.12'
+        run: |
+          dpo4000-job --help
+          dpo4000-job --recipe tests/data/a15_recipe_minimal.json --validate-only --report a25-validate-report.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path("a25-validate-report.json").read_text(encoding="utf-8"))
+          assert data["schema"] == "dpo4000-headless-job"
+          assert data["exit_code"] == 0 and data["validation_only"] is True
+          PY
+
+      - name: A25 synthetic benchmark smoke
+        if: matrix.python-version == '3.12'
+        run: |
+          python scripts/benchmark_a25_job_runner.py --steps 1,100,1000 --repetitions 3 --output a25-benchmark.json
+
   windows:
     name: Core Python 3.12 on Windows
     runs-on: windows-latest
