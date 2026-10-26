@@ -1,0 +1,43 @@
+name: DPO4054 Strict Read-Only Offline Safety
+
+on:
+  push:
+    branches:
+      - feat/dpo4054-strict-readonly-hil
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  qualification-unit:
+    name: Read-only contracts / Python 3.12
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install -e .[dev]
+      - name: Static lint
+        run: ruff check dpo4000_utils/read_only_guard.py dpo4000_utils/read_only_waveform.py scripts/run_hardware_verification.py tests/test_read_only_guard.py tests/test_read_only_waveform.py tests/hardware/test_dpo4054_readonly_waveform_hardware.py
+      - name: Offline safety contract tests (no VISA hardware)
+        run: |
+          pytest -q \
+            tests/test_read_only_guard.py \
+            tests/test_read_only_waveform.py \
+            tests/test_hardware_verification.py \
+            tests/test_p0_qualification_guards.py \
+            --junitxml=readonly_offline_junit.xml
+      - name: Upload unit evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: dpo4054-strict-readonly-offline
+          path: readonly_offline_junit.xml
+          if-no-files-found: warn

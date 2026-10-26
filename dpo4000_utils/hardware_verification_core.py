@@ -9,6 +9,8 @@ HTML evidence.
 from __future__ import annotations
 
 import html
+import os
+import subprocess
 import inspect
 import json
 import platform
@@ -37,6 +39,7 @@ from .errors import DPOWaveformError
 from .hardcopy import PNG_SIGNATURE
 from .instrument import DPO4000Scope, DPO4054
 from .reference import ReferenceConfig
+from .read_only_guard import ReadOnlyVisaSession
 from .settings import apply_setup_string, build_scope_settings_payload
 from .waveform import WaveformRequest
 
@@ -214,6 +217,9 @@ class VerificationConfig:
     allow_reference_overwrite: bool = False
     reference_destination: int = 4
     expected_idn: str = ""
+    expected_serial: str = ""
+    verified_options: str = ""
+    require_exclusive_lock: bool = False
 
 
 class HardwareVerifier:
@@ -230,6 +236,9 @@ class HardwareVerifier:
         self.started_at = datetime.now(timezone.utc)
         self.finished_at: datetime | None = None
         self._write_case_ran = False
+        self.read_only_guard: ReadOnlyVisaSession | None = None
+        self._visa_exclusive_locked = False
+        self.visa_backend = ""
 
     def _register_and_run(
         self,
@@ -324,6 +333,23 @@ class HardwareVerifier:
                 "Instrument setup restoration readback differs from the pre-test *LRN? snapshot"
             )
         return "Initial *LRN? setup reapplied and verified byte-for-byte by readback."
+
+    def _case_read_only_final_state(self) -> str:
+        if self.baseline_payload is None:
+            raise RuntimeError("No initial setup was captured")
+        after = build_scope_settings_payload(self._require_scope().ensure_connected())
+        (self.config.output_dir / "scope_setup_after.json").write_text(
+            json.dumps(after, indent=2), encoding="utf-8"
+        )
+        if after["instrument"] != self.baseline_payload["instrument"]:
+            raise AssertionError("Connected instrument identity changed during qualification")
+        if after["setup"] != self.baseline_payload["setup"]:
+            raise AssertionError("Initial and final instrument setup strings differ")
+        if self.read_only_guard and self.read_only_guard.blocked_count:
+            raise AssertionError(
+                f"{self.read_only_guard.blocked_count} non-query VISA operation(s) were blocked"
+            )
+        return "Initial and final setup strings identical; zero unauthorized SCPI writes transmitted."
 
     def _case_manifest(self) -> str:
         gaps = verification_manifest_gaps()
@@ -893,6 +919,17 @@ class HardwareVerifier:
         )
         try:
             self.scope.connect()
+            if self.scope.rm is not None:
+                self.visa_backend = str(type(self.scope.rm.visalib).__name__)
+            if self.config.profile == VerificationRisk.READ_ONLY:
+                instrument = self.scope.ensure_connected()
+                if self.config.require_exclusive_lock:
+                    # Backend must prove VISA exclusive locking, not just operator intent.
+                    instrument.lock_excl(timeout=self.config.timeout_ms)
+                    self._visa_exclusive_locked = True
+                guard = ReadOnlyVisaSession(instrument)
+                self.scope.scope = guard
+                self.read_only_guard = guard
             self.idn = self.scope.query_identity().strip()
             expected = self.config.expected_idn.strip()
             if expected and self.idn != expected:
@@ -902,6 +939,14 @@ class HardwareVerifier:
                 )
             if "DPO4054" not in self.idn.upper():
                 raise RuntimeError(f"Physical qualification target is not DPO4054: {self.idn!r}")
+            fields = [value.strip() for value in self.idn.split(",")]
+            if self.config.profile == VerificationRisk.READ_ONLY:
+                if len(fields) < 4 or not fields[0].upper().startswith("TEK") or fields[1].upper() != "DPO4054" or not fields[2]:
+                    raise AssertionError(f"Expected an identified physical DPO4054, got {self.idn!r}")
+                if self.config.expected_serial and fields[2] != self.config.expected_serial:
+                    raise AssertionError(
+                        f"Instrument serial mismatch: expected {self.config.expected_serial!r}, got {fields[2]!r}"
+                    )
             self._capture_baseline()
 
             cases: list[tuple[VerificationCase, Callable[[], str | None]]] = [
@@ -1159,6 +1204,11 @@ class HardwareVerifier:
             )
         finally:
             if self.scope is not None:
+                if self.config.profile == VerificationRisk.READ_ONLY and self.baseline_payload:
+                    self._register_and_run(
+                        VerificationCase("configuration-unchanged", "Compare initial and final *LRN? setup", VerificationRisk.READ_ONLY),
+                        self._case_read_only_final_state,
+                    )
                 if self._write_case_ran and self.baseline_payload is not None:
                     self._register_and_run(
                         VerificationCase(
@@ -1168,6 +1218,17 @@ class HardwareVerifier:
                         ),
                         self._restore_baseline,
                     )
+                if self._visa_exclusive_locked:
+                    try:
+                        self.scope.ensure_connected().unlock()
+                    except BaseException as exc:
+                        self.results.append(
+                            VerificationResult(
+                                case_id="visa-exclusive-unlock", title="Release exclusive VISA ownership",
+                                risk="read-only", status="FAIL", duration_s=0.0,
+                                error_type=type(exc).__name__, error_message=str(exc),
+                            )
+                        )
                 try:
                     self.scope.disconnect()
                 except BaseException as exc:
@@ -1204,6 +1265,16 @@ class HardwareVerifier:
         else:
             status = "SKIP"
         return status, [result.case_id for result in matching]
+
+    @staticmethod
+    def _git_sha() -> str:
+        try:
+            return subprocess.check_output(
+                ["git", "rev-parse", "--verify", "HEAD"],
+                stderr=subprocess.DEVNULL, timeout=3, text=True,
+            ).strip()
+        except (OSError, subprocess.SubprocessError):
+            return os.getenv("GITHUB_SHA", "")
 
     def build_report(self) -> dict[str, Any]:
         try:
@@ -1256,6 +1327,20 @@ class HardwareVerifier:
             "platform": platform.platform(),
             "resource": self.config.resource,
             "idn": self.idn,
+            "serial": self.idn.split(",")[2].strip() if len(self.idn.split(",")) >= 3 else "",
+            "firmware": self.idn.split(",")[3].strip() if len(self.idn.split(",")) >= 4 else "",
+            "git_sha": self._git_sha(),
+            "github_run_id": os.getenv("GITHUB_RUN_ID", ""),
+            "github_run_url": (
+                f"{os.getenv('GITHUB_SERVER_URL')}/{os.getenv('GITHUB_REPOSITORY')}/actions/runs/{os.getenv('GITHUB_RUN_ID')}"
+                if os.getenv("GITHUB_RUN_ID") and os.getenv("GITHUB_REPOSITORY") else ""
+            ),
+            "read_only_query_count": self.read_only_guard.query_count if self.read_only_guard else None,
+            "read_only_blocked_count": self.read_only_guard.blocked_count if self.read_only_guard else None,
+            "read_only_query_log": self.read_only_guard.query_log if self.read_only_guard else [],
+            "visa_exclusive_lock_required": self.config.require_exclusive_lock,
+            "visa_backend": self.visa_backend,
+            "operator_verified_options": self.config.verified_options,
             "profile": RISK_LABELS[self.config.profile],
             "test_channel": self.config.test_channel,
             "waveform_points": self.config.waveform_points,
@@ -1287,6 +1372,10 @@ class HardwareVerifier:
             f"- Package: `{report['package_version']}`",
             f"- Resource: `{report['resource']}`",
             f"- Instrument: `{report['idn'] or 'unknown'}`",
+            f"- Tested Git SHA: `{report['git_sha'] or 'unknown'}`",
+            f"- VISA backend: `{report['visa_backend'] or 'unknown'}`",
+            f"- Operator-verified options: `{report['operator_verified_options'] or 'unknown'}`",
+            f"- GitHub run: `{report['github_run_url'] or 'local'}`",
             f"- Profile: **{report['profile']}**",
             f"- Started: `{report['started_at']}`",
             f"- Finished: `{report['finished_at']}`",
