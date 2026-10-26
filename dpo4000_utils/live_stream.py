@@ -263,6 +263,17 @@ def capture_group(
     """
     started = clock()
     frames: list[WaveformFrame] = []
+    # A source that is not displayed makes WFMOUTPRE? fail with no reply (error
+    # 2244), which surfaces only as a VISA timeout. Fail fast and name the cause.
+    list_enabled = getattr(scope, "_enabled_channel_numbers", None)
+    if callable(list_enabled):
+        shown = {f"CH{number}" for number in list_enabled()}
+        hidden = [source for source in config.sources or () if source not in shown]
+        if hidden:
+            raise ValueError(
+                f"{', '.join(hidden)} not displayed on the scope; turn the channel on "
+                "or deselect it (A22 never changes channel state)"
+            )
     for source in config.sources or ():
         channel_started = clock()
         waveform = scope.read_channel_waveform_data(

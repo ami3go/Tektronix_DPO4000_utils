@@ -201,3 +201,21 @@ def test_oversized_driver_return_is_rejected_even_for_bounded_request():
 
     with pytest.raises(ValueError, match="retention limit"):
         capture_frame(OversizedFake(), StreamConfig(point_count=1_000_000), 1, 1)
+
+
+def test_capture_group_rejects_hidden_channels_before_any_transfer():
+    class Fake:
+        called: list = []
+
+        def _enabled_channel_numbers(self):
+            return [1]
+
+        def read_channel_waveform_data(self, channel, **kwargs):
+            self.called.append(channel)
+            raise AssertionError("must not transfer a hidden channel")
+
+    fake = Fake()
+    config = StreamConfig(sources=("CH1", "CH2", "CH4"))
+    with pytest.raises(ValueError, match="CH2, CH4 not displayed"):
+        capture_group(fake, config, 1, 1)
+    assert fake.called == []

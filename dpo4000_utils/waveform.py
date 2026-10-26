@@ -731,6 +731,9 @@ class WaveformMixin:
     def read_enabled_waveforms(self, **kwargs: Any) -> dict[str, WaveformData]:
         return read_enabled_waveforms(self.ensure_connected(), **kwargs)
 
+    def _enabled_channel_numbers(self, channels: Iterable[int] = range(1, 5)) -> list[int]:
+        return enabled_channels(self.ensure_connected(), channels)
+
     def _read_channel_waveform(self, channel: int):
         return read_channel_waveform(self.ensure_connected(), channel)
 
