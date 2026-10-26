@@ -21,7 +21,9 @@ from PySide6.QtWidgets import (
 from ...settings import save_scope_settings_file
 from ..milestone_a_window import QtScopeWindow as MilestoneAFeatureWindow
 from ..logger_page_layout import LIVE_PAGE_INDEX
-from .pages.live_waveform import LIVE_ACTION_DESCRIPTION, LiveWaveformPanel, LiveWaveformPlot
+from .pages.live_waveform import (
+    LIVE_ACTION_DESCRIPTION, LiveChannelCards, LiveWaveformPanel, LiveWaveformPlot,
+)
 from .pages import (
     attach_measurement_trend_panel,
     attach_scientific_export_panel,
@@ -172,6 +174,9 @@ class ComposedFeatureSurface(MilestoneAFeatureWindow):
         live_layout.addWidget(heading)
         plot = LiveWaveformPlot(live_page)
         live_layout.addWidget(plot, 1)
+        cards = LiveChannelCards(live_page)
+        plot.attach_cards(cards)
+        live_layout.addWidget(cards)
         viewport.addWidget(live_page)
 
         self._composition_viewport_stack = viewport

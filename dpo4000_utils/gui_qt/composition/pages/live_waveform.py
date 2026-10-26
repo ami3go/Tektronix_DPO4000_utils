@@ -40,6 +40,97 @@ CHANNEL_COLORS = {
 LIVE_ACTION_DESCRIPTION = "A22 live waveform group"
 
 
+_SI_PREFIXES = ((1e9, "G"), (1e6, "M"), (1e3, "k"), (1.0, ""), (1e-3, "m"),
+                (1e-6, "µ"), (1e-9, "n"), (1e-12, "p"))
+
+
+def format_si(value: float, unit: str) -> str:
+    """Engineering-notation value with an SI prefix, e.g. 0.0012 V -> '1.2 mV'."""
+    if not math.isfinite(value):
+        return f"— {unit}"
+    if value == 0:
+        return f"0 {unit}"
+    for scale, prefix in _SI_PREFIXES:
+        if abs(value) >= scale:
+            return f"{value / scale:.3g} {prefix}{unit}"
+    return f"{value / 1e-12:.3g} p{unit}"
+
+
+def channel_card_lines(frame: WaveformFrame) -> tuple[str, ...]:
+    """Brief per-channel facts, all derived from the transfer's own preamble."""
+    wave = frame.waveform
+    pre = wave.preamble
+    y_unit = pre.y_unit.strip().strip('"') or "V"
+    x_unit = pre.x_unit.strip().strip('"') or "s"
+    span = pre.x_increment * wave.sample_count
+    finite = [value for value in frame.render_y if math.isfinite(value)]
+    lines = [
+        f"Vert. res  {format_si(pre.y_multiplier, y_unit)}/LSB",
+        f"Sample  {format_si(pre.x_increment, x_unit)} ({format_si(1 / pre.x_increment, 'S/s') if pre.x_increment > 0 else '—'})",
+        f"Record  {wave.sample_count:,} pts · {format_si(span, x_unit)}",
+        f"Horiz.  {format_si(span / 10, x_unit)}/div",
+    ]
+    if finite:
+        lines.append(f"Vpp  {format_si(max(finite) - min(finite), y_unit)}")
+    return tuple(lines)
+
+
+class LiveChannelCards(QWidget):
+    """One compact card per displayed channel, below the Live View plot."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("liveChannelCards")
+        self._row = QHBoxLayout(self)
+        self._row.setContentsMargins(0, 0, 0, 0)
+        self._row.setSpacing(8)
+        self._cards: dict[str, QLabel] = {}
+        for source, color in CHANNEL_COLORS.items():
+            card = QLabel()
+            card.setObjectName(f"liveChannelCard{source}")
+            card.setTextFormat(Qt.TextFormat.RichText)
+            card.setMinimumWidth(170)
+            card.setStyleSheet(
+                f"QLabel {{ background: #0b1620; color: #b7c7d0; padding: 6px 8px;"
+                f" border: 1px solid {color.name()}; border-left: 5px solid {color.name()}; }}"
+            )
+            card.hide()
+            self._cards[source] = card
+            self._row.addWidget(card)
+        self._placeholder = QLabel("Channel details appear after the first complete group")
+        self._placeholder.setObjectName("liveChannelCardsPlaceholder")
+        self._placeholder.setStyleSheet("color: #6b8794; padding: 6px 8px;")
+        self._row.addWidget(self._placeholder)
+        self._row.addStretch(1)
+
+    @property
+    def visible_sources(self) -> tuple[str, ...]:
+        return tuple(s for s, card in self._cards.items() if not card.isHidden())
+
+    def card_text(self, source: str) -> str:
+        return self._cards[source].text()
+
+    def show_frames(self, frames: dict[str, WaveformFrame]) -> None:
+        for source, card in self._cards.items():
+            frame = frames.get(source)
+            if frame is None:
+                card.hide()
+                continue
+            label = frame.waveform.label.strip().strip('"')
+            title = f"{source} · {label}" if label and label != source else source
+            body = "<br>".join(channel_card_lines(frame))
+            card.setText(
+                f"<b style='color:{CHANNEL_COLORS[source].name()}'>{title}</b><br>{body}"
+            )
+            card.setEnabled(True)
+            card.show()
+        self._placeholder.setVisible(not frames)
+
+    def set_stale(self, stale: bool) -> None:
+        for card in self._cards.values():
+            card.setEnabled(not stale)
+
+
 class LiveWaveformPlot(QWidget):
     """Large, bounded, shared-axis CH1..CH4 waveform canvas."""
 
@@ -53,7 +144,11 @@ class LiveWaveformPlot(QWidget):
         self._skew_s = 0.0
         self._stale = False
         self._volts_per_div: float | None = None
+        self._cards: LiveChannelCards | None = None
         self._message = "Select Live, choose channels, then Start"
+
+    def attach_cards(self, cards: LiveChannelCards) -> None:
+        self._cards = cards
 
     def set_vertical_scale(self, volts_per_div: float | None) -> None:
         """Fix the 8-division graticule (centred on 0 V) or return to autoscale."""
@@ -79,11 +174,16 @@ class LiveWaveformPlot(QWidget):
             self._skew_s = 0.0
         self._stale = False
         self._message = ""
+        if self._cards is not None:
+            self._cards.show_frames(self._frames)
+            self._cards.set_stale(False)
         self.update()
 
     def mark_stale(self, message: str = "Last complete group (stale)") -> None:
         self._stale = bool(self._frames)
         self._message = message
+        if self._cards is not None:
+            self._cards.set_stale(self._stale)
         self.update()
 
     def _bounds(self) -> tuple[float, float, float, float] | None:
@@ -499,6 +599,6 @@ def attach_live_waveform_panel(host: Any, page: QWidget) -> QWidget:
 
 
 __all__ = [
-    "CHANNEL_COLORS", "LiveWaveformPanel", "LiveWaveformPlot",
+    "CHANNEL_COLORS", "LiveChannelCards", "LiveWaveformPanel", "LiveWaveformPlot",
     "attach_live_waveform_panel",
 ]

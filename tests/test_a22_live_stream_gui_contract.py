@@ -244,3 +244,68 @@ def test_vertical_grid_auto_or_fixed_is_presentation_only(monkeypatch):
     assert panel.plot._volts_per_div is None
     panel.shutdown()
     app.processEvents()
+
+
+def _card_frame(source="CH1", label="", y_multiplier=0.01, n=100_000):
+    from dataclasses import replace
+    from dpo4000_utils.waveform import WaveformData, WaveformPreamble
+
+    preamble = WaveformPreamble(
+        byte_width=2, encoding="BINARY", binary_format="RI", byte_order="MSB",
+        record_point_count=n, point_format="Y", x_unit='"s"', x_increment=4e-8,
+        x_zero=0.0, point_offset=0.0, y_unit='"V"', y_multiplier=y_multiplier,
+        y_offset=0.0, y_zero=0.0,
+    )
+    wave = WaveformData(
+        source=source, label=label, start_index=1, stop_index=n,
+        requested_encoding="RIBINARY", preamble=preamble, samples=array("h", [0]) * n,
+        acquired_at=datetime.now(timezone.utc),
+    )
+    return WaveformFrame(
+        generation=1, sequence=1, acquired_monotonic_s=0.0,
+        acquired_wall_time=datetime.now(timezone.utc), waveform=wave,
+        acquisition_duration_s=0.1, render_x=(0.0, 1.0), render_y=(-1.2, 1.3),
+    )
+
+
+def test_channel_card_lines_are_brief_and_use_si_prefixes():
+    from dpo4000_utils.gui_qt.composition.pages.live_waveform import (
+        channel_card_lines, format_si,
+    )
+
+    assert format_si(0.0012, "V") == "1.2 mV"
+    assert format_si(25e6, "S/s") == "25 MS/s"
+    assert format_si(4e-8, "s") == "40 ns"
+    frame = _card_frame(y_multiplier=0.0003125)
+    lines = channel_card_lines(frame)
+    assert lines[0] == "Vert. res  312 µV/LSB"
+    assert lines[1] == "Sample  40 ns (25 MS/s)"
+    assert lines[2] == "Record  100,000 pts · 4 ms"
+    assert lines[3] == "Horiz.  400 µs/div"
+    assert lines[4] == "Vpp  2.5 V"
+    assert len(lines) <= 5
+
+
+def test_cards_follow_the_plot_and_show_only_displayed_channels(monkeypatch):
+    qt = pytest.importorskip("PySide6.QtWidgets")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from dpo4000_utils.gui_qt.composition.pages.live_waveform import (
+        LiveChannelCards, LiveWaveformPlot,
+    )
+
+    app = qt.QApplication.instance() or qt.QApplication([])
+    plot, cards = LiveWaveformPlot(), LiveChannelCards()
+    plot.attach_cards(cards)
+    cards.show()
+    assert cards.visible_sources == () and not cards._placeholder.isHidden()
+    plot._cards.show_frames({"CH1": _card_frame("CH1", label="S11"),
+                             "CH3": _card_frame("CH3")})
+    assert cards.visible_sources == ("CH1", "CH3")
+    assert "CH1 · S11" in cards.card_text("CH1") and "Vert. res" in cards.card_text("CH3")
+    assert cards._placeholder.isHidden()
+    plot._frames = {"CH1": _card_frame("CH1")}
+    plot.mark_stale("Stopped")
+    assert not cards._cards["CH1"].isEnabled()
+    cards.show_frames({})
+    assert cards.visible_sources == () and not cards._placeholder.isHidden()
+    app.processEvents()
