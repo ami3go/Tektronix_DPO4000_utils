@@ -172,6 +172,10 @@ def _fake_setup_round_trip(monkeypatch):
         "dpo4000_utils.baseline_capture.apply_setup_string",
         lambda instrument, setup, **kwargs: None,
     )
+    monkeypatch.setattr(
+        "dpo4000_utils.baseline_capture.restore_setup_verified",
+        lambda instrument, setup, **kwargs: (True, 1, setup),
+    )
 
 
 def _config(tmp_path, **overrides):
@@ -231,3 +235,57 @@ def test_capture_timing_smoke(tmp_path, monkeypatch):
     assert result["unsupported_trigger_probe"]["probe_timeout_ms"] == 125
     assert set(result["waveform_acquisition"]) == {"100", "1000"}
     assert result["not_yet_covered"] == list(NOT_YET_COVERED)
+
+
+def test_setup_round_trip_waits_for_the_scope_to_settle(tmp_path, monkeypatch):
+    """The round trip applies once and polls; a transient mismatch must not fail the capture."""
+    from dpo4000_utils import baseline_capture as module
+    from dpo4000_utils import settings
+
+    state = {"now": 0.0, "applied_at": None}
+    reads: list[str] = []
+
+    class Session:
+        def write(self, command):
+            if command != "*CLS":
+                state["applied_at"] = state["now"]
+
+        def query(self, command):
+            reads.append(command)
+            settled = state["applied_at"] is None or state["now"] - state["applied_at"] >= 3.0
+            return ":SET 1" if settled else ":SET 1;UNSETTLED"
+
+    monkeypatch.setattr(
+        module, "build_scope_settings_payload", lambda session: {"instrument": "FAKE", "setup": ":SET 1"}
+    )
+    real_restore = settings.restore_setup_verified
+    monkeypatch.setattr(
+        module,
+        "restore_setup_verified",
+        lambda *args, **kwargs: real_restore(
+            *args,
+            sleep=lambda seconds: state.__setitem__("now", state["now"] + seconds),
+            monotonic=lambda: state["now"],
+            **{**kwargs, "restore_delay_s": 0},
+        ),
+    )
+    capture = HardwareBaselineCapture(_config(tmp_path))
+    scope = FakeScope("FAKE::INSTR")
+    scope.ensure_connected = lambda: Session()
+
+    assert capture._verify_setup_round_trip(scope) == {"restored": True, "instrument_matches": True}
+
+
+def test_setup_round_trip_still_fails_when_the_mismatch_persists(tmp_path, monkeypatch):
+    from dpo4000_utils import baseline_capture as module
+
+    monkeypatch.setattr(
+        module, "build_scope_settings_payload", lambda session: {"instrument": "FAKE", "setup": ":SET 1"}
+    )
+    monkeypatch.setattr(module, "restore_setup_verified", lambda *a, **k: (False, 2, ":OTHER"))
+    capture = HardwareBaselineCapture(_config(tmp_path))
+    scope = FakeScope("FAKE::INSTR")
+    scope.ensure_connected = lambda: object()
+
+    with pytest.raises(RuntimeError, match="round-trip readback mismatch"):
+        capture._verify_setup_round_trip(scope)

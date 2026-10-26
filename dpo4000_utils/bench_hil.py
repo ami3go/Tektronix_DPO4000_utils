@@ -70,7 +70,7 @@ from .logger import (
 )
 from .logger.buffering import BufferSnapshot
 from .logger.models import LoggerRecord
-from .settings import apply_setup_string, build_scope_settings_payload
+from .settings import build_scope_settings_payload, restore_setup_verified
 
 PASS, FAIL, SKIP = "PASS", "FAIL", "SKIP"
 
@@ -367,11 +367,9 @@ class AutomationLoggerHilRunner:
     def _restore(self) -> str:
         if self.scope is None or self.baseline is None:
             return "No baseline available"
-        apply_setup_string(
+        exact, passes, _final = restore_setup_verified(
             self.scope.ensure_connected(),
             self.baseline["setup"],
-            wait_complete=False,
-            check_error=False,
             restore_delay_s=0.5,
         )
         after = build_scope_settings_payload(self.scope.ensure_connected())
@@ -379,9 +377,9 @@ class AutomationLoggerHilRunner:
             json.dumps(after, indent=2),
             encoding="utf-8",
         )
-        if after.get("setup") == self.baseline.get("setup"):
-            return "Exact *LRN? match restored"
-        return "Baseline reapplied; *LRN? differs. Compare before/after JSON"
+        if exact and after.get("setup") == self.baseline.get("setup"):
+            return f"Exact *LRN? match restored in {passes} pass(es)"
+        return f"Baseline reapplied {passes} time(s); *LRN? still differs. Compare before/after JSON"
 
     def _a1(self) -> tuple[str, list[dict[str, Any]]]:
         if not self.config.hardcopy:

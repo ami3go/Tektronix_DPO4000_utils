@@ -11,6 +11,7 @@ from dpo4000_utils.settings import (
     build_scope_settings_payload,
     load_scope_settings_file,
     resolve_settings_path,
+    restore_setup_verified,
     validate_scope_settings_payload,
 )
 
@@ -150,3 +151,127 @@ def test_payload_allows_compatible_dpo4000_model_with_warning():
             payload,
             connected_identity="TEKTRONIX,DPO4054,SN,1.0",
         ) is payload
+
+
+class Clock:
+    """Deterministic monotonic clock + sleep for settling tests."""
+
+    def __init__(self):
+        self.now = 0.0
+
+    def monotonic(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.now += seconds
+
+
+class SettlingScope:
+    """Fake scope that applies a setup asynchronously, like the DPO4054.
+
+    After a write, dependent settings (cursor positions) read back wrong until
+    ``settle_s`` has elapsed on the shared clock. ``applies_needed`` models a setup that is
+    only accepted on a later application.
+    """
+
+    def __init__(self, clock, state, settle_s=3.0, applies_needed=1):
+        self.clock = clock
+        self.state = state
+        self.settle_s = settle_s
+        self.applies_needed = applies_needed
+        self.applied = 0
+        self.target = None
+        self.applied_at = None
+        self.timeout = 1000
+
+    def write(self, command):
+        if command == "*CLS":
+            return
+        self.applied += 1
+        self.target = command
+        self.applied_at = self.clock.now
+        if self.applied < self.applies_needed:
+            self.target = None  # not accepted this time
+
+    def query(self, command):
+        assert command in {"*LRN?", "SET?"}
+        if self.target is not None:
+            settled = self.clock.now - self.applied_at >= self.settle_s
+            self.state = self.target if settled else self.target + ";UNSETTLED"
+        return self.state
+
+
+def _restore(scope, clock, setup, **kwargs):
+    return restore_setup_verified(
+        scope, setup, restore_delay_s=0, sleep=clock.sleep, monotonic=clock.monotonic, **kwargs
+    )
+
+
+def test_restore_setup_verified_is_a_no_op_when_already_exact():
+    clock = Clock()
+    scope = SettlingScope(clock, ":A 1;:B 2")
+    assert _restore(scope, clock, ":A 1;:B 2") == (True, 0, ":A 1;:B 2")
+    assert scope.applied == 0
+
+
+def test_restore_setup_verified_waits_for_the_scope_to_settle_instead_of_reapplying():
+    clock = Clock()
+    scope = SettlingScope(clock, ":OTHER", settle_s=3.0)
+    exact, passes, final = _restore(scope, clock, ":A 1;:B 2")
+    assert (exact, passes, final) == (True, 1, ":A 1;:B 2")
+    assert scope.applied == 1  # a re-apply would restart the settling window
+    assert 3.0 <= clock.now < 4.0
+
+
+def test_restore_setup_verified_reapplies_when_the_first_apply_was_not_accepted():
+    clock = Clock()
+    scope = SettlingScope(clock, ":OTHER", settle_s=1.0, applies_needed=2)
+    exact, passes, _final = _restore(scope, clock, ":A 1", settle_timeout_s=3.0)
+    assert (exact, passes) == (True, 2)
+
+
+def test_restore_setup_verified_gives_up_after_max_passes_and_reports_the_mismatch():
+    clock = Clock()
+    scope = SettlingScope(clock, ":OTHER", settle_s=999.0)
+    exact, passes, final = _restore(scope, clock, ":A 1", max_passes=2, settle_timeout_s=2.0)
+    assert exact is False and passes == 2 and scope.applied == 2
+    assert final.endswith(";UNSETTLED")
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"max_passes": 0}, {"max_passes": True}, {"max_passes": 1.5},
+        {"settle_timeout_s": 0}, {"settle_timeout_s": float("nan")},
+        {"poll_interval_s": -1}, {"poll_interval_s": True},
+    ],
+)
+def test_restore_setup_verified_validates_arguments(kwargs):
+    clock = Clock()
+    with pytest.raises(ValueError):
+        _restore(SettlingScope(clock, ":A"), clock, ":A", **kwargs)
+
+
+def test_restore_setup_verified_always_apply_exercises_the_apply_path_even_when_exact():
+    clock = Clock()
+    scope = SettlingScope(clock, ":A 1", settle_s=2.0)
+    exact, passes, final = _restore(scope, clock, ":A 1", always_apply=True)
+    assert (exact, passes, final) == (True, 1, ":A 1")
+    assert scope.applied == 1 and clock.now >= 2.0
+
+
+def test_restore_setup_verified_passes_check_error_to_each_application(monkeypatch):
+    from dpo4000_utils import settings as module
+
+    seen = []
+    clock = Clock()
+    scope = SettlingScope(clock, ":OTHER", settle_s=0.0)
+    real = module.apply_setup_string
+
+    def spy(session, setup, **kwargs):
+        seen.append(kwargs["check_error"])
+        return real(session, setup, **{**kwargs, "check_error": False})
+
+    monkeypatch.setattr(module, "apply_setup_string", spy)
+    _restore(scope, clock, ":A 1", check_error=True)
+    assert seen == [True]

@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import time
 import warnings
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from .connection import temporary_session_attributes
 from .errors import (
@@ -299,6 +300,62 @@ def apply_setup_string(
             )
 
 
+def restore_setup_verified(
+    scope: Any,
+    setup_string: str,
+    *,
+    max_passes: int = 2,
+    settle_timeout_s: float = 10.0,
+    poll_interval_s: float = 0.5,
+    restore_delay_s: float = 0.5,
+    always_apply: bool = False,
+    check_error: bool = False,
+    sleep: Callable[[float], None] = time.sleep,
+    monotonic: Callable[[], float] = time.monotonic,
+) -> tuple[bool, int, str]:
+    """Apply ``setup_string`` and wait until ``*LRN?`` reads back identical.
+
+    The scope settles asynchronously: after a record-length change, dependent settings such
+    as the vertical-bar cursor positions read back as defaults for a few seconds and then
+    correct themselves. Comparing immediately therefore reports a false mismatch, and
+    re-applying at once only restarts the settling. So the setup is applied, the read-back
+    is polled for up to ``settle_timeout_s``, and only if it is still different is the setup
+    applied again (at most ``max_passes`` applications in total).
+
+    ``always_apply`` applies at least once even when the scope already reads back identical
+    (a round-trip check of the apply path itself). ``check_error`` has each application
+    verify ``*ESR?`` like :func:`apply_setup_string`.
+
+    Returns ``(exact, passes_applied, final_setup)``. ``passes_applied`` is 0 when the scope
+    already matched and ``always_apply`` was not requested.
+    """
+    if isinstance(max_passes, bool) or not isinstance(max_passes, int) or max_passes < 1:
+        raise ValueError("max_passes must be a positive integer")
+    for name, value in (("settle_timeout_s", settle_timeout_s), ("poll_interval_s", poll_interval_s)):
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+            raise ValueError(f"{name} must be a positive finite number")
+    expected = str(setup_string).strip()
+    current = read_scope_setup_string(scope)
+    passes = 0
+    needs_apply = always_apply or current != expected
+    while needs_apply and passes < max_passes:
+        passes += 1
+        apply_setup_string(
+            scope,
+            setup_string,
+            wait_complete=False,
+            check_error=check_error,
+            restore_delay_s=restore_delay_s,
+        )
+        deadline = monotonic() + settle_timeout_s
+        current = read_scope_setup_string(scope)
+        while current != expected and monotonic() < deadline:
+            sleep(poll_interval_s)
+            current = read_scope_setup_string(scope)
+        needs_apply = current != expected
+    return current == expected, passes, current
+
+
 def apply_scope_settings_file(
     scope: Any,
     file_name: str | Path,
@@ -406,6 +463,7 @@ __all__ = [
     "load_scope_settings_file",
     "read_scope_setup_string",
     "resolve_settings_path",
+    "restore_setup_verified",
     "save_scope_settings_file",
     "validate_scope_settings_payload",
 ]
