@@ -615,8 +615,11 @@ class HeadlessJobRunner:
                     )
 
                 # Read-only *LRN? snapshot for the evidence bundle, before any step runs.
+                # The driver exposes no ``query``; the setup helpers need the raw VISA session.
                 setup_before = (
-                    read_scope_setup_string(scope) if config.evidence_path is not None else None
+                    read_scope_setup_string(scope.ensure_connected())
+                    if config.evidence_path is not None
+                    else None
                 )
 
                 def write_evidence(
@@ -634,7 +637,7 @@ class HeadlessJobRunner:
                         rule_set=rules,
                         resource=config.resource,
                         setup_before=setup_before,
-                        setup_after=read_scope_setup_string(scope),
+                        setup_after=read_scope_setup_string(scope.ensure_connected()),
                     )
 
                 self._sequencer = RecipeSequencer(scope)
