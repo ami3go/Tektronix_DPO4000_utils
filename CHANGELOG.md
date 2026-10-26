@@ -50,7 +50,8 @@
   every run reported them UNVERIFIED. They are now covered by the offline pure-function case.
 - HIL and hardware-verifier setup restore now waits for the scope to settle and verifies the
   `*LRN?` read-back instead of comparing immediately, so cursor positions are no longer
-  reported as unrestored after a record-length change.
+  reported as unrestored after a record-length change. The R0 capture's setup round-trip check
+  uses the same settle-aware comparison.
 - Extended horizontal scale, advanced-trigger, scientific-export, evidence, trend, and
   headless-runner validation across fake-instrument and real-hardware test layers.
 

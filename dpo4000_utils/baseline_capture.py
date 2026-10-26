@@ -21,7 +21,7 @@ from typing import Any, Callable
 from .control import ChannelConfig, TriggerConfig, bool_from_scope_response
 from .errors import DPOError
 from .instrument import DPO4054
-from .settings import apply_setup_string, build_scope_settings_payload
+from .settings import apply_setup_string, build_scope_settings_payload, restore_setup_verified
 
 NOT_YET_COVERED: tuple[str, ...] = (
     "worker dispatch / GUI callback latency (needs a fake-clock + Qt heartbeat harness)",
@@ -221,15 +221,13 @@ class HardwareBaselineCapture:
     def _verify_setup_round_trip(self, scope: DPO4054) -> dict[str, Any]:
         instrument = scope.ensure_connected()
         before = build_scope_settings_payload(instrument)
-        apply_setup_string(
-            instrument,
-            before["setup"],
-            wait_complete=False,
-            check_error=False,
-            restore_delay_s=0.5,
+        # Re-applying even the current setup makes the scope re-derive dependent settings
+        # (cursor positions read back as defaults for a few seconds), so wait for the
+        # read-back to settle instead of comparing immediately.
+        setup_matches, _passes, _final = restore_setup_verified(
+            instrument, before["setup"], always_apply=True, restore_delay_s=0.5
         )
         after = build_scope_settings_payload(instrument)
-        setup_matches = before["setup"] == after["setup"]
         instrument_matches = before["instrument"] == after["instrument"]
         if not setup_matches or not instrument_matches:
             raise RuntimeError("R0 functional setup round-trip readback mismatch")

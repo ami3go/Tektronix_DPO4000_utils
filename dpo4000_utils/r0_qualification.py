@@ -15,7 +15,7 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any
 
-from .settings import apply_setup_string, build_scope_settings_payload, read_scope_setup_string
+from .settings import build_scope_settings_payload, restore_setup_verified
 
 
 def _sha256(value: str) -> str:
@@ -46,9 +46,19 @@ class VerifiedSetupGuard:
     If restoration fails, it raises even when benchmark collection succeeded.
     """
 
-    def __init__(self, capture: Any, output_dir: Path, expected_idn: str):
+    def __init__(
+        self,
+        capture: Any,
+        output_dir: Path,
+        expected_idn: str,
+        *,
+        settle_timeout_s: float = 10.0,
+        poll_interval_s: float = 0.5,
+    ):
         if not expected_idn.strip():
             raise ValueError("An operator-verified exact --expected-idn is mandatory")
+        self.settle_timeout_s = settle_timeout_s
+        self.poll_interval_s = poll_interval_s
         self.capture = capture
         self.output_dir = Path(output_dir)
         self.expected_idn = expected_idn.strip()
@@ -92,10 +102,17 @@ class VerifiedSetupGuard:
             if before_restore_idn != self.expected_idn:
                 raise RuntimeError("Instrument identity changed; refusing to apply another unit's setup")
             instrument = scope.ensure_connected()
-            apply_setup_string(instrument, self.initial["setup"], wait_complete=False,
-                               check_error=True, restore_delay_s=0.5)
+            # The scope settles asynchronously (cursor positions read back as defaults for a
+            # few seconds after a record-length change): wait for the read-back instead of
+            # judging the restoration 0.5 s after the write. Anything still different after
+            # the settle window is a real failure and stays fail-closed below.
+            _exact, passes, final_setup = restore_setup_verified(
+                instrument, self.initial["setup"], check_error=True, restore_delay_s=0.5,
+                always_apply=True, settle_timeout_s=self.settle_timeout_s,
+                poll_interval_s=self.poll_interval_s,
+            )
+            self.report["restore_passes"] = passes
             final_idn = scope.query_identity().strip()
-            final_setup = read_scope_setup_string(instrument)
             self.report["final_idn"] = final_idn
             self.report["final_setup_sha256"] = _sha256(final_setup)
             if final_idn != self.expected_idn:
