@@ -45,6 +45,9 @@
   VISA connection.
 - Improved fast single-acquisition synchronization using the scope `BUSY?` state.
 - Fixed full-waveform transfer behavior after the DPO4054 record length shrinks.
+- The hardware verifier no longer always exits 1: eight framework helper functions (rule
+  mapping, recipe-result values, A21 export/import) were classified but never exercised, so
+  every run reported them UNVERIFIED. They are now covered by the offline pure-function case.
 - Extended horizontal scale, advanced-trigger, scientific-export, evidence, trend, and
   headless-runner validation across fake-instrument and real-hardware test layers.
 
