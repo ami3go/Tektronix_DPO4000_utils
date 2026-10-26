@@ -29,7 +29,7 @@ def waveform(samples=None, *, source="CH1", x_increment=0.001):
 @pytest.mark.parametrize("override", [
     {"source": "MATH"}, {"source": "CH5"}, {"source": "ch1"},
     {"point_count": 0}, {"point_count": -1}, {"point_count": True},
-    {"point_count": 1_000_001}, {"point_count": None}, {"target_hz": 0}, {"target_hz": -1},
+    {"point_count": 1_000_001}, {"target_hz": 0}, {"target_hz": -1},
     {"target_hz": float("nan")}, {"target_hz": float("inf")},
     {"target_hz": 101}, {"render_points": 99}, {"render_points": 50_001},
     {"buffer_frames": 0}, {"buffer_frames": 9}, {"reconnect": True},
@@ -45,7 +45,7 @@ def test_invalid_config(override):
 def test_default_acceptance_configuration():
     config = StreamConfig()
     assert (config.source, config.point_count, config.target_hz, config.render_points) == (
-        "CH1", 10_000, 5.0, 2_000
+        "CH1", None, 5.0, 2_000
     )
     assert StreamConfig(point_count=1_000_000, target_hz=100, buffer_frames=8)
     multi = StreamConfig(sources=("CH1", "CH2", "CH3", "CH4"))
@@ -83,13 +83,13 @@ def test_public_driver_api_only():
         def __init__(self):
             self.called = []
 
-        def read_channel_waveform_data(self, channel, *, point_count):
+        def read_channel_waveform_data(self, channel, *, point_count, max_points=None):
             self.called.append((channel, point_count))
             return waveform()
 
     fake = Fake()
     frame = capture_frame(fake, StreamConfig(), 11, 2)
-    assert fake.called == [(1, 10_000)]
+    assert fake.called == [(1, None)]
     assert (frame.generation, frame.sequence) == (11, 2)
     assert len(frame.render_x) <= 2000
     assert frame.acquired_monotonic_s >= 0
@@ -101,7 +101,7 @@ def test_four_channel_group_is_complete_ordered_and_counted():
         def __init__(self):
             self.called = []
 
-        def read_channel_waveform_data(self, channel, *, point_count):
+        def read_channel_waveform_data(self, channel, *, point_count, max_points=None):
             self.called.append((channel, point_count))
             return waveform(source=f"CH{channel}")
 
@@ -110,7 +110,7 @@ def test_four_channel_group_is_complete_ordered_and_counted():
     group = capture_group(fake, config, 7, 9)
     assert isinstance(group, WaveformGroup)
     assert group.sources == ("CH1", "CH2", "CH3", "CH4")
-    assert fake.called == [(1, 10_000), (2, 10_000), (3, 10_000), (4, 10_000)]
+    assert fake.called == [(1, None), (2, None), (3, None), (4, None)]
     assert group.sample_count == 4_000
     assert group.byte_count == 8_000
     engine = LiveStreamEngine(lambda: 0.0)
@@ -136,7 +136,7 @@ def test_four_channel_group_is_complete_ordered_and_counted():
 
 def test_four_channel_group_rejects_partial_or_misaligned_cycle():
     class Partial:
-        def read_channel_waveform_data(self, channel, *, point_count):
+        def read_channel_waveform_data(self, channel, *, point_count, max_points=None):
             if channel == 3:
                 raise TimeoutError("CH3 transfer failed")
             return waveform(source=f"CH{channel}")
@@ -146,7 +146,7 @@ def test_four_channel_group_rejects_partial_or_misaligned_cycle():
         capture_group(Partial(), config, 1, 1)
 
     class Misaligned:
-        def read_channel_waveform_data(self, channel, *, point_count):
+        def read_channel_waveform_data(self, channel, *, point_count, max_points=None):
             return waveform(
                 source=f"CH{channel}",
                 x_increment=0.002 if channel == 4 else 0.001,
@@ -185,18 +185,18 @@ def test_minmax_pure_python_fallback_preserves_spikes(monkeypatch):
     assert indices[0] == 0 and indices[-1] == 9999
 
 
-def test_unbounded_full_record_is_rejected_before_driver_transfer():
-    class DangerousFake:
-        def read_channel_waveform_data(self, channel, *, point_count):
-            raise AssertionError("Unbounded transfer must not be issued")
+def test_scope_setup_read_passes_a_size_cap_instead_of_a_count():
+    class Fake:
+        def read_channel_waveform_data(self, channel, *, point_count, max_points=None):
+            assert point_count is None and max_points == 1_000_000
+            return waveform([0, 1, 2])
 
-    with pytest.raises(ValueError, match="Full is not bounded"):
-        capture_frame(DangerousFake(), StreamConfig(point_count=None), 1, 1)
+    assert capture_frame(Fake(), StreamConfig(), 1, 1).waveform.sample_count == 3
 
 
 def test_oversized_driver_return_is_rejected_even_for_bounded_request():
     class OversizedFake:
-        def read_channel_waveform_data(self, channel, *, point_count):
+        def read_channel_waveform_data(self, channel, *, point_count, max_points=None):
             return waveform([0] * 1_000_001)
 
     with pytest.raises(ValueError, match="retention limit"):

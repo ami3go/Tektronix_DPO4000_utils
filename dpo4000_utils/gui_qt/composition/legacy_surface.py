@@ -251,7 +251,6 @@ class ComposedFeatureSurface(MilestoneAFeatureWindow):
             for source, check in panel.channel_checks.items():
                 check.setChecked(source in requested)
         for combo, raw in (
-            (panel.points_combo, preferences.live_point_count),
             (panel.rate_combo, preferences.live_target_hz),
             (panel.render_combo, preferences.live_render_points),
         ):
@@ -273,7 +272,6 @@ class ComposedFeatureSurface(MilestoneAFeatureWindow):
                 source for source, check in panel.channel_checks.items()
                 if check.isChecked()
             )
-            preferences.live_point_count = str(panel.points_combo.currentData())
             preferences.live_target_hz = str(panel.rate_combo.currentData())
             preferences.live_render_points = str(panel.render_combo.currentData())
         return preferences

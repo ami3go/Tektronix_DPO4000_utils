@@ -52,6 +52,8 @@ class WaveformRequest:
     point_count: int | None = None
     encoding: str = "RIBINARY"
     sample_width: int = 2
+    # Refuse, before CURVE? is issued, a transfer larger than this many samples.
+    max_points: int | None = None
 
 
 @dataclass(frozen=True)
@@ -487,6 +489,11 @@ def read_waveform(scope: Any, request: WaveformRequest) -> WaveformData:
         sample_width=sample_width,
         expected_count=expected_count,
     )
+    if request.max_points is not None and expected_count > request.max_points:
+        raise DPOWaveformError(
+            f"Scope waveform has {expected_count:,} points, above the allowed "
+            f"{request.max_points:,}; reduce the scope record length."
+        )
     label = _read_source_label(scope, source)
 
     if encoding == "ASCII":
@@ -523,6 +530,7 @@ def read_channel_waveform_data(
     point_count: int | None = None,
     encoding: str = "RIBINARY",
     sample_width: int = 2,
+    max_points: int | None = None,
 ) -> WaveformData:
     return read_waveform(
         scope,
@@ -533,6 +541,7 @@ def read_channel_waveform_data(
             point_count=point_count,
             encoding=encoding,
             sample_width=sample_width,
+            max_points=max_points,
         ),
     )
 

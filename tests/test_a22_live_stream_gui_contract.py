@@ -17,7 +17,7 @@ PANEL = ROOT / "dpo4000_utils/gui_qt/composition/pages/live_waveform.py"
 def test_stable_object_names_and_throttled_render_path():
     text = PANEL.read_text(encoding="utf-8")
     for name in (
-        "liveWaveformPanel", "liveStreamSource", "liveStreamPoints",
+        "liveWaveformPanel", "liveStreamSource",
         "liveStreamTargetRate", "liveStreamRenderPoints",
         "liveStreamStartButton", "liveStreamPauseButton",
         "liveStreamResumeButton", "liveStreamStopButton",
@@ -76,7 +76,7 @@ def test_production_live_view_applies_and_collects_preferences(monkeypatch, tmp_
     monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
     path = tmp_path / "gui.json"
     save_preferences(GuiPreferences(
-        live_sources="CH2,CH4", live_point_count="100000",
+        live_sources="CH2,CH4",
         live_target_hz="10.0", live_render_points="5000",
     ), path)
     app = qt.QApplication.instance() or qt.QApplication([])
@@ -88,12 +88,11 @@ def test_production_live_view_applies_and_collects_preferences(monkeypatch, tmp_
         assert tuple(
             source for source, check in panel.channel_checks.items() if check.isChecked()
         ) == ("CH2", "CH4")
-        assert panel.points_combo.currentData() == 100_000
         assert panel.rate_combo.currentData() == 10.0
         assert panel.render_combo.currentData() == 5_000
         collected = window.feature_surface._collect_preferences()
         assert collected.live_sources == "CH2,CH4"
-        assert collected.live_point_count == "100000"
+        assert not hasattr(panel, "points_combo")
     finally:
         window.close()
         app.processEvents()

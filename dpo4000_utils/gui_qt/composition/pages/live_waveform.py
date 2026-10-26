@@ -207,14 +207,6 @@ class LiveWaveformPanel(QGroupBox):
         layout.addLayout(channel_row)
 
         form = QFormLayout()
-        self.points_combo = QComboBox()
-        self.points_combo.setObjectName("liveStreamPoints")
-        for label, value in (("1k", 1_000), ("10k", 10_000),
-                             ("100k", 100_000), ("1M", 1_000_000)):
-            self.points_combo.addItem(label, value)
-        self.points_combo.setCurrentIndex(1)
-        self.points_combo.currentIndexChanged.connect(self._refresh_status)
-        form.addRow("Per channel", self.points_combo)
         self.rate_combo = QComboBox()
         self.rate_combo.setObjectName("liveStreamTargetRate")
         for hz in (1, 2, 5, 10, 20, 100):
@@ -273,7 +265,6 @@ class LiveWaveformPanel(QGroupBox):
         )
         return StreamConfig(
             sources=sources,
-            point_count=self.points_combo.currentData(),
             target_hz=float(self.rate_combo.currentData()),
             render_points=int(self.render_combo.currentData()),
         )
@@ -435,7 +426,7 @@ class LiveWaveformPanel(QGroupBox):
         self.resume_button.setEnabled(state is StreamState.PAUSED)
         self.stop_button.setEnabled(state is not StreamState.IDLE)
         self.restart_button.setEnabled(not self._closed)
-        for control in (*self.channel_checks.values(), self.points_combo, self.rate_combo, self.render_combo):
+        for control in (*self.channel_checks.values(), self.rate_combo, self.render_combo):
             control.setEnabled(idle)
         stats = self.engine.stats()
         durations = " ".join(
@@ -444,7 +435,7 @@ class LiveWaveformPanel(QGroupBox):
         ) or "waiting"
         point_text = ", ".join(
             f"{source}:{count:,}" for source, count in self._last_actual_points.items()
-        ) or f"requested {int(self.points_combo.currentData()):,}/channel"
+        ) or "scope record as set"
         displayed_channel_count = len(visible_sources) if idle else stats.channel_count
         self.stats_label.setText(
             f"Actual {stats.acquisition_fps:.2f} groups/s | render {stats.render_fps:.2f}/s | "

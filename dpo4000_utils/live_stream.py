@@ -40,7 +40,7 @@ class StreamConfig:
     # ``source`` remains as a compatibility alias for callers that select one
     # channel. New code should use ``sources``; __post_init__ normalizes both.
     source: str = "CH1"
-    point_count: int | None = 10_000
+    point_count: int | None = None
     target_hz: float = 5.0
     render_points: int = 2_000
     buffer_frames: int = 2
@@ -64,11 +64,12 @@ class StreamConfig:
             raise ValueError("A22 sources must be selected from CH1..CH4")
         object.__setattr__(self, "sources", normalized)
         object.__setattr__(self, "source", normalized[0])
-        # Unlimited Full transfers can allocate many megabytes inside the VISA
-        # driver before A22 can reject an oversized return value. Permit only
-        # explicitly bounded requests until a pre-transfer size gate exists.
-        if type(self.point_count) is not int or not 1 <= self.point_count <= MAX_POINTS:
-            raise ValueError("point_count must be 1..1,000,000; Full is not bounded")
+        # ``None`` reads the record exactly as the scope is set up; the driver
+        # rejects a record above MAX_POINTS before CURVE? is issued.
+        if self.point_count is not None and (
+            type(self.point_count) is not int or not 1 <= self.point_count <= MAX_POINTS
+        ):
+            raise ValueError("point_count must be None (scope setup) or 1..1,000,000")
         if isinstance(self.target_hz, bool) or not isinstance(
             self.target_hz, (int, float)
         ) or not math.isfinite(self.target_hz) or not 0 < self.target_hz <= 100:
@@ -223,7 +224,7 @@ def capture_frame(
         raise ValueError("capture_frame requires exactly one selected source")
     started = clock()
     waveform = scope.read_channel_waveform_data(
-        int(config.source[2:]), point_count=config.point_count
+        int(config.source[2:]), **_transfer_limits(config)
     )
     end = clock()
     if not isinstance(waveform, WaveformData) or not waveform.sample_count:
@@ -246,6 +247,13 @@ def capture_frame(
         render_y=y,
         decimation_duration_s=decimation_seconds,
     )
+
+
+def _transfer_limits(config: StreamConfig) -> dict[str, int | None]:
+    """Driver keywords: an explicit count, or the scope's own record with a size cap."""
+    if config.point_count is None:
+        return {"point_count": None, "max_points": MAX_POINTS}
+    return {"point_count": config.point_count}
 
 
 def capture_group(
@@ -277,7 +285,7 @@ def capture_group(
     for source in config.sources or ():
         channel_started = clock()
         waveform = scope.read_channel_waveform_data(
-            int(source[2:]), point_count=config.point_count
+            int(source[2:]), **_transfer_limits(config)
         )
         channel_end = clock()
         if not isinstance(waveform, WaveformData) or not waveform.sample_count:
