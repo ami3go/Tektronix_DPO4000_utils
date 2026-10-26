@@ -272,3 +272,12 @@ Integration examples using the CLI as the boundary:
 
 - `examples/robot_framework/` — Robot Framework suite (offline validation case runs without hardware; the hardware case is tagged `hardware` and skipped unless `DPO4000_RESOURCE` is set).
 - `examples/opentap/` — OpenTAP Python test step mapping exit codes to verdicts (untested; OpenTAP is not in CI).
+
+## Evidence bundles (`--evidence`)
+
+`--evidence PATH` writes an A18 v2 `.dpoe` bundle (the suffix is added if missing) containing the recipe and rule definitions, recipe and rule results, a Markdown summary, the connection transport (not the full resource string), and read-only `*LRN?` setup snapshots taken before the first step and after the run. No screen capture is taken (a hardcopy is a scope write); use `--export` for waveforms.
+
+- The evidence path takes part in the input/output collision checks and is rejected with `--validate-only`.
+- A failed recipe still gets a bundle; the outcome stays `recipe_failed` (exit 4) and an evidence write failure is appended to the message.
+- For runs that completed, a failed evidence write is `export_error` (exit 7), taking precedence over the rule outcome, like a failed `--export`.
+- The JSON report gains an `evidence` object (`path`, `sha256`, `size_bytes`, `artifact_count`) or `null`.
