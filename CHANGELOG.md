@@ -11,6 +11,10 @@
 - Added the A16 deterministic pass/fail rule engine with compound logic and recipe-result
   inputs.
 - Added A18 atomic evidence bundles with integrity verification and Desk integration.
+- A18 evidence manifest version 2 adds recipe/rule definitions, optional before/after
+  scope setup, a Markdown summary report, connection transport and build/environment
+  metadata; waveform payloads are serialized one trace at a time. Version 1 bundles still
+  verify.
 - Added the A20 bounded measurement trend dashboard with decimation and backpressure.
 - Added A21 lossless NPZ and portable DPOZ scientific export/import with exact waveform
   round trips and safe archive validation.

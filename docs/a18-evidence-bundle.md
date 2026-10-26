@@ -32,13 +32,29 @@ Example layout:
 manifest.json
 results/recipe_result.json
 results/rule_result.json
+definitions/recipe.json
+definitions/rules.json
+setup/before.txt
+setup/after.txt
+report/summary.md
 screen/scope.png
 waveforms/index.json
 waveforms/CH1.raw
 waveforms/CH2.raw
 ```
 
-The manifest schema is `dpo4000-evidence`, version `1`.
+The manifest schema is `dpo4000-evidence`, version `2`. `verify_evidence_bundle()` also accepts version `1` bundles; the version-2-only manifest fields (`transport`, `environment`) are rejected in a version `1` manifest.
+
+Optional members (all manifest-covered like every other artifact):
+
+| Member | Kind | Written when |
+|---|---|---|
+| `definitions/recipe.json` | `recipe_definition` | `recipe=` is passed (stable `recipe_to_mapping` form) |
+| `definitions/rules.json` | `rule_definition` | `rule_set=` is passed (stable `rule_set_to_mapping` form) |
+| `setup/before.txt`, `setup/after.txt` | `scope_setup_before` / `scope_setup_after` | `setup_before=` / `setup_after=` `*LRN?` strings are passed (max 4 MiB each) |
+| `report/summary.md` | `summary_report` | by default; `include_summary=False` omits it |
+
+The Markdown summary is a human-readable companion. The JSON results remain authoritative.
 
 Each artifact record contains:
 
@@ -56,6 +72,8 @@ The manifest also records:
 
 - UTC creation timestamp;
 - scope identity when available;
+- `transport` (`USB`, `TCPIP`, `TCPIP-SOCKET`, `GPIB`, `SERIAL`, `OTHER`) derived from `resource=`; the full VISA resource string (host/IP, serial) is not stored;
+- `environment`: package version, build commit (`DPO4000_BUILD_COMMIT` or `GITHUB_SHA` when set), Python version/implementation, platform and machine;
 - recipe name and recipe state;
 - A16 rule status when available;
 - caller metadata;
@@ -149,9 +167,12 @@ After any A15 run result is available, the A18 panel offers:
 - Scope PNG on/off;
 - Waveforms on/off;
 - Full / 1k / 10k / 100k / 1M waveform transfer selection;
+- Scope setup on/off (read-only `*LRN?` after the run, stored as `setup/after.txt`);
 - Save Evidence;
 - cooperative Cancel Evidence;
 - output size, artifact count, elapsed time, and bundle SHA-256 prefix.
+
+The panel also records the recipe and rule definitions used for the run and the connection transport.
 
 Scope capture, waveform transfer, hashing, compression, and disk writes all execute through the existing serialized `_run_action(..., retain_session=True)` worker path. The Qt event loop only receives the final completion/error callback.
 
