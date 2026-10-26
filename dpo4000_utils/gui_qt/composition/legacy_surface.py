@@ -87,7 +87,10 @@ class ComposedFeatureSurface(MilestoneAFeatureWindow):
         self.__dict__["_automation_settings_last_target"] = target
 
         def execute(scope: Any) -> Path:
-            return save_scope_settings_file(scope, target, settings_folder=target.parent)
+            # The driver has no ``query``; the settings helper needs the raw VISA session.
+            return save_scope_settings_file(
+                scope.ensure_connected(), target, settings_folder=target.parent
+            )
 
         def finished(result: Any) -> None:
             log = getattr(self, "_append_log", None)
