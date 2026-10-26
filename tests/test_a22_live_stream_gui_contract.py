@@ -247,7 +247,6 @@ def test_vertical_grid_auto_or_fixed_is_presentation_only(monkeypatch):
 
 
 def _card_frame(source="CH1", label="", y_multiplier=0.01, n=100_000):
-    from dataclasses import replace
     from dpo4000_utils.waveform import WaveformData, WaveformPreamble
 
     preamble = WaveformPreamble(
@@ -269,6 +268,7 @@ def _card_frame(source="CH1", label="", y_multiplier=0.01, n=100_000):
 
 
 def test_channel_card_lines_are_brief_and_use_si_prefixes():
+    pytest.importorskip("PySide6.QtWidgets")
     from dpo4000_utils.gui_qt.composition.pages.live_waveform import (
         channel_card_lines, format_si,
     )

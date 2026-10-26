@@ -13,7 +13,6 @@ gateway; the original lease bug was invisible to tests that bypassed it.
 from __future__ import annotations
 
 import time
-from types import SimpleNamespace
 
 import pytest
 
@@ -430,7 +429,8 @@ def test_cache_entries_expire_after_max_age_even_if_the_fingerprint_is_unchanged
     scope, cache = ScriptedScope(), PreambleCache(max_age_s=5.0, clock=lambda: now[0])
     _cycle(scope, cache, ("CH1",))
     now[0] = 4.9
-    scope.log.clear(); _cycle(scope, cache, ("CH1",))
+    scope.log.clear()
+    _cycle(scope, cache, ("CH1",))
     assert scope.preamble_queries() == []
     now[0] = 5.1
     _cycle(scope, cache, ("CH1",))
