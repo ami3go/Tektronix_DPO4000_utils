@@ -36,7 +36,7 @@ Add a first-class **Live View** workspace to DPO4000 Desk.
    of identifying a trace; include a legend/label.
 5. Show a scope-style graticule with a shared time axis and clearly labelled units.
 6. Provide Start, Pause, Resume, Stop, and one-action Restart behavior.
-7. Provide transfer-size and requested-rate controls, but label the measured rate
+7. Read each channel at the scope's own record length (no transfer-size selector; cap 1M samples) and provide a requested-rate control, but label the measured rate
    separately so a requested rate is never presented as achieved throughput.
 8. Show actual group FPS, per-channel acquisition time, complete-cycle latency,
    frame age, transferred samples/bytes, dropped/replaced cycles, skipped

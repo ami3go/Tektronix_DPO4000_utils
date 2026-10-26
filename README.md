@@ -237,7 +237,7 @@ one complete display group; measured channel skew remains visible.
 | Framework-neutral stream engine | Implemented | Single- and multi-channel group/state/stats models |
 | CH1–CH4 selection and display | Implemented | Any non-empty selection, including all four together |
 | Multi-channel group integrity | Implemented | Sequential reads; complete aligned groups only, with measured skew |
-| 1k/10k/100k/1M | Implemented | Limited by connected scope record size |
+| Transfer size | Implemented | Reads the record as set on the scope (no selector); records above 1M samples are rejected before transfer |
 | Adjustable request cadence | Implemented | Requested separately from measured group rate |
 | Single in-flight acquisition | Implemented | Shared worker lease |
 | Latest-group buffering | Implemented | Atomic replacement and missed-deadline accounting |

@@ -105,7 +105,7 @@ is constructed.
 
 - Four-channel software behavior is implemented; exact-head physical USB/TCPIP
   qualification remains pending.
-- 1k/10k/100k/1M depend on the scope's configured record length. Unbounded Full transfer is deliberately **disabled**: a driver can allocate >1M points before an A22 post-transfer limit check. A bounded size request remains capped at 1M and oversized driver responses are rejected.
+- Live View has no transfer-size selector: each channel is read exactly as the scope is set up (its record length, as reported by `WFMOUTPRE:NR_PT?`). The driver checks that count before `CURVE?` and rejects a record above 1M samples, so an oversized record never reaches the VISA buffer; reduce the scope record length instead. A fixed `point_count` is still accepted by the Qt-independent `StreamConfig` (capped at 1M).
 - `Maximum` uses the 100 Hz software scheduling bound, not a guaranteed rate.
 - Automatic reconnect, genuinely simultaneous acquisition access, stream
   recording/A18 evidence-per-group and WebSocket publishing are deferred.
