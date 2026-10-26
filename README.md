@@ -13,6 +13,7 @@ PySide6 DPO4000 Desk
         +-- A15 RecipeSequencer
         +-- A16 RuleEngine (local, no instrument I/O)
         +-- A21 Scientific Export (NPZ / DPOZ)
+        +-- A22 Live Waveform Engine (one-in-flight, latest-frame)
         |
         v
 DPO4054 / DPO4000Scope public API
@@ -32,6 +33,7 @@ See `docs/architecture.md`, `docs/a15-recipe-sequencer-plan.md`, `docs/a16-pass-
 - Advanced A-trigger configuration, verified time holdoff, and Sequence/B-trigger controls.
 - A15 Test Recipe / Sequencer with versioned JSON recipes, validation, public-driver call steps, deterministic Delay steps, pause/resume/cancel, bounded retry/backoff, live step status, and timing results.
 - A16 Pass/Fail Rule Engine with versioned JSON rule sets, `PASS` / `FAIL` / `INVALID`, numeric/range/delta operators, AND/OR/NOT rule trees, recipe-result inputs, and Desk rule-result presentation.
+- A22 Live Waveform Streaming: repeated CH1–CH4 waveform snapshots, bounded 1k–1M transfer choices, absolute deadline scheduling, one in-flight scope call, spike-preserving bounded Qt rendering, and observable frame replacement. This is not lossless ADC streaming.
 - A21 Scientific Export with lossless NumPy `.npz` and portable `.dpoz` archives, exact raw/preamble round-trip import, atomic file replacement, throughput metrics, and a File-page Desk panel.
 - Automation and Logger workflows for unattended capture/logging with recovery, limits, retention, and run reporting.
 - PNG screen capture with preview and clipboard copy.
@@ -444,6 +446,13 @@ Use `.npz` for direct NumPy/Jupyter workflows. Use `.dpoz` for a portable ZIP co
 DPO4000 Desk exposes A21 under the existing **File** page with NPZ/DPOZ selection, full/1k/10k/100k/1M capture sizes, optional compression, and throughput reporting.
 
 See `docs/a21-scientific-export.md` and `docs/a21-test-matrix.md`.
+
+## A22 live waveform streaming
+
+Open the **Measurement** page and use **Live Waveform (A22)**. Initial qualified-software target: CH1, 10k samples, requested 5 Hz, 2k render points. Acquisition is asynchronously serialized on the retained worker, and the plot is capped at 10 FPS. Requested throughput is not a hardware guarantee. Other instrument operations remain blocked until an in-flight Stop completes or times out; Stop/Restart generation tokens discard stale completions.
+
+Run the synthetic benchmark via `python scripts/benchmark_a22_live_stream.py`; hardware qualification needs explicit reversible-write authorization, exclusive instrument access, and verified DATA:* setup restoration. See `docs/a22-live-waveform-streaming.md` and `docs/a22-test-matrix.md`.
+
 
 ## Python API example
 

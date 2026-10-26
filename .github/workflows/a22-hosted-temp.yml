@@ -1,0 +1,47 @@
+name: A22 Temporary Hosted Qualification
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "dpo4000_utils/live_stream.py"
+      - "dpo4000_utils/gui_qt/composition/**"
+      - "tests/test_a22_*"
+      - "scripts/benchmark_a22_live_stream.py"
+      - ".github/workflows/a22-hosted-temp.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  synthetic:
+    name: A22 hosted synthetic and GUI heartbeat
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1 libxkbcommon-x11-0 libxcb-cursor0
+          python -m pip install -e .[dev,pyside6]
+      - name: Run A22 model, scheduler, safety, GUI and heartbeat tests
+        run: pytest -q -s tests/test_a22_*.py
+      - name: Benchmark 1k to 1M synthetic arrays
+        run: |
+          python scripts/benchmark_a22_live_stream.py \
+            --sizes 1000,10000,100000,1000000 \
+            --iterations 5 \
+            --output a22-synthetic-benchmark.json
+      - name: Upload machine-readable performance evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: a22-hosted-synthetic-benchmark
+          path: a22-synthetic-benchmark.json
+          if-no-files-found: warn
