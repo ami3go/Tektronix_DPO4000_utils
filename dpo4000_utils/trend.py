@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from bisect import bisect_left
 from collections import deque
 from dataclasses import dataclass
 import math
@@ -214,17 +215,39 @@ class MeasurementTrendModel:
                 raise TrendValidationError("timestamps must be monotonic within a series")
         return tuple(self.append(name, value, timestamp_s=timestamp) for name, value in validated)
 
+    def latest_timestamp_s(self) -> float | None:
+        """Return the newest timestamp across all series, or None when empty."""
+        latest = [series.samples[-1].timestamp_s for series in self._series.values() if series.samples]
+        return max(latest) if latest else None
+
     def snapshot(
         self,
         name: str,
         *,
         max_points: int | None = None,
+        since_s: float | None = None,
     ) -> TrendSnapshot:
+        """Return one series, optionally limited to samples at or after ``since_s``.
+
+        Window filtering happens before decimation so the render budget is spent on
+        the visible interval only.
+        """
         normalized = self._normalize_name(name)
         series = self._series.get(normalized)
         if series is None:
             return TrendSnapshot(normalized, (), 0, 0)
         snapshot = series.snapshot()
+        if since_s is not None:
+            cutoff = _finite_number(since_s, field="since_s")
+            samples = snapshot.samples
+            # Samples are monotonic per series, so bisect on the timestamp.
+            start = bisect_left(samples, cutoff, key=lambda sample: sample.timestamp_s)
+            snapshot = TrendSnapshot(
+                name=snapshot.name,
+                samples=samples[start:],
+                total_received=snapshot.total_received,
+                dropped_by_capacity=snapshot.dropped_by_capacity,
+            )
         if max_points is None or snapshot.count <= max_points:
             return snapshot
         return TrendSnapshot(
@@ -238,9 +261,19 @@ class MeasurementTrendModel:
         self,
         *,
         max_points: int | None = None,
+        window_s: float | None = None,
     ) -> tuple[TrendSnapshot, ...]:
+        """Return all series; ``window_s`` keeps the last N seconds before the newest sample."""
+        since_s: float | None = None
+        if window_s is not None:
+            window = _finite_number(window_s, field="window_s")
+            if window <= 0:
+                raise TrendValidationError("window_s must be > 0")
+            latest = self.latest_timestamp_s()
+            since_s = None if latest is None else latest - window
         return tuple(
-            self.snapshot(name, max_points=max_points) for name in self.series_names
+            self.snapshot(name, max_points=max_points, since_s=since_s)
+            for name in self.series_names
         )
 
 

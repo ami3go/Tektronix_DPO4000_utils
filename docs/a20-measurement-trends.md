@@ -74,9 +74,16 @@ Controls:
 - poll interval;
 - capacity;
 - render-point budget;
+- time window (All / 1 min / 10 min / 1 h, measured back from the newest sample across all series; applied before decimation so the render budget covers only the visible interval);
 - Start Trend;
 - Stop;
-- Clear.
+- Clear;
+- Freeze display (holds the current picture while polling and CSV logging continue; Stop ends acquisition);
+- Log to CSV with a chosen file.
+
+CSV logging reuses the Automation A5 `append_measurement_row` writer on the scope worker: each poll reads the selected slots once and the same values feed both the CSV row and the trend model. The file uses the A5 header (`utc_timestamp`, `local_timestamp`, `elapsed_s`, `MEAS<n>`…); appending to a file with a different slot header is reported in the status line rather than overwriting it.
+
+On Start, the panel reads each selected slot's unit once with the read-only `read_measurement_unit()` (`MEASUREMENT:MEAS<x>:UNITS?`, not yet HIL-qualified) and labels the legend, for example `MEAS1 [V]`. A missing or unsupported unit leaves the label plain.
 
 Status shows:
 

@@ -94,6 +94,7 @@ PUBLIC_METHOD_RISK: dict[str, VerificationRisk] = {
     "get_measurement_setup": VerificationRisk.READ_ONLY,
     "get_all_measurement_setups": VerificationRisk.READ_ONLY,
     "read_measurement_value": VerificationRisk.READ_ONLY,
+    "read_measurement_unit": VerificationRisk.READ_ONLY,
     "add_measurement": VerificationRisk.REVERSIBLE,
     "disable_measurement": VerificationRisk.REVERSIBLE,
     "disable_all_measurements": VerificationRisk.DISRUPTIVE,
@@ -390,6 +391,8 @@ class HardwareVerifier:
         setups = scope.get_all_measurement_setups()
         assert len(setups) == 8
         scope.read_measurement_value(1)
+        unit = scope.read_measurement_unit(1)
+        assert unit is None or isinstance(unit, str)
         scope.get_channel_configuration(self.config.test_channel)
         scope.get_math_configuration()
         scope.get_horizontal_position()
@@ -898,6 +901,7 @@ class HardwareVerifier:
                             "get_measurement_setup",
                             "get_all_measurement_setups",
                             "read_measurement_value",
+                            "read_measurement_unit",
                             "get_channel_configuration",
                             "get_math_configuration",
                             "get_horizontal_position",

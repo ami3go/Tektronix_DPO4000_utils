@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import math
+from pathlib import Path
 import time
 from typing import Any, Callable
 
@@ -11,6 +13,7 @@ from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QFileDialog,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -22,7 +25,15 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ....trend import DEFAULT_RENDER_POINTS, MeasurementTrendModel
+from ....automation.measurement_logging import append_measurement_row
+from ....trend import DEFAULT_RENDER_POINTS, MeasurementTrendModel, TrendSnapshot
+
+_WINDOW_CHOICES: tuple[tuple[str, float | None], ...] = (
+    ("All", None),
+    ("1 min", 60.0),
+    ("10 min", 600.0),
+    ("1 h", 3600.0),
+)
 
 
 class TrendPlotWidget(QWidget):
@@ -33,12 +44,48 @@ class TrendPlotWidget(QWidget):
         self.setObjectName("measurementTrendPlot")
         self._model = model
         self._render_points = DEFAULT_RENDER_POINTS
+        self._window_s: float | None = None
+        self._frozen: tuple[TrendSnapshot, ...] | None = None
+        self._units: dict[str, str] = {}
         self.setMinimumHeight(260)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
     def set_render_points(self, count: int) -> None:
         self._render_points = max(2, int(count))
         self.update()
+
+    def set_window(self, seconds: float | None) -> None:
+        self._window_s = seconds
+        self.update()
+
+    def set_units(self, units: dict[str, str]) -> None:
+        self._units = dict(units)
+        self.update()
+
+    def set_model(self, model: MeasurementTrendModel) -> None:
+        self._model = model
+        if self._frozen is not None:
+            self._frozen = ()
+        self.update()
+
+    def set_frozen(self, frozen: bool) -> None:
+        """Hold the current picture while acquisition and logging continue."""
+        self._frozen = self._current_snapshots() if frozen else None
+        self.update()
+
+    @property
+    def is_frozen(self) -> bool:
+        return self._frozen is not None
+
+    def _current_snapshots(self) -> tuple[TrendSnapshot, ...]:
+        return tuple(
+            snap
+            for snap in self._model.snapshots(
+                max_points=self._render_points,
+                window_s=self._window_s,
+            )
+            if snap.samples
+        )
 
     def paintEvent(self, _event) -> None:  # noqa: N802 - Qt API
         painter = QPainter(self)
@@ -49,9 +96,7 @@ class TrendPlotWidget(QWidget):
         painter.setPen(QPen(palette.mid().color(), 1.0))
         painter.drawRect(bounds)
 
-        snapshots = tuple(
-            snap for snap in self._model.snapshots(max_points=self._render_points) if snap.samples
-        )
+        snapshots = self._frozen if self._frozen is not None else self._current_snapshots()
         if not snapshots:
             painter.setPen(palette.text().color())
             painter.drawText(bounds, Qt.AlignmentFlag.AlignCenter, "No trend samples")
@@ -75,7 +120,7 @@ class TrendPlotWidget(QWidget):
         painter.drawText(
             int(bounds.left()),
             int(self.height() - 8),
-            f"{max_t - min_t:.3f} s window",
+            f"{max_t - min_t:.3f} s window" + (" — frozen" if self._frozen is not None else ""),
         )
 
         legend_x = int(bounds.left())
@@ -94,7 +139,8 @@ class TrendPlotWidget(QWidget):
                 else:
                     path.lineTo(point)
             painter.drawPath(path)
-            painter.drawText(legend_x, legend_y, snapshot.name)
+            unit = self._units.get(snapshot.name)
+            painter.drawText(legend_x, legend_y, f"{snapshot.name} [{unit}]" if unit else snapshot.name)
             legend_x += 80
             if legend_x > bounds.right() - 80:
                 legend_x = int(bounds.left())
@@ -118,6 +164,9 @@ class MeasurementTrendPanel(QGroupBox):
         self._skipped_ticks = 0
         self._accepted_batches = 0
         self._last_model_update_ms = 0.0
+        self._log_path: Path | None = None
+        self._log_started_utc: datetime | None = None
+        self._last_log_error = ""
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._poll_once)
         self._build_ui()
@@ -172,8 +221,31 @@ class MeasurementTrendPanel(QGroupBox):
             self.render_combo.addItem(f"{count:,}", count)
         self.render_combo.setCurrentIndex(2)
         controls.addWidget(self.render_combo)
+
+        controls.addWidget(QLabel("Window"))
+        self.window_combo = QComboBox()
+        self.window_combo.setObjectName("measurementTrendWindow")
+        for label, seconds in _WINDOW_CHOICES:
+            self.window_combo.addItem(label, seconds)
+        controls.addWidget(self.window_combo)
         controls.addStretch(1)
         layout.addLayout(controls)
+
+        logging_row = QHBoxLayout()
+        self.log_checkbox = QCheckBox("Log to CSV")
+        self.log_checkbox.setObjectName("measurementTrendLogCsv")
+        self.log_checkbox.setToolTip(
+            "Append each poll to a CSV file on the scope worker (same format as Automation A5)"
+        )
+        self.log_path_button = QPushButton("Choose CSV…")
+        self.log_path_button.setObjectName("measurementTrendLogPath")
+        self.log_path_label = QLabel("No log file")
+        self.log_path_label.setObjectName("measurementTrendLogLabel")
+        self.log_path_button.clicked.connect(self._choose_log_path)
+        logging_row.addWidget(self.log_checkbox)
+        logging_row.addWidget(self.log_path_button)
+        logging_row.addWidget(self.log_path_label, 1)
+        layout.addLayout(logging_row)
 
         actions = QHBoxLayout()
         self.start_button = QPushButton("Start Trend")
@@ -185,9 +257,14 @@ class MeasurementTrendPanel(QGroupBox):
         self.start_button.clicked.connect(self.start)
         self.stop_button.clicked.connect(self.stop)
         self.clear_button.clicked.connect(self.clear)
+        self.freeze_checkbox = QCheckBox("Freeze display")
+        self.freeze_checkbox.setObjectName("measurementTrendFreeze")
+        self.freeze_checkbox.setToolTip("Hold the plot while polling and logging continue")
+        self.freeze_checkbox.toggled.connect(self._freeze_toggled)
         actions.addWidget(self.start_button)
         actions.addWidget(self.stop_button)
         actions.addWidget(self.clear_button)
+        actions.addWidget(self.freeze_checkbox)
         actions.addStretch(1)
         layout.addLayout(actions)
 
@@ -201,30 +278,99 @@ class MeasurementTrendPanel(QGroupBox):
         self.interval_combo.currentIndexChanged.connect(self._interval_changed)
         self.capacity_combo.currentIndexChanged.connect(self._capacity_changed)
         self.render_combo.currentIndexChanged.connect(self._render_changed)
+        self.window_combo.currentIndexChanged.connect(self._window_changed)
         self.stop_button.setEnabled(False)
 
     def _selected_slots(self) -> tuple[int, ...]:
         return tuple(index + 1 for index, check in enumerate(self.slot_checks) if check.isChecked())
 
     def start(self) -> None:
-        if not self._selected_slots():
+        slots = self._selected_slots()
+        if not slots:
             self.status_label.setText("Select at least one MEAS slot")
             return
+        if self.log_checkbox.isChecked():
+            if self._log_path is None and not self._choose_log_path():
+                self.status_label.setText("Choose a CSV file or disable Log to CSV")
+                return
+            self._log_started_utc = datetime.now(timezone.utc)
+        else:
+            self._log_started_utc = None
+        self._last_log_error = ""
+        self._set_logging_controls_enabled(False)
         self._timer.start(int(self.interval_combo.currentData()))
         self.start_button.setEnabled(False)
         self.stop_button.setEnabled(True)
+        self._read_units(slots)
         self._poll_once()
 
     def stop(self) -> None:
         self._timer.stop()
         self.start_button.setEnabled(True)
         self.stop_button.setEnabled(False)
+        self._set_logging_controls_enabled(True)
+        self._log_started_utc = None
         self._update_status(prefix="Stopped")
+
+    def _set_logging_controls_enabled(self, enabled: bool) -> None:
+        self.log_checkbox.setEnabled(enabled)
+        self.log_path_button.setEnabled(enabled)
+
+    def _choose_log_path(self) -> bool:
+        filename, _filter = QFileDialog.getSaveFileName(
+            self,
+            "Measurement trend CSV log",
+            "measurement_trend.csv",
+            "CSV files (*.csv);;All files (*)",
+        )
+        if not filename:
+            return False
+        self._log_path = Path(filename)
+        self.log_path_label.setText(str(self._log_path))
+        return True
+
+    def _read_units(self, slots: tuple[int, ...]) -> None:
+        def execute(scope: Any) -> dict[str, str]:
+            reader = getattr(scope, "read_measurement_unit", None)
+            if reader is None:
+                return {}
+            units: dict[str, str] = {}
+            for slot in slots:
+                unit = reader(slot)
+                if unit:
+                    units[f"MEAS{slot}"] = unit
+            return units
+
+        def success(result: Any) -> None:
+            if isinstance(result, dict):
+                self.plot.set_units({str(key): str(value) for key, value in result.items()})
+
+        def failure(_exc: Exception) -> None:
+            # Units are display labels only; a failed read leaves the legend unlabeled.
+            self.plot.set_units({})
+
+        self._run_action(
+            "A20 measurement units",
+            execute,
+            on_success=success,
+            on_error=failure,
+            retain_session=True,
+        )
+
+    def _freeze_toggled(self, frozen: bool) -> None:
+        self.plot.set_frozen(frozen)
+
+    def _window_changed(self) -> None:
+        self.plot.set_window(self.window_combo.currentData())
+        if self.plot.is_frozen:
+            self.plot.set_frozen(True)
 
     def clear(self) -> None:
         self._model.clear()
         self._accepted_batches = 0
         self._skipped_ticks = 0
+        if self.plot.is_frozen:
+            self.plot.set_frozen(True)
         self.plot.update()
         self._update_status(prefix="Running" if self._timer.isActive() else "Stopped")
 
@@ -236,7 +382,7 @@ class MeasurementTrendPanel(QGroupBox):
         # Capacity changes are explicit resets so bounded-memory semantics stay simple.
         was_running = self._timer.isActive()
         self._model = MeasurementTrendModel(int(self.capacity_combo.currentData()))
-        self.plot._model = self._model
+        self.plot.set_model(self._model)
         self._accepted_batches = 0
         self._skipped_ticks = 0
         self.plot.update()
@@ -265,19 +411,39 @@ class MeasurementTrendPanel(QGroupBox):
             return
         self._poll_in_flight = True
         requested_at = time.perf_counter()
+        log_path = self._log_path if self._log_started_utc is not None else None
+        log_started_utc = self._log_started_utc
 
-        def execute(scope: Any) -> dict[str, str]:
+        def execute(scope: Any) -> dict[str, Any]:
+            if log_path is not None and log_started_utc is not None:
+                # Read once and append the same values on the worker thread.
+                logged = append_measurement_row(
+                    scope,
+                    log_path,
+                    slots,
+                    run_started_utc=log_started_utc,
+                )
+                return {
+                    "values": {f"MEAS{slot}": value for slot, value in logged.values.items()},
+                    "log_error": logged.error,
+                }
             return {
-                f"MEAS{slot}": scope.read_measurement_value(slot)
-                for slot in slots
+                "values": {
+                    f"MEAS{slot}": scope.read_measurement_value(slot)
+                    for slot in slots
+                },
+                "log_error": "",
             }
 
         def success(result: Any) -> None:
             self._poll_in_flight = False
             started = time.perf_counter()
             accepted: dict[str, float] = {}
+            values = result.get("values") if isinstance(result, dict) else None
             if isinstance(result, dict):
-                for name, raw_value in result.items():
+                self._last_log_error = str(result.get("log_error") or "")
+            if isinstance(values, dict):
+                for name, raw_value in values.items():
                     try:
                         accepted[str(name)] = self._parse_measurement_value(raw_value)
                     except (ValueError, TypeError, IndexError):
@@ -312,6 +478,8 @@ class MeasurementTrendPanel(QGroupBox):
         ]
         if poll_latency_ms is not None:
             parts.append(f"poll {poll_latency_ms:.1f} ms")
+        if self._log_started_utc is not None and self._log_path is not None:
+            parts.append(f"CSV log error: {self._last_log_error}" if self._last_log_error else "logging CSV")
         self.status_label.setText(" — ".join(parts))
 
 
