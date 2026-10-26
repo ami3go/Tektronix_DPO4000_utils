@@ -428,7 +428,8 @@ def create_evidence_bundle(
 
         _check_cancel(cancel)
         finalize_started = time.perf_counter()
-        with temporary.open("rb") as handle:
+        # Windows rejects fsync on a read-only handle (EBADF); open for update.
+        with temporary.open("r+b") as handle:
             os.fsync(handle.fileno())
         os.replace(temporary, destination)
         try:
