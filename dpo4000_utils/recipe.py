@@ -42,7 +42,7 @@ MAX_RETRY_ATTEMPTS = 100
 MAX_REPEAT_COUNT = 10_000
 MAX_REPEAT_DEPTH = 4
 SUPPORTED_RECIPE_VERSIONS = (1, 2)
-_CONDITION_FIELDS = ("input", "operator", "value", "low", "high", "reference", "tolerance")
+_CONDITION_FIELDS = ("input", "operator", "value", "low", "high", "reference", "tolerance", "unit")
 
 # These public methods expose the transport/session lifecycle or accept arbitrary
 # SCPI. Recipes must stay above that boundary.
@@ -762,6 +762,7 @@ def _condition_from_mapping(raw: Any, *, step_name: str) -> tuple[ScalarRule, Co
             high=raw.get("high"),
             reference=raw.get("reference"),
             tolerance=raw.get("tolerance"),
+            unit=raw.get("unit"),
         )
         policy = ConditionInvalidPolicy(raw.get("on_invalid", ConditionInvalidPolicy.FAIL.value))
     except (RuleValidationError, TypeError, ValueError) as exc:

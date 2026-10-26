@@ -69,6 +69,8 @@ Any `call` or `delay` step may carry a condition. It uses the A16 compare operat
 }
 ```
 
+The optional A16 `unit` label (for example `"V"`) is accepted and recorded; like A16 it is a label only, with no conversion.
+
 `input` names a value from a step that already ran: `<step name>`, `step.<name>` or `step.<index>`, plus dotted fields for dataclass/mapping values. For a repeated name, the most recent executed step wins. The step runs on PASS and is skipped on FAIL (recorded with `skipped: true`, zero attempts, no instrument I/O). INVALID (missing or non-numeric input) fails the run by default; `"on_invalid": "skip"` skips instead. Two steps with complementary conditions give if/else branching.
 
 ### `repeat`
