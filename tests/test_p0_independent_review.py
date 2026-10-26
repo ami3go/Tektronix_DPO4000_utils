@@ -292,8 +292,18 @@ def test_rejected_hardware_preflight_cannot_fall_through_to_pytest() -> None:
     workflow = (ROOT / ".github/workflows/hardware-api-tests.yml").read_text(
         encoding="utf-8"
     )
-    assert "if: steps.verifier.outcome == 'success'" in workflow
     assert "if: always()\n        run: pytest" not in workflow
+    steps = workflow.split("\n      - name:")[1:]
+    pytest_steps = [step for step in steps if "pytest " in step]
+    assert pytest_steps, "hardware workflow must contain a pytest step"
+    for step in pytest_steps:
+        name = step.splitlines()[0].strip()
+        condition = next(
+            (line.strip() for line in step.splitlines() if line.strip().startswith("if:")),
+            "",
+        )
+        assert "steps.verifier.outcome == 'success'" in condition, name
+        assert "always()" not in condition, name
     assert "dpo4000-physical-bench" in workflow
 
 

@@ -61,6 +61,18 @@ def build_parser() -> argparse.ArgumentParser:
         "--authorize-disruptive-tests", action="store_true",
         help="Separate explicit approval for full-profile acquisition and settings tests.",
     )
+    parser.add_argument(
+        "--authorize-read-only", action="store_true",
+        help="Bench owner confirms physical read-only HIL authorization and exclusive ownership.",
+    )
+    parser.add_argument(
+        "--expected-serial", default="",
+        help="Mandatory physical instrument serial for strict read-only HIL.",
+    )
+    parser.add_argument(
+        "--verified-options", default="",
+        help="Operator-verified installed options (specify NONE if no optional modules).",
+    )
     parser.add_argument("--timeout-ms", type=int, default=20_000)
     parser.add_argument("--test-channel", type=int, choices=(1, 2, 3, 4), default=1)
     parser.add_argument(
@@ -109,6 +121,13 @@ def main() -> int:
         or len(args.expected_idn.split(",")) < 3
     ):
         raise SystemExit("Write-capable HIL requires --expected-idn with exact model and serial")
+    if args.profile == "read-only":
+        if not args.authorize_read_only:
+            raise SystemExit("Physical read-only bench authorization requires --authorize-read-only")
+        if not args.expected_serial.strip():
+            raise SystemExit("Strict read-only verification requires --expected-serial")
+        if not args.verified_options.strip():
+            raise SystemExit("Strict read-only verification requires --verified-options")
     if args.profile in {"reversible", "full"} and not args.authorize_reversible_writes:
         raise SystemExit(
             "Reversible instrument setup writes require --authorize-reversible-writes"
@@ -142,6 +161,9 @@ def main() -> int:
         allow_reference_overwrite=args.allow_reference_overwrite,
         reference_destination=args.reference_destination or 4,
         expected_idn=args.expected_idn,
+        expected_serial=args.expected_serial.strip(),
+        verified_options=args.verified_options.strip(),
+        require_exclusive_lock=args.profile == "read-only",
     )
 
     print("DPO4000 real-hardware verification")
