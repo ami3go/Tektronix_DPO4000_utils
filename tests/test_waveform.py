@@ -67,6 +67,9 @@ class BinaryScope:
         self.queries = []
         self.binary_calls = []
         self.responses = {
+            # Empty combined reply: the driver falls back to the per-field queries
+            # these tests exercise (the combined path is covered in the A22 suite).
+            "WFMOUTPRE?": "",
             "WFMOUTPRE:BYT_NR?": lambda: str(self.width),
             "WFMOUTPRE:ENCDG?": lambda: "ASC" if self.encoding == "ASCII" else "BIN",
             "WFMOUTPRE:BN_FMT?": "RI",

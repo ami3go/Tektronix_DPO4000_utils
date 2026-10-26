@@ -22,6 +22,7 @@ class ConfiguredScope:
             "DATA:SOURCE?": self.source,
             "DATA:START?": "1",
             "DATA:STOP?": "100000",
+            "WFMOUTPRE?": "",  # combined reply unavailable -> per-field fallback
             "WFMOUTPRE:BYT_NR?": "2",
             "WFMOUTPRE:ENCDG?": "BIN",
             "WFMOUTPRE:BN_FMT?": "RI",

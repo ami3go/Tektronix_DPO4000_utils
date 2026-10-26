@@ -29,6 +29,19 @@ class ScriptedScope:
         self.start = 1
         self.stop = record_length
         self.log: list[str] = []
+        # None -> a realistic combined reply; a string overrides it (e.g. garbage).
+        self.combined_reply: str | None = None
+
+    def combined(self) -> str:
+        """Headerless WFMOUTPRE? as the DPO4054 sends it, extras included."""
+        return (
+            f'2;16;BIN;RI;MSB;"{self.source.title()}, DC coupling, 1.000V/div, '
+            f'200.0us/div, {self._points()} points, Hi Res mode";{self._points()};Y;LINEA;'
+            '"s";1.0E-6;-9.0E-4;0;"V";0.01;0.0E+0;0.0E+0;TIM;ANALOG;0.0E+0;0.0E+0;0.0E+0'
+        )
+
+    def preamble_queries(self) -> list[str]:
+        return [c for c in self.log if c.startswith("WFMOUTPRE")]
 
     # -- SCPI surface used by dpo4000_utils.waveform --------------------------
     def write(self, command: str) -> None:
@@ -48,15 +61,17 @@ class ScriptedScope:
         self.log.append(command)
         if command.startswith("SELECT:CH"):
             return "1" if int(command[9]) in self.displayed else "0"
-        if command.startswith("WFMOUTPRE:") and int(self.source[2:]) not in self.displayed:
+        if command.startswith("WFMOUTPRE") and int(self.source[2:]) not in self.displayed:
             raise TimeoutError("VI_ERROR_TMO: Timeout expired before operation completed.")
+        if command == "WFMOUTPRE?":
+            return self.combined() if self.combined_reply is None else self.combined_reply
         table = {
             "DATA:START?": str(self.start), "DATA:STOP?": str(self.stop),
             "WFMOUTPRE:BYT_NR?": "2", "WFMOUTPRE:ENCDG?": "BIN",
             "WFMOUTPRE:BN_FMT?": "RI", "WFMOUTPRE:BYT_OR?": "MSB",
             "WFMOUTPRE:NR_PT?": str(self._points()), "WFMOUTPRE:PT_FMT?": "Y",
             "WFMOUTPRE:XUNIT?": "s", "WFMOUTPRE:XINCR?": "1.0E-6",
-            "WFMOUTPRE:XZERO?": "0.0", "WFMOUTPRE:PT_OFF?": "0",
+            "WFMOUTPRE:XZERO?": "-9.0E-4", "WFMOUTPRE:PT_OFF?": "0",
             "WFMOUTPRE:YUNIT?": "V", "WFMOUTPRE:YMULT?": "0.01",
             "WFMOUTPRE:YOFF?": "0.0", "WFMOUTPRE:YZERO?": "0.0",
         }
@@ -89,6 +104,65 @@ def test_requesting_more_points_than_the_record_reproduces_the_field_error():
     driver = Driver(ScriptedScope(record_length=100_000))
     with pytest.raises(DPOWaveformError, match="1000000 points.*NR_PT reports 100000"):
         driver.read_channel_waveform_data(1, point_count=1_000_000)
+
+
+# --- single-query preamble (WFMOUTPRE?) --------------------------------------
+def test_one_combined_preamble_query_replaces_the_nine_field_queries():
+    scope = ScriptedScope(record_length=10_000)
+    wave = Driver(scope).read_channel_waveform_data(1)
+    assert scope.preamble_queries() == ["WFMOUTPRE?"]
+    assert wave.sample_count == 10_000
+
+
+def test_combined_and_per_field_preambles_are_identical():
+    fast = ScriptedScope()
+    slow = ScriptedScope()
+    slow.combined_reply = "garbage"  # forces the per-field fallback
+    a = Driver(fast).read_channel_waveform_data(1).preamble
+    b = Driver(slow).read_channel_waveform_data(1).preamble
+    assert a == b
+    assert len(slow.preamble_queries()) > 9 and len(fast.preamble_queries()) == 1
+
+
+@pytest.mark.parametrize("reply", [
+    "",                                                      # empty
+    "garbage",
+    ":WFMOUTPRE:BYT_NR 2;BIT_NR 16;ENCDG BIN",               # HEADER ON
+    "2;16;BIN;RI;MSB",                                       # truncated
+    '2;16;BIN;RI;MSB;"wfid";100;Y;LINEA;"s";abc;0;0;"V";1;0;0',  # non-numeric
+    '2;16;BIN;RI;MSB;"wfid";100;Y;LINEA;"s";nan;0;0;"V";1;0;0',  # non-finite
+    '2;16;BIN;RI;MSB;"wfid";100;Y;LINEA;s;1;0;0;V;1;0;0',    # unquoted units: no anchor
+])
+def test_untrustworthy_combined_reply_falls_back_to_per_field_queries(reply):
+    scope = ScriptedScope()
+    scope.combined_reply = reply
+    wave = Driver(scope).read_channel_waveform_data(1)
+    assert wave.sample_count == 100_000 and wave.preamble.x_increment == 1e-6
+    assert len(scope.preamble_queries()) > 9
+
+
+def test_combined_preamble_tolerates_extra_firmware_fields_and_quoted_semicolons():
+    from dpo4000_utils.waveform import _parse_combined_preamble
+
+    reply = ('2;16;BIN;RI;MSB;"Ch1; odd, label";500;Y;LINEA;"s";2.0E-9;-1.0E-6;0;"V";'
+             '0.5;-2.0E+1;0.1;TIM;ANALOG;0;0;0;EXTRA;MORE')
+    pre = _parse_combined_preamble(reply)
+    assert pre is not None
+    assert (pre.record_point_count, pre.x_unit, pre.y_unit) == (500, "s", "V")
+    assert (pre.x_increment, pre.x_zero, pre.y_multiplier, pre.y_offset, pre.y_zero) == (
+        2e-9, -1e-6, 0.5, -20.0, 0.1)
+
+
+def test_hidden_channel_timeout_on_the_combined_query_still_propagates():
+    scope = ScriptedScope(displayed=(1,))
+    with pytest.raises(Exception, match="(?i)timeout|timed out"):
+        Driver(scope).read_channel_waveform_data(2)
+
+
+def test_a_group_cycle_issues_one_preamble_query_per_channel():
+    scope = ScriptedScope(displayed=(1, 2, 3, 4))
+    capture_group(Driver(scope), StreamConfig(sources=("CH1", "CH2", "CH3", "CH4")), 1, 1)
+    assert scope.preamble_queries() == ["WFMOUTPRE?"] * 4
 
 
 def test_scope_setup_read_uses_whatever_record_the_scope_has():

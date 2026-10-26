@@ -238,7 +238,76 @@ def _query_float(scope: Any, command: str, *, field: str) -> float:
     return value
 
 
+def _split_scpi_fields(text: str) -> list[str]:
+    """Split a ``;``-separated SCPI reply, keeping quoted strings intact."""
+    fields: list[str] = []
+    current: list[str] = []
+    quoted = False
+    for char in text:
+        if char == '"':
+            quoted = not quoted
+        if char == ";" and not quoted:
+            fields.append("".join(current).strip())
+            current = []
+        else:
+            current.append(char)
+    fields.append("".join(current).strip())
+    return fields
+
+
+def _parse_combined_preamble(reply: str) -> WaveformPreamble | None:
+    """Parse a headerless ``WFMOUTPRE?`` reply, or return None if it is not trustworthy.
+
+    One combined query replaces nine ~43 ms ``WFMOUTPRE:xxx?`` queries on the
+    DPO4054. Fields are anchored on the quoted X unit so firmware extras between
+    ``PT_FMT`` and ``XUNIT`` or after ``YZERO`` do not shift the values; any
+    surprise returns None and the caller uses the per-field queries.
+    """
+    fields = _split_scpi_fields(reply.strip())
+    if len(fields) < 16 or not fields[0].isdigit():  # headers on, or an error reply
+        return None
+    unit_index = next(
+        (i for i in range(7, len(fields) - 7) if fields[i].startswith('"') and fields[i].endswith('"')),
+        None,
+    )
+    if unit_index is None or not fields[5].startswith('"'):
+        return None
+    try:
+        values = [float(fields[unit_index + offset]) for offset in (1, 2, 3, 5, 6, 7)]
+        if not all(math.isfinite(value) for value in values):
+            return None
+        return WaveformPreamble(
+            byte_width=int(fields[0]),
+            encoding=fields[2].upper(),
+            binary_format=fields[3].upper(),
+            byte_order=fields[4].upper(),
+            record_point_count=int(float(fields[6])),
+            point_format=fields[7].upper(),
+            x_unit=fields[unit_index].strip('"'),
+            x_increment=values[0],
+            x_zero=values[1],
+            point_offset=values[2],
+            y_unit=fields[unit_index + 4].strip('"'),
+            y_multiplier=values[3],
+            y_offset=values[4],
+            y_zero=values[5],
+        )
+    except (ValueError, IndexError):
+        return None
+
+
 def _read_preamble(scope: Any) -> WaveformPreamble:
+    combined = _parse_combined_preamble(_query_raw_preamble(scope))
+    if combined is not None:
+        return combined
+    return _read_preamble_fields(scope)
+
+
+def _query_raw_preamble(scope: Any) -> str:
+    return required_query(scope, "WFMOUTPRE?", operation="Query 'WFMOUTPRE?'")
+
+
+def _read_preamble_fields(scope: Any) -> WaveformPreamble:
     return WaveformPreamble(
         byte_width=_query_int(scope, "WFMOUTPRE:BYT_NR?", field="waveform byte width"),
         encoding=_query_value(scope, "WFMOUTPRE:ENCDG?").upper(),
