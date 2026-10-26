@@ -39,6 +39,10 @@
 
 - A18 evidence bundles could not be saved on Windows: the final `fsync` used a read-only
   handle, which Windows rejects. Found by the new Windows CI job.
+- `get_trigger_level()` raises a clear `ValueError` on an empty reply instead of an
+  `IndexError`.
+- `rearm_trigger_after_image()` still skips malformed readbacks but no longer hides a lost
+  VISA connection.
 - Improved fast single-acquisition synchronization using the scope `BUSY?` state.
 - Fixed full-waveform transfer behavior after the DPO4054 record length shrinks.
 - Extended horizontal scale, advanced-trigger, scientific-export, evidence, trend, and

@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 
 from .channels import validate_channel
+from .errors import is_transport_error
 from .scpi_values import ensure_single_scpi_value, format_scpi_number
 
 
@@ -61,7 +62,10 @@ class TriggerMixin:
             command = f"TRIGGER:A:LEVEL:CH{channel}?"
 
         response = scope.query(command).strip()
-        value_text = response.split()[-1]
+        parts = response.split()
+        if not parts:
+            raise ValueError(f"Empty trigger level response to {command}")
+        value_text = parts[-1]
 
         try:
             return float(value_text)
@@ -106,8 +110,10 @@ class TriggerMixin:
                 field="Trigger mode readback",
             )
             scope.write(f"TRIGGER:A:MODE {trig_mode}")
-        except Exception:
-            pass
+        except Exception as exc:
+            # Malformed readbacks are skipped; a lost session must not be hidden.
+            if is_transport_error(exc):
+                raise
 
         if restore_level:
             try:
@@ -126,8 +132,9 @@ class TriggerMixin:
                         field="Trigger level readback",
                     )
                     scope.write(f"TRIGGER:A:LEVEL:CH{trigger_channel} {level}")
-            except Exception:
-                pass
+            except Exception as exc:
+                if is_transport_error(exc):
+                    raise
 
         scope.write("ACQUIRE:STATE RUN")
         time.sleep(0.2)
