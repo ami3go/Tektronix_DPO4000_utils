@@ -8,6 +8,9 @@
   bounded capability probing for option-dependent trigger families.
 - Added the A15 validated JSON recipe sequencer with pause, resume, cancellation,
   retry/backoff, timing capture, and serialized Desk worker integration.
+- A15 recipe schema v2 adds expression-free step `when` conditions (A16 compare operators
+  on earlier step values; skip or fail on invalid input) and bounded, nestable `repeat`
+  blocks expanded before execution. Version 1 documents are unchanged.
 - Added the A16 deterministic pass/fail rule engine with compound logic and recipe-result
   inputs.
 - Added A18 atomic evidence bundles with integrity verification and Desk integration.

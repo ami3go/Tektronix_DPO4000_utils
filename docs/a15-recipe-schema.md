@@ -1,6 +1,8 @@
-# A15 recipe schema v1
+# A15 recipe schema v1 / v2
 
-A recipe is a JSON object with `version`, `name`, and `steps`. Version 1 allows at most 10,000 steps.
+A recipe is a JSON object with `version`, `name`, and `steps`. A recipe may contain at most 10,000 steps after repeat blocks are expanded.
+
+Version 1 contains only `call` and `delay` steps. Version 2 adds optional step `when` conditions and `repeat` blocks (see [Conditions and loops](#conditions-and-loops-v2)). Loading a version 1 document that uses v2 features is rejected; saving a recipe writes version 1 unless it uses v2 features, so existing documents and evidence definitions are unchanged.
 
 Only two primitive step kinds are defined in A15:
 
@@ -51,6 +53,40 @@ Before the first operation, the sequencer resolves every call and binds its argu
 ```
 
 A Delay is measured against a monotonic deadline. Pause time is added to that deadline, so a 250 ms Delay still receives 250 ms of active delay time even if the recipe remains paused for several seconds. Cancellation is checked throughout the wait.
+
+## Conditions and loops (v2)
+
+### `when`
+
+Any `call` or `delay` step may carry a condition. It uses the A16 compare operators and fields, with no expressions:
+
+```json
+{
+  "kind": "call",
+  "name": "High-range capture",
+  "method": "read_screen_png",
+  "when": {"input": "Vpp", "operator": ">=", "value": 2.0, "on_invalid": "fail"}
+}
+```
+
+`input` names a value from a step that already ran: `<step name>`, `step.<name>` or `step.<index>`, plus dotted fields for dataclass/mapping values. For a repeated name, the most recent executed step wins. The step runs on PASS and is skipped on FAIL (recorded with `skipped: true`, zero attempts, no instrument I/O). INVALID (missing or non-numeric input) fails the run by default; `"on_invalid": "skip"` skips instead. Two steps with complementary conditions give if/else branching.
+
+### `repeat`
+
+```json
+{
+  "kind": "repeat",
+  "name": "Re-read until settled",
+  "count": 20,
+  "steps": [
+    {"kind": "delay", "name": "Settle", "seconds": 0.5, "when": {"input": "Vpp", "operator": "<", "value": 2.0}},
+    {"kind": "call", "name": "Vpp", "method": "read_measurement_value", "args": [1],
+     "when": {"input": "Vpp", "operator": "<", "value": 2.0}}
+  ]
+}
+```
+
+`count` is 1..10,000; blocks may nest up to 4 deep. Blocks are expanded into plain steps before execution, so preflight, the denied-method checks, the Desk results table and A25 all see every step. A `when` inside the block gives "repeat until": once the condition stops passing, the remaining iterations are skipped without I/O. Read the referenced value once before the loop so the first condition has an input.
 
 ## Execution states
 

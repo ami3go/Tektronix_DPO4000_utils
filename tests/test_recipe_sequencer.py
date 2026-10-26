@@ -57,7 +57,7 @@ def test_recipe_round_trip_mapping() -> None:
 @pytest.mark.parametrize(
     "raw",
     [
-        {"version": 2, "name": "x", "steps": [{"kind": "delay", "seconds": 1}]},
+        {"version": 3, "name": "x", "steps": [{"kind": "delay", "seconds": 1}]},
         {"name": "x", "steps": []},
         {"name": "x", "steps": [{"kind": "call", "method": "_private"}]},
         {"name": "x", "steps": [{"kind": "call", "method": "write;*RST"}]},
