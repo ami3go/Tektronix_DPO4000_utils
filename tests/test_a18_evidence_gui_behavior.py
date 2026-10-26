@@ -22,7 +22,17 @@ from dpo4000_utils.recipe import (  # noqa: E402
 from dpo4000_utils.rules import CompareOperator, RuleSet, ScalarRule, rule_set_to_mapping  # noqa: E402
 
 
+class _FakeSession:
+    """Raw VISA session stand-in; the real driver reaches ``query`` only through this."""
+
+    def query(self, command: str) -> str:
+        assert command == "*LRN?"
+        return ":HEADER 0;:ACQUIRE:STATE 0"
+
+
 class _FakeScope:
+    """Shaped like the real DPO4054 driver: no ``query`` of its own."""
+
     resource_name = "TCPIP0::192.0.2.7::inst0::INSTR"
 
     def query_identity(self) -> str:
@@ -34,9 +44,8 @@ class _FakeScope:
     def read_enabled_waveforms(self, *, point_count):
         raise AssertionError("waveform capture is disabled in this test")
 
-    def query(self, command: str) -> str:
-        assert command == "*LRN?"
-        return ":HEADER 0;:ACQUIRE:STATE 0"
+    def ensure_connected(self) -> _FakeSession:
+        return _FakeSession()
 
 
 def _synchronous_run_action(label, execute, *, on_success, on_error, retain_session=False):
@@ -116,7 +125,7 @@ def test_disabling_setup_capture_skips_lrn_query(tmp_path: Path, monkeypatch) ->
     from dpo4000_utils.gui_qt.composition.pages.evidence import EvidenceBundlePanel
 
     class _NoQueryScope(_FakeScope):
-        def query(self, command: str) -> str:
+        def ensure_connected(self):
             raise AssertionError("setup must not be queried when disabled")
 
     def run_action(label, execute, *, on_success, on_error, retain_session=False):
