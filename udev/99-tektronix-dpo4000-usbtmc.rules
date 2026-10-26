@@ -1,0 +1,14 @@
+# USBTMC access for the Tektronix DPO4054 (USB VID:PID 0699:0401).
+#
+# Install:
+#   sudo cp udev/99-tektronix-dpo4000-usbtmc.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload-rules
+#   sudo udevadm trigger
+#   # Then unplug/replug the scope USB cable.
+#
+# The usbtmc character device subsystem varies between kernels, so match its
+# stable kernel name and walk to the parent USB identity with ATTRS (plural).
+# The raw usb_device rule also permits PyUSB/libusb backends to open the device.
+# plugdev is a deliberate least-privilege replacement for MODE="0666".
+ACTION=="add|change", KERNEL=="usbtmc*", ATTRS{idVendor}=="0699", ATTRS{idProduct}=="0401", GROUP="plugdev", MODE="0660", TAG+="uaccess"
+ACTION=="add|change", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="0699", ATTR{idProduct}=="0401", GROUP="plugdev", MODE="0660", TAG+="uaccess"

@@ -139,6 +139,11 @@ USB0::0x0699::0x0401::C011280::INSTR
 
 Manual entry is still available if discovery does not list the scope.
 
+On Linux, install `udev/99-tektronix-dpo4000-usbtmc.rules` to grant the
+`plugdev` group persistent access. See
+[hardware verification](hardware-verification.md#linux-usb-permissions) for
+installation and diagnostic commands.
+
 ## Ethernet
 
 Use the Ethernet mode in the Connection page. Try VXI-11 first:

@@ -50,6 +50,38 @@ from dpo4000_utils import list_visa_resources
 print(list_visa_resources())
 ```
 
+### Linux USB permissions
+
+The repository includes a least-privilege udev rule for the DPO4054 USB ID
+`0699:0401`. It grants the `plugdev` group access to both Linux's
+`/dev/usbtmcN` character device and the raw USB node used by PyUSB/libusb:
+
+```bash
+sudo cp udev/99-tektronix-dpo4000-usbtmc.rules /etc/udev/rules.d/
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+# Unplug and reconnect the scope's USB cable.
+```
+
+The user must be a member of `plugdev`; group membership changes require a new
+login session. Diagnose enumeration, permissions, Python backends, and the
+kernel-driver binding without changing them:
+
+```bash
+./udev/diagnose_usbtmc.sh
+./udev/diagnose_usbtmc.sh --probe
+```
+
+If an aborted USBTMC transfer leaves the bulk endpoints halted, recover them
+without changing scope setup using:
+
+```bash
+./udev/diagnose_usbtmc.sh --clear-halt
+```
+
+PyVISA-py USB resources also require PyUSB. A vendor VISA runtime may provide
+its own USB stack, while the native diagnostic works through Linux `usbtmc`.
+
 ## Recommended API qualification sequence
 
 Example resource:
