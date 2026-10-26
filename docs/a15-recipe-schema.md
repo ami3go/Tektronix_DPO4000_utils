@@ -69,7 +69,7 @@ Any `call` or `delay` step may carry a condition. It uses the A16 compare operat
 }
 ```
 
-`input` names a value from a step that already ran: `<step name>`, `step.<name>` or `step.<index>`, plus dotted fields for dataclass/mapping values. For a repeated name, the most recent executed step wins. The step runs on PASS and is skipped on FAIL (recorded with `skipped: true`, zero attempts, no instrument I/O). INVALID (missing or non-numeric input) fails the run by default; `"on_invalid": "skip"` skips instead. Two steps with complementary conditions give if/else branching.
+`input` names a value from a step that already ran: `<step name>`, `step.<name>` or `step.<index>`, plus dotted fields for dataclass/mapping values. For a repeated name, the most recent executed step wins. The step runs on PASS and is skipped on FAIL (recorded with `skipped: true`, zero attempts, no instrument I/O). Numeric instrument text, such as the `999.8784E+0` that `read_measurement_value` returns, is compared as a number (plain decimal or exponent notation only). The scope's `9.91E+37` "no valid measurement" value is never a number here: it is INVALID, as are `nan`/`inf` and any other text. INVALID (missing or non-numeric input) fails the run by default; `"on_invalid": "skip"` skips instead. Two steps with complementary conditions give if/else branching.
 
 ### `repeat`
 

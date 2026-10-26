@@ -12,6 +12,7 @@ from enum import Enum
 import inspect
 import math
 from pathlib import Path
+import re
 import threading
 import time
 from typing import Any, Callable, Mapping, Sequence, Union
@@ -476,11 +477,39 @@ class _ConditionInvalid(RuntimeError):
     """Raised when a step condition is INVALID under the FAIL policy."""
 
 
+# Measurement queries answer with text such as ``999.8784E+0``. Only plain decimal / exponent
+# notation counts: no ``nan``/``inf``, digit separators, hex or surrounding junk.
+_NUMERIC_TEXT = re.compile(r"[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?")
+# DPO4000 reports "no valid measurement" as 9.91E+37. It is a finite number, so it must be
+# kept out of comparisons or a failed measurement would read as a huge passing value.
+_NO_MEASUREMENT = 9.9e37
+
+
+def _numeric_text(value: Any) -> Any:
+    """Return a float for numeric instrument text, otherwise the value unchanged."""
+    if not isinstance(value, str):
+        return value
+    text = value.strip()
+    if not _NUMERIC_TEXT.fullmatch(text):
+        return value
+    number = float(text)
+    if not math.isfinite(number) or abs(number) >= _NO_MEASUREMENT:
+        return value
+    return number
+
+
 def _record_condition_values(values: dict[str, Any], result: "StepResult") -> None:
-    """Update the condition namespace; later steps with the same name win."""
-    _flatten_value(values, f"step.{result.index}", result.value)
-    _flatten_value(values, f"step.{result.name}", result.value)
-    _flatten_value(values, result.name, result.value)
+    """Update the condition namespace; later steps with the same name win.
+
+    Numeric instrument text (a measurement reply) is compared as a number; the A16
+    rule engine itself stays strict about non-numeric inputs.
+    """
+    staged: dict[str, Any] = {}
+    _flatten_value(staged, f"step.{result.index}", result.value)
+    _flatten_value(staged, f"step.{result.name}", result.value)
+    _flatten_value(staged, result.name, result.value)
+    for key, item in staged.items():
+        values[key] = _numeric_text(item)
 
 
 def _condition_passes(step: RecipeStep, values: Mapping[str, Any]) -> bool:
