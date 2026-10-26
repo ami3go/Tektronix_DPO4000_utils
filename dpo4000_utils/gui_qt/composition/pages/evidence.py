@@ -19,8 +19,9 @@ from PySide6.QtWidgets import (
 )
 
 from ....evidence import EvidenceBundleCancelled, EvidenceBundleResult, create_evidence_bundle
-from ....recipe import RecipeResult, RecipeRunState
-from ....rules import RuleEngine, RuleSetResult, recipe_result_values
+from ....recipe import Recipe, RecipeResult, RecipeRunState
+from ....rules import RuleEngine, RuleSet, RuleSetResult, recipe_result_values
+from ....settings import read_scope_setup_string
 from .recipe import RecipePage
 
 
@@ -43,6 +44,8 @@ class EvidenceBundlePanel(QWidget):
         self._run_action = run_action
         self._recipe_result: RecipeResult | None = None
         self._rule_result: RuleSetResult | None = None
+        self._recipe: Recipe | None = None
+        self._rule_set: RuleSet | None = None
         self._cancel_event: threading.Event | None = None
         self._build_ui()
 
@@ -62,6 +65,10 @@ class EvidenceBundlePanel(QWidget):
         self.waveform_checkbox = QCheckBox("Waveforms")
         self.waveform_checkbox.setObjectName("evidenceWaveformCheck")
         self.waveform_checkbox.setChecked(True)
+        self.setup_checkbox = QCheckBox("Scope setup")
+        self.setup_checkbox.setObjectName("evidenceSetupCheck")
+        self.setup_checkbox.setToolTip("Record the read-only *LRN? setup string after the run")
+        self.setup_checkbox.setChecked(True)
         self.points_combo = QComboBox()
         self.points_combo.setObjectName("evidencePointsCombo")
         for label, value in (
@@ -79,6 +86,7 @@ class EvidenceBundlePanel(QWidget):
         self.cancel_button.setObjectName("evidenceCancelButton")
         controls.addWidget(self.screen_checkbox)
         controls.addWidget(self.waveform_checkbox)
+        controls.addWidget(self.setup_checkbox)
         controls.addWidget(QLabel("Points:"))
         controls.addWidget(self.points_combo)
         controls.addStretch(1)
@@ -100,9 +108,14 @@ class EvidenceBundlePanel(QWidget):
         self,
         recipe_result: RecipeResult,
         rule_result: RuleSetResult | None = None,
+        *,
+        recipe: Recipe | None = None,
+        rule_set: RuleSet | None = None,
     ) -> None:
         self._recipe_result = recipe_result
         self._rule_result = rule_result
+        self._recipe = recipe
+        self._rule_set = rule_set
         self.save_button.setEnabled(True)
         suffix = "" if rule_result is None else f" / {rule_result.status.value}"
         self.status_label.setText(
@@ -112,6 +125,8 @@ class EvidenceBundlePanel(QWidget):
     def clear_result(self) -> None:
         self._recipe_result = None
         self._rule_result = None
+        self._recipe = None
+        self._rule_set = None
         self.save_button.setEnabled(False)
         self.status_label.setText("Run a recipe to enable evidence capture.")
 
@@ -120,6 +135,7 @@ class EvidenceBundlePanel(QWidget):
         self.cancel_button.setEnabled(busy)
         self.screen_checkbox.setEnabled(not busy)
         self.waveform_checkbox.setEnabled(not busy)
+        self.setup_checkbox.setEnabled(not busy)
         self.points_combo.setEnabled(not busy)
 
     def _save_clicked(self) -> None:
@@ -139,6 +155,9 @@ class EvidenceBundlePanel(QWidget):
         rule_result = self._rule_result
         include_screen = self.screen_checkbox.isChecked()
         include_waveforms = self.waveform_checkbox.isChecked()
+        include_setup = self.setup_checkbox.isChecked()
+        recipe = self._recipe
+        rule_set = self._rule_set
         point_count = self.points_combo.currentData()
         cancel_event = threading.Event()
         self._cancel_event = cancel_event
@@ -159,6 +178,12 @@ class EvidenceBundlePanel(QWidget):
             )
             if cancel_event.is_set():
                 raise EvidenceBundleCancelled("Evidence capture cancelled")
+            # The driver has no ``query``; the setup helper needs the raw VISA session.
+            setup_after = (
+                read_scope_setup_string(scope.ensure_connected()) if include_setup else None
+            )
+            if cancel_event.is_set():
+                raise EvidenceBundleCancelled("Evidence capture cancelled")
             return create_evidence_bundle(
                 output,
                 recipe_result=recipe_result,
@@ -168,6 +193,10 @@ class EvidenceBundlePanel(QWidget):
                 scope_identity=identity,
                 metadata={"producer": "DPO4000 Desk", "feature": "A18"},
                 cancel=cancel_event,
+                recipe=recipe,
+                rule_set=rule_set,
+                resource=getattr(scope, "resource_name", None),
+                setup_after=setup_after,
             )
 
         self._run_action(
@@ -232,6 +261,8 @@ class RecipeEvidencePage(RecipePage):
             self.evidence_panel.clear_result()
 
     def _run_finished(self, result: Any) -> None:
+        # Capture before super() clears the active recipe/rule set.
+        recipe = self._active_recipe
         rules = self._active_rule_set
         rule_result: RuleSetResult | None = None
         if (
@@ -245,7 +276,12 @@ class RecipeEvidencePage(RecipePage):
                 rule_result = None
         super()._run_finished(result)
         if isinstance(result, RecipeResult):
-            self.evidence_panel.set_result(result, rule_result)
+            self.evidence_panel.set_result(
+                result,
+                rule_result,
+                recipe=recipe,
+                rule_set=rules,
+            )
 
 
 def build_recipe_page(host: Any) -> QWidget:

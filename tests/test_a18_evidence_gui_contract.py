@@ -23,6 +23,7 @@ def test_a18_panel_exposes_capture_controls() -> None:
         "A18EvidenceBundlePanel",
         "evidenceScreenCheck",
         "evidenceWaveformCheck",
+        "evidenceSetupCheck",
         "evidencePointsCombo",
         "evidenceSaveButton",
         "evidenceCancelButton",
@@ -38,7 +39,9 @@ def test_recipe_builder_routes_through_a18_wrapper() -> None:
     assert "from .evidence import build_recipe_page" in text
     page = PAGE.read_text(encoding="utf-8")
     assert "class RecipeEvidencePage(RecipePage)" in page
-    assert "self.evidence_panel.set_result(result, rule_result)" in page
+    assert "self.evidence_panel.set_result(" in page
+    assert "recipe=recipe," in page
+    assert "rule_set=rules," in page
 
 
 def test_evidence_work_is_not_done_in_gui_completion_callback() -> None:
@@ -49,3 +52,5 @@ def test_evidence_work_is_not_done_in_gui_completion_callback() -> None:
     assert "create_evidence_bundle(" in body
     assert "read_screen_png" in body
     assert "read_enabled_waveforms" in body
+    assert "read_scope_setup_string(" in body
+    assert "scope.ensure_connected()" in body

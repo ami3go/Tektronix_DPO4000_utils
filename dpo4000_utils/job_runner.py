@@ -25,6 +25,8 @@ import threading
 import time
 from typing import Any, Callable, Mapping
 
+from .errors import is_transport_error
+from .evidence import EvidenceBundleResult, create_evidence_bundle
 from .instrument import DPO4054
 from .recipe import (
     Recipe,
@@ -53,6 +55,7 @@ from .scientific_export import (
     normalize_scientific_format,
 )
 from .session import scope_session
+from .settings import read_scope_setup_string
 
 MAX_JOB_JSON_BYTES = 10_000_000
 DEFAULT_JOB_TIMEOUT_MS = 20_000
@@ -87,6 +90,7 @@ class JobConfig:
     scientific_format: ScientificFormat | str | None = None
     scientific_points: int | None = None
     scientific_compressed: bool = False
+    evidence_path: Path | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "recipe_path", Path(self.recipe_path))
@@ -100,6 +104,14 @@ class JobConfig:
                 "scientific_export_path",
                 Path(self.scientific_export_path),
             )
+        if self.evidence_path is not None:
+            evidence = Path(self.evidence_path)
+            # Normalize like create_evidence_bundle() so collision checks see the real file.
+            if evidence.suffix.lower() != ".dpoe":
+                evidence = evidence.with_suffix(".dpoe")
+            object.__setattr__(self, "evidence_path", evidence)
+            if self.validate_only:
+                raise JobValidationError("evidence output is not available in validate-only mode")
         if isinstance(self.timeout_ms, bool) or not isinstance(self.timeout_ms, int):
             raise JobValidationError("timeout_ms must be an integer")
         if not 1 <= self.timeout_ms <= MAX_JOB_TIMEOUT_MS:
@@ -153,7 +165,9 @@ class JobConfig:
             path for path in (self.recipe_path, self.rules_path) if path is not None
         ]
         output_paths = [
-            path for path in (self.report_path, self.scientific_export_path) if path is not None
+            path
+            for path in (self.report_path, self.scientific_export_path, self.evidence_path)
+            if path is not None
         ]
         try:
             input_resolved = {path.resolve() for path in input_paths}
@@ -163,7 +177,7 @@ class JobConfig:
         if any(path in input_resolved for path in output_resolved):
             raise JobValidationError("report/export output path must not replace recipe/rules input")
         if len(output_resolved) != len(set(output_resolved)):
-            raise JobValidationError("report and scientific export must have distinct paths")
+            raise JobValidationError("report, scientific export and evidence must have distinct paths")
 
 
 @dataclass(frozen=True)
@@ -181,6 +195,7 @@ class JobResult:
     rule_result: RuleSetResult | None = None
     scientific_export: ScientificExportResult | None = None
     validation_only: bool = False
+    evidence: EvidenceBundleResult | None = None
 
     @property
     def ok(self) -> bool:
@@ -346,6 +361,16 @@ def job_result_to_mapping(result: JobResult) -> dict[str, Any]:
         "recipe_result": _json_safe(result.recipe_result),
         "rule_result": _json_safe(result.rule_result),
         "scientific_export": _json_safe(result.scientific_export),
+        "evidence": (
+            None
+            if result.evidence is None
+            else {
+                "path": str(result.evidence.path),
+                "sha256": result.evidence.sha256,
+                "size_bytes": result.evidence.size_bytes,
+                "artifact_count": result.evidence.artifact_count,
+            }
+        ),
         "validation_only": result.validation_only,
     }
 
@@ -473,6 +498,7 @@ class HeadlessJobRunner:
         recipe_result: RecipeResult | None = None,
         rule_result: RuleSetResult | None = None,
         scientific_export: ScientificExportResult | None = None,
+        evidence: EvidenceBundleResult | None = None,
     ) -> JobResult:
         finished_at = datetime.now(timezone.utc)
         return JobResult(
@@ -489,6 +515,7 @@ class HeadlessJobRunner:
             rule_result=rule_result,
             scientific_export=scientific_export,
             validation_only=config.validate_only,
+            evidence=evidence,
         )
 
     def run(self, config: JobConfig) -> JobResult:
@@ -518,6 +545,7 @@ class HeadlessJobRunner:
         recipe_result: RecipeResult | None = None
         rule_result: RuleSetResult | None = None
         scientific_result: ScientificExportResult | None = None
+        evidence_result: EvidenceBundleResult | None = None
 
         try:
             recipe, rules = load_job_inputs(config)
@@ -586,6 +614,32 @@ class HeadlessJobRunner:
                         recipe_name=recipe.name,
                     )
 
+                # Read-only *LRN? snapshot for the evidence bundle, before any step runs.
+                # The driver exposes no ``query``; the setup helpers need the raw VISA session.
+                setup_before = (
+                    read_scope_setup_string(scope.ensure_connected())
+                    if config.evidence_path is not None
+                    else None
+                )
+
+                def write_evidence(
+                    finished: RecipeResult,
+                    rules_outcome: RuleSetResult | None,
+                ) -> EvidenceBundleResult:
+                    assert config.evidence_path is not None
+                    return create_evidence_bundle(
+                        config.evidence_path,
+                        recipe_result=finished,
+                        rule_result=rules_outcome,
+                        scope_identity=identity,
+                        metadata={"producer": "dpo4000-job"},
+                        recipe=recipe,
+                        rule_set=rules,
+                        resource=config.resource,
+                        setup_before=setup_before,
+                        setup_after=read_scope_setup_string(scope.ensure_connected()),
+                    )
+
                 self._sequencer = RecipeSequencer(scope)
 
                 def request_cancel_before_step(_index: int, _step: Any) -> None:
@@ -615,16 +669,27 @@ class HeadlessJobRunner:
                         recipe_result=recipe_result,
                     )
                 if recipe_result.state is RecipeRunState.FAILED:
+                    message = recipe_result.error or "Recipe failed"
+                    if config.evidence_path is not None:
+                        # Evidence of a failed run is still useful; the recipe
+                        # failure remains the reported outcome either way.
+                        try:
+                            evidence_result = write_evidence(recipe_result, None)
+                        except Exception as exc:
+                            if is_transport_error(exc):
+                                raise
+                            message = f"{message}; evidence not written: {exc}"
                     return self._result(
                         started_at=started_at,
                         started_perf=started_perf,
                         config=config,
                         exit_code=JobExitCode.RECIPE_FAILED,
                         status="recipe_failed",
-                        message=recipe_result.error or "Recipe failed",
+                        message=message,
                         identity=identity,
                         recipe_name=recipe.name,
                         recipe_result=recipe_result,
+                        evidence=evidence_result,
                     )
 
                 if rules is not None:
@@ -668,6 +733,26 @@ class HeadlessJobRunner:
                             rule_result=rule_result,
                         )
 
+                if config.evidence_path is not None:
+                    try:
+                        evidence_result = write_evidence(recipe_result, rule_result)
+                    except Exception as exc:
+                        # Like a requested A21 export, a requested evidence bundle is
+                        # part of the job contract and takes precedence over rules.
+                        return self._result(
+                            started_at=started_at,
+                            started_perf=started_perf,
+                            config=config,
+                            exit_code=JobExitCode.EXPORT_ERROR,
+                            status="export_error",
+                            message=f"evidence: {exc}",
+                            identity=identity,
+                            recipe_name=recipe.name,
+                            recipe_result=recipe_result,
+                            rule_result=rule_result,
+                            scientific_export=scientific_result,
+                        )
+
             if self._cancel_requested.is_set():
                 return self._result(
                     started_at=started_at,
@@ -681,6 +766,7 @@ class HeadlessJobRunner:
                     recipe_result=recipe_result,
                     rule_result=rule_result,
                     scientific_export=scientific_result,
+                    evidence=evidence_result,
                 )
 
             if rule_result is not None:
@@ -697,6 +783,7 @@ class HeadlessJobRunner:
                         recipe_result=recipe_result,
                         rule_result=rule_result,
                         scientific_export=scientific_result,
+                        evidence=evidence_result,
                     )
                 if rule_result.status is RuleStatus.INVALID:
                     return self._result(
@@ -711,6 +798,7 @@ class HeadlessJobRunner:
                         recipe_result=recipe_result,
                         rule_result=rule_result,
                         scientific_export=scientific_result,
+                        evidence=evidence_result,
                     )
 
             return self._result(
@@ -729,6 +817,7 @@ class HeadlessJobRunner:
                 recipe_result=recipe_result,
                 rule_result=rule_result,
                 scientific_export=scientific_result,
+                evidence=evidence_result,
             )
         except (JobValidationError, RecipeValidationError, RuleValidationError) as exc:
             return self._result(
@@ -802,6 +891,12 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--export-points", type=int, dest="scientific_points")
     parser.add_argument("--export-compressed", action="store_true", dest="scientific_compressed")
     parser.add_argument(
+        "--evidence",
+        type=Path,
+        dest="evidence_path",
+        help="write an A18 .dpoe evidence bundle (definitions, results, read-only setup before/after)",
+    )
+    parser.add_argument(
         "--output-format",
         choices=("json", "text"),
         default="json",
@@ -851,6 +946,7 @@ def main(argv: list[str] | None = None) -> int:
             scientific_format=args.export_format,
             scientific_points=args.scientific_points,
             scientific_compressed=args.scientific_compressed,
+            evidence_path=args.evidence_path,
         )
     except (JobValidationError, ScientificExportError) as exc:
         now = datetime.now(timezone.utc)

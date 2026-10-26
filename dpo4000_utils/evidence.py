@@ -17,6 +17,7 @@ import json
 import math
 import os
 from pathlib import Path, PurePosixPath
+import platform
 import sys
 import time
 from typing import Any, Mapping, Sequence
@@ -24,12 +25,15 @@ from uuid import uuid4
 from zipfile import ZIP_DEFLATED, ZIP_STORED, BadZipFile, ZipFile
 
 from .hardcopy import PNG_SIGNATURE
-from .recipe import RecipeResult
-from .rules import RuleEvaluation, RuleSetResult
+from .recipe import Recipe, RecipeResult, recipe_to_mapping
+from .rules import RuleEvaluation, RuleSet, RuleSetResult, rule_set_to_mapping
 from .waveform import WaveformData
 
 EVIDENCE_SCHEMA = "dpo4000-evidence"
-EVIDENCE_VERSION = 1
+EVIDENCE_VERSION = 2
+SUPPORTED_EVIDENCE_VERSIONS = (1, 2)
+MAX_SETUP_TEXT_BYTES = 4 * 1024 * 1024
+BUILD_COMMIT_ENV_VARS = ("DPO4000_BUILD_COMMIT", "GITHUB_SHA")
 MAX_EVIDENCE_ARTIFACTS = 512
 MAX_MANIFEST_BYTES = 1 * 1024 * 1024
 MAX_ARTIFACT_BYTES = 1 * 1024 * 1024 * 1024
@@ -269,9 +273,11 @@ def _write_artifact(
     )
 
 
-def _waveform_index(waveforms: Mapping[str, WaveformData]) -> tuple[dict[str, Any], list[tuple[str, bytes]]]:
+def _waveform_index(
+    waveforms: Mapping[str, WaveformData],
+) -> tuple[dict[str, Any], list[tuple[str, WaveformData]]]:
     items: list[dict[str, Any]] = []
-    payloads: list[tuple[str, bytes]] = []
+    payloads: list[tuple[str, WaveformData]] = []
     seen: set[str] = set()
     for key, waveform in waveforms.items():
         if not isinstance(waveform, WaveformData):
@@ -281,8 +287,7 @@ def _waveform_index(waveforms: Mapping[str, WaveformData]) -> tuple[dict[str, An
             raise EvidenceBundleError(f"Duplicate waveform source {source!r}")
         seen.add(source)
         raw_path = f"waveforms/{source}.raw"
-        raw = waveform.samples.tobytes()
-        payloads.append((raw_path, raw))
+        payloads.append((raw_path, waveform))
         items.append(
             {
                 "source": waveform.source,
@@ -301,6 +306,114 @@ def _waveform_index(waveforms: Mapping[str, WaveformData]) -> tuple[dict[str, An
     return {"version": 1, "waveforms": items}, payloads
 
 
+def _transport_from_resource(resource: str | None) -> str | None:
+    """Classify a VISA resource string without recording more than its interface type."""
+    if resource is None:
+        return None
+    text = str(resource).strip().upper()
+    for prefix, name in (("USB", "USB"), ("TCPIP", "TCPIP"), ("GPIB", "GPIB"), ("ASRL", "SERIAL")):
+        if text.startswith(prefix):
+            if name == "TCPIP" and text.endswith("::SOCKET"):
+                return "TCPIP-SOCKET"
+            return name
+    return "OTHER" if text else None
+
+
+def _package_version() -> str | None:
+    try:
+        from importlib.metadata import PackageNotFoundError, version
+    except ImportError:  # pragma: no cover - Python < 3.8 is unsupported
+        return None
+    try:
+        return version("dpo4000-utils")
+    except PackageNotFoundError:
+        return None
+
+
+def _environment_metadata() -> dict[str, Any]:
+    commit = next(
+        (os.environ[name].strip() for name in BUILD_COMMIT_ENV_VARS if os.environ.get(name, "").strip()),
+        None,
+    )
+    return {
+        "package_version": _package_version(),
+        "build_commit": commit,
+        "python_version": platform.python_version(),
+        "python_implementation": platform.python_implementation(),
+        "platform": platform.platform(terse=True),
+        "machine": platform.machine(),
+    }
+
+
+def _setup_bytes(value: str | None, *, field_name: str) -> bytes | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise EvidenceBundleError(f"{field_name} must be a string or None")
+    data = value.encode("utf-8")
+    if len(data) > MAX_SETUP_TEXT_BYTES:
+        raise EvidenceBundleError(f"{field_name} exceeds {MAX_SETUP_TEXT_BYTES} bytes")
+    return data
+
+
+def _markdown_cell(value: Any) -> str:
+    text = "" if value is None else str(value)
+    return text.replace("\\", "\\\\").replace("|", "\\|").replace("\r", " ").replace("\n", " ")
+
+
+def _rule_lines(item: RuleEvaluation, depth: int, lines: list[str]) -> None:
+    detail = f" — actual {item.actual:g}" if item.actual is not None else ""
+    reason = f" ({_markdown_cell(item.reason)})" if item.reason else ""
+    lines.append(f"{'  ' * depth}- **{item.status.value}** `{_markdown_cell(item.rule_id)}`{detail}{reason}")
+    for child in item.children:
+        _rule_lines(child, depth + 1, lines)
+
+
+def _summary_markdown(
+    *,
+    recipe_result: RecipeResult,
+    rule_result: RuleSetResult | None,
+    scope_identity: str | None,
+    transport: str | None,
+    environment: Mapping[str, Any],
+    created_at: str,
+) -> bytes:
+    """Human-readable companion to the JSON results; the JSON remains authoritative."""
+    lines = [
+        f"# Evidence: {_markdown_cell(recipe_result.recipe_name)}",
+        "",
+        f"- Created (UTC): {created_at}",
+        f"- Recipe state: **{recipe_result.state.value}**",
+        f"- Rule status: **{rule_result.status.value if rule_result is not None else 'not evaluated'}**",
+        f"- Duration: {recipe_result.duration_s:.3f} s",
+        f"- Scope: {_markdown_cell(scope_identity) or 'unknown'}",
+        f"- Transport: {transport or 'unknown'}",
+        f"- Package version: {environment.get('package_version') or 'unknown'}",
+        f"- Build commit: {environment.get('build_commit') or 'unknown'}",
+        f"- Python: {environment.get('python_version')} on {_markdown_cell(environment.get('platform'))}",
+    ]
+    if recipe_result.error:
+        lines += ["", f"**Error:** {_markdown_cell(recipe_result.error)}"]
+    lines += ["", "## Steps", "", "| # | Step | Attempts | Duration (s) | Value |", "|---|---|---|---|---|"]
+    for step in recipe_result.steps:
+        value = json.dumps(_json_safe(step.value), sort_keys=True, allow_nan=False)
+        if len(value) > 120:
+            value = value[:117] + "..."
+        lines.append(
+            f"| {step.index} | {_markdown_cell(step.name)} | {step.attempts} | "
+            f"{step.duration_s:.3f} | {_markdown_cell(value)} |"
+        )
+    if rule_result is not None:
+        lines += ["", f"## Rules: {_markdown_cell(rule_result.name)}", ""]
+        _rule_lines(rule_result.root, 0, lines)
+    lines += [
+        "",
+        "Artifact SHA-256 hashes are recorded in `manifest.json`; verify with `verify_evidence_bundle()`.",
+        "",
+    ]
+    return "\n".join(lines).encode("utf-8")
+
+
 def create_evidence_bundle(
     path: str | Path,
     *,
@@ -312,12 +425,32 @@ def create_evidence_bundle(
     metadata: Mapping[str, Any] | None = None,
     compressed: bool = True,
     cancel: Any = None,
+    recipe: Recipe | None = None,
+    rule_set: RuleSet | None = None,
+    resource: str | None = None,
+    setup_before: str | None = None,
+    setup_after: str | None = None,
+    include_summary: bool = True,
 ) -> EvidenceBundleResult:
-    """Create one atomic A18 evidence archive and return completion metrics."""
+    """Create one atomic A18 evidence archive and return completion metrics.
+
+    ``recipe``/``rule_set`` record the definitions that produced the results.
+    ``setup_before``/``setup_after`` are optional ``*LRN?`` setup strings.
+    ``resource`` is reduced to its transport type; the full string is not stored.
+    """
     if not isinstance(recipe_result, RecipeResult):
         raise EvidenceBundleError("recipe_result must be RecipeResult")
     if rule_result is not None and not isinstance(rule_result, RuleSetResult):
         raise EvidenceBundleError("rule_result must be RuleSetResult or None")
+    if recipe is not None and not isinstance(recipe, Recipe):
+        raise EvidenceBundleError("recipe must be Recipe or None")
+    if rule_set is not None and not isinstance(rule_set, RuleSet):
+        raise EvidenceBundleError("rule_set must be RuleSet or None")
+    setup_before_data = _setup_bytes(setup_before, field_name="setup_before")
+    setup_after_data = _setup_bytes(setup_after, field_name="setup_after")
+    transport = _transport_from_resource(resource)
+    environment = _environment_metadata()
+    created_at = datetime.now(timezone.utc).isoformat()
     if metadata is not None and not isinstance(metadata, Mapping):
         raise EvidenceBundleError("metadata must be a mapping or None")
     if screen_png is not None:
@@ -363,6 +496,58 @@ def create_evidence_bundle(
                     cancel=cancel,
                 )
 
+            if recipe is not None:
+                _write_artifact(
+                    archive,
+                    records,
+                    path="definitions/recipe.json",
+                    kind="recipe_definition",
+                    media_type="application/json",
+                    data=_json_bytes(recipe_to_mapping(recipe)),
+                    cancel=cancel,
+                )
+            if rule_set is not None:
+                _write_artifact(
+                    archive,
+                    records,
+                    path="definitions/rules.json",
+                    kind="rule_definition",
+                    media_type="application/json",
+                    data=_json_bytes(rule_set_to_mapping(rule_set)),
+                    cancel=cancel,
+                )
+            for setup_path, setup_kind, setup_data in (
+                ("setup/before.txt", "scope_setup_before", setup_before_data),
+                ("setup/after.txt", "scope_setup_after", setup_after_data),
+            ):
+                if setup_data is not None:
+                    _write_artifact(
+                        archive,
+                        records,
+                        path=setup_path,
+                        kind=setup_kind,
+                        media_type="text/plain; charset=utf-8",
+                        data=setup_data,
+                        cancel=cancel,
+                    )
+            if include_summary:
+                _write_artifact(
+                    archive,
+                    records,
+                    path="report/summary.md",
+                    kind="summary_report",
+                    media_type="text/markdown; charset=utf-8",
+                    data=_summary_markdown(
+                        recipe_result=recipe_result,
+                        rule_result=rule_result,
+                        scope_identity=scope_identity,
+                        transport=transport,
+                        environment=environment,
+                        created_at=created_at,
+                    ),
+                    cancel=cancel,
+                )
+
             if screen_png is not None:
                 image_started = time.perf_counter()
                 _write_artifact(
@@ -388,14 +573,16 @@ def create_evidence_bundle(
                     data=_json_bytes(index),
                     cancel=cancel,
                 )
-                for raw_path, raw in payloads:
+                for raw_path, waveform in payloads:
+                    # Serialize one trace at a time so peak memory is bounded by
+                    # the largest trace rather than the whole capture.
                     _write_artifact(
                         archive,
                         records,
                         path=raw_path,
                         kind="waveform_raw",
                         media_type="application/octet-stream",
-                        data=raw,
+                        data=waveform.samples.tobytes(),
                         cancel=cancel,
                     )
                 waveform_s = time.perf_counter() - waveform_started
@@ -412,8 +599,10 @@ def create_evidence_bundle(
             manifest = {
                 "schema": EVIDENCE_SCHEMA,
                 "version": EVIDENCE_VERSION,
-                "created_at": datetime.now(timezone.utc).isoformat(),
+                "created_at": created_at,
                 "scope_identity": None if scope_identity is None else str(scope_identity),
+                "transport": transport,
+                "environment": environment,
                 "recipe_name": recipe_result.recipe_name,
                 "recipe_state": recipe_result.state.value,
                 "rule_status": None if rule_result is None else rule_result.status.value,
@@ -486,12 +675,15 @@ def _validate_manifest(data: Any) -> dict[str, Any]:
         "metadata",
         "artifacts",
     }
+    version = data.get("version")
+    if version == 2:
+        allowed |= {"transport", "environment"}
     unknown = set(data) - allowed
     if unknown:
         raise EvidenceBundleError(f"Unknown evidence manifest fields: {sorted(unknown)!r}")
     if data.get("schema") != EVIDENCE_SCHEMA:
         raise EvidenceBundleError(f"Unsupported evidence schema: {data.get('schema')!r}")
-    if data.get("version") != EVIDENCE_VERSION:
+    if isinstance(version, bool) or version not in SUPPORTED_EVIDENCE_VERSIONS:
         raise EvidenceBundleError(f"Unsupported evidence version: {data.get('version')!r}")
     artifacts = data.get("artifacts")
     if not isinstance(artifacts, list):
@@ -595,6 +787,7 @@ def verify_evidence_bundle(path: str | Path) -> EvidenceVerification:
 __all__ = [
     "EVIDENCE_SCHEMA",
     "EVIDENCE_VERSION",
+    "SUPPORTED_EVIDENCE_VERSIONS",
     "EvidenceArtifact",
     "EvidenceBundleCancelled",
     "EvidenceBundleError",

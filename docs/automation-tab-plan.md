@@ -162,15 +162,15 @@ Allow one automation event to produce one or more artifacts.
 
 Phase-1 actions:
 
-- [ ] Save PNG image
-- [ ] Save enabled-channel CSV
+- [x] Save PNG image
+- [x] Save enabled-channel CSV
 - [ ] Save scope settings JSON
 - [ ] Refresh on-screen preview after PNG capture
 
 Later actions:
 
-- [ ] Log measurement values to a time-series CSV
-- [ ] Save a combined run manifest (`.json`)
+- [x] Log measurement values to a time-series CSV
+- [x] Save a combined run manifest (`.json`)
 - [ ] Save image + waveform + settings as one capture bundle
 
 At least one persistent or logging action must be selected before Start is enabled.
