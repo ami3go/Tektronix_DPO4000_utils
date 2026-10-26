@@ -140,10 +140,30 @@ The existing File page is preserved and gains a `Scientific Export (A21)` panel 
 - format: NumPy NPZ / Portable DPOZ;
 - record size: full / 1k / 10k / 100k / 1M points;
 - optional compression;
+- acquisition context (on by default);
 - Export Enabled Channels action;
 - completion status containing trace count, sample count, file size, duration, samples/s, and MB/s.
 
 The panel uses only public `read_enabled_waveforms()` plus the framework-neutral exporter. It owns no raw SCPI/VISA handle.
+
+With acquisition context enabled, the panel adds `metadata["acquisition_context"]` from `dpo4000_utils.acquisition_context.read_acquisition_context()`, read after the waveform transfer through public read-only driver methods:
+
+```json
+{
+  "version": 1,
+  "acquisition": {"mode": "SAMPLE", "...": "..."},
+  "horizontal_scale_s_per_div": 0.001,
+  "horizontal_position": 50.0,
+  "record_length": 10000,
+  "measurements": [
+    {"slot": 1, "type": "FREQUENCY", "source1": "CH1", "source2": "",
+     "value_text": "1.000E3", "value": 1000.0, "unit": "Hz"}
+  ],
+  "errors": {}
+}
+```
+
+Only enabled MEAS slots are listed. `value` is `null` when the reply is not numeric or is the DPO4000 `9.91E37` "no valid measurement" sentinel; `value_text` keeps the raw reply. `unit` is filled when the driver provides `read_measurement_unit()`. A non-transport readback failure is recorded under `errors` rather than aborting the export; transport failures still fail the export.
 
 ## Performance qualification
 

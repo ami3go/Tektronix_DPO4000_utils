@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ....acquisition_context import read_acquisition_context
 from ....scientific_export import (
     ScientificExportResult,
     ScientificFormat,
@@ -69,6 +70,13 @@ class ScientificExportPanel(QGroupBox):
         self.compressed_checkbox.setObjectName("scientificExportCompressed")
         self.compressed_checkbox.setChecked(False)
         form.addRow("Storage", self.compressed_checkbox)
+        self.context_checkbox = QCheckBox("Acquisition settings and enabled measurements")
+        self.context_checkbox.setObjectName("scientificExportContext")
+        self.context_checkbox.setToolTip(
+            "Record read-only acquisition, timebase and MEAS1..MEAS8 readbacks in the export metadata"
+        )
+        self.context_checkbox.setChecked(True)
+        form.addRow("Context", self.context_checkbox)
         layout.addLayout(form)
 
         actions = QHBoxLayout()
@@ -109,19 +117,24 @@ class ScientificExportPanel(QGroupBox):
 
         point_count = self.points_combo.currentData()
         compressed = self.compressed_checkbox.isChecked()
+        include_context = self.context_checkbox.isChecked()
         self.export_button.setEnabled(False)
         self.status_label.setText("Capturing and exporting…")
 
         def execute(scope: Any) -> ScientificExportResult:
             waveforms = scope.read_enabled_waveforms(point_count=point_count)
+            metadata: dict[str, Any] = {
+                "producer": "DPO4000 Desk",
+                "scope_identity": scope.query_identity(),
+            }
+            if include_context:
+                # Read after the transfer so the context matches the exported record.
+                metadata["acquisition_context"] = read_acquisition_context(scope)
             return export_scientific_dataset(
                 path,
                 waveforms,
                 format=export_format,
-                metadata={
-                    "producer": "DPO4000 Desk",
-                    "scope_identity": scope.query_identity(),
-                },
+                metadata=metadata,
                 compressed=compressed,
             )
 

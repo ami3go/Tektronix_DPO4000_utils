@@ -21,6 +21,8 @@
   read-only `read_measurement_unit()` driver query.
 - Added A21 lossless NPZ and portable DPOZ scientific export/import with exact waveform
   round trips and safe archive validation.
+- A21 Desk exports record a read-only acquisition context (acquisition setup, timebase,
+  record length, enabled measurements with values and units) in dataset metadata.
 - Added the A25 `dpo4000-job` headless recipe runner with deterministic reports and exit
   semantics.
 - Added the reviewed R0 functional/timing regression framework, batch runner, performance

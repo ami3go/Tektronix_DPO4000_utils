@@ -21,6 +21,7 @@ def test_a21_panel_uses_worker_public_api_and_no_raw_transport() -> None:
     assert "export_scientific_dataset" in text
     assert "self._run_action(" in text
     assert "retain_session=True" in text
+    assert "read_acquisition_context(scope)" in text
     for forbidden in (".scope", ".query(", ".write(", "ResourceManager("):
         assert forbidden not in text
 
@@ -32,6 +33,7 @@ def test_a21_panel_exposes_expected_controls_and_scaling_sizes() -> None:
         "scientificExportFormat",
         "scientificExportPoints",
         "scientificExportCompressed",
+        "scientificExportContext",
         "scientificExportButton",
         "scientificExportStatus",
     ):
