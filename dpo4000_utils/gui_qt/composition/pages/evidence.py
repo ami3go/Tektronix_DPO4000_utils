@@ -178,7 +178,10 @@ class EvidenceBundlePanel(QWidget):
             )
             if cancel_event.is_set():
                 raise EvidenceBundleCancelled("Evidence capture cancelled")
-            setup_after = read_scope_setup_string(scope) if include_setup else None
+            # The driver has no ``query``; the setup helper needs the raw VISA session.
+            setup_after = (
+                read_scope_setup_string(scope.ensure_connected()) if include_setup else None
+            )
             if cancel_event.is_set():
                 raise EvidenceBundleCancelled("Evidence capture cancelled")
             return create_evidence_bundle(
