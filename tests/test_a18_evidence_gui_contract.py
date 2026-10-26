@@ -52,4 +52,5 @@ def test_evidence_work_is_not_done_in_gui_completion_callback() -> None:
     assert "create_evidence_bundle(" in body
     assert "read_screen_png" in body
     assert "read_enabled_waveforms" in body
-    assert "read_scope_setup_string(scope)" in body
+    assert "read_scope_setup_string(" in body
+    assert "scope.ensure_connected()" in body
