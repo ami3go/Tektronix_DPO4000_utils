@@ -350,6 +350,43 @@ def job_result_to_mapping(result: JobResult) -> dict[str, Any]:
     }
 
 
+def format_job_summary(result: JobResult) -> str:
+    """Return a concise human-readable job summary; the JSON report stays authoritative."""
+    verdict = result.status.replace("_", " ").upper()
+    lines = [f"dpo4000-job: {verdict} (exit {int(result.exit_code)}) in {result.duration_s:.3f} s"]
+    if result.recipe_name:
+        lines.append(f"Recipe: {result.recipe_name}" + (" (validation only)" if result.validation_only else ""))
+    if result.identity:
+        lines.append(f"Scope: {result.identity}")
+    recipe_result = result.recipe_result
+    if recipe_result is not None:
+        skipped = sum(1 for step in recipe_result.steps if getattr(step, "skipped", False))
+        detail = f"{len(recipe_result.steps)} steps"
+        if skipped:
+            detail += f", {skipped} skipped"
+        lines.append(f"Steps: {recipe_result.state.value}, {detail}, {recipe_result.duration_s:.3f} s")
+    rule_result = result.rule_result
+    if rule_result is not None:
+        counts: dict[str, int] = {}
+        for evaluation in rule_result.evaluations:
+            if not evaluation.children:
+                counts[evaluation.status.value] = counts.get(evaluation.status.value, 0) + 1
+        tally = ", ".join(f"{count} {status}" for status, count in sorted(counts.items()))
+        lines.append(f"Rules: {rule_result.name} {rule_result.status.value} ({tally})")
+        for evaluation in rule_result.evaluations:
+            if not evaluation.children and evaluation.status is not RuleStatus.PASS:
+                actual = "missing" if evaluation.actual is None else f"{evaluation.actual:g}"
+                lines.append(f"  {evaluation.status.value} {evaluation.rule_id}: actual {actual} — {evaluation.reason}")
+    if result.scientific_export is not None:
+        export = result.scientific_export
+        lines.append(
+            f"Export: {export.path} ({export.trace_count} traces, {export.sample_count:,} samples)"
+        )
+    if result.message and not result.ok:
+        lines.append(f"Message: {result.message}")
+    return "\n".join(lines)
+
+
 def write_job_report(path: str | Path, result: JobResult) -> Path:
     output = Path(path)
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -764,8 +801,21 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--export-format", choices=("npz", "dpoz"))
     parser.add_argument("--export-points", type=int, dest="scientific_points")
     parser.add_argument("--export-compressed", action="store_true", dest="scientific_compressed")
+    parser.add_argument(
+        "--output-format",
+        choices=("json", "text"),
+        default="json",
+        help="stdout format: machine-readable JSON (default) or a concise text summary",
+    )
     parser.add_argument("--quiet", action="store_true")
     return parser
+
+
+def _print_result(result: JobResult, output_format: str) -> None:
+    if output_format == "text":
+        print(format_job_summary(result))
+    else:
+        print(json.dumps(job_result_to_mapping(result), sort_keys=True))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -822,7 +872,7 @@ def main(argv: list[str] | None = None) -> int:
                     print(f"Could not write report: {report_exc}", file=sys.stderr)
                 return int(JobExitCode.RUNTIME_ERROR)
         if not args.quiet:
-            print(json.dumps(job_result_to_mapping(invalid), sort_keys=True))
+            _print_result(invalid, args.output_format)
         return int(JobExitCode.VALIDATION_ERROR)
 
     runner = HeadlessJobRunner()
@@ -856,7 +906,7 @@ def main(argv: list[str] | None = None) -> int:
             return int(JobExitCode.RUNTIME_ERROR)
 
     if not args.quiet:
-        print(json.dumps(job_result_to_mapping(result), sort_keys=True))
+        _print_result(result, args.output_format)
     return int(result.exit_code)
 
 
@@ -867,6 +917,7 @@ __all__ = [
     "JobExitCode",
     "JobResult",
     "JobValidationError",
+    "format_job_summary",
     "job_result_to_mapping",
     "load_job_inputs",
     "load_json_mapping",
