@@ -121,6 +121,21 @@ def scope():
             pytest.fail(f"CRITICAL: physical scope disconnect failed: {disconnect_error}")
 
 
+def _require_record_length(scope, needed: int) -> None:
+    """The record length is an operator-set precondition; A22 qualification never changes it.
+
+    Requesting more points than the scope holds makes the driver fail with a point-count
+    mismatch, which says nothing about A22. SKIP states the real reason instead, and a SKIP
+    is never counted as qualification evidence for that point count.
+    """
+    available = int(scope.get_record_length())
+    if available < needed:
+        pytest.skip(
+            f"A22 HIL at {needed} points needs HORIZONTAL:RECORDLENGTH >= {needed}; the scope "
+            f"is set to {available}. Set it on the scope first (A22 never changes it)."
+        )
+
+
 @pytest.mark.hardware
 @pytest.mark.parametrize("point_count", [1_000, 10_000, 100_000, 1_000_000])
 def test_a22_read_only_sustained_snapshots(scope, point_count):
@@ -129,6 +144,7 @@ def test_a22_read_only_sustained_snapshots(scope, point_count):
         allowed = {int(v.strip()) for v in selected.split(",")}
         if point_count not in allowed:
             pytest.skip(f"A22 HIL point_count={point_count} excluded by opt-in selection")
+    _require_record_length(scope, point_count)
     try:
         import psutil
     except ImportError:
@@ -233,6 +249,7 @@ def test_a22_read_only_sustained_snapshots(scope, point_count):
 
 @pytest.mark.hardware
 def test_a22_stop_during_real_transfer_discards_late_frame(scope):
+    _require_record_length(scope, 10_000)
     """Real VISA call finishes before querying again; no competing scope I/O."""
     config = StreamConfig(point_count=10_000, target_hz=5.0)
     engine = LiveStreamEngine()
@@ -259,6 +276,7 @@ def test_a22_stop_during_real_transfer_discards_late_frame(scope):
 
 @pytest.mark.hardware
 def test_a22_pause_resume_real_scope_transfer(scope):
+    _require_record_length(scope, 10_000)
     config = StreamConfig(point_count=10_000, target_hz=5.0)
     engine = LiveStreamEngine()
     engine.start(config)
