@@ -203,3 +203,13 @@ def test_synchronous_dispatch_failure_transitions_to_error(monkeypatch):
     panel.shutdown()
     app.processEvents()
     panel.close()
+
+
+def test_lease_gateway_admits_the_panels_own_action_name():
+    """The host lease must admit exactly the description the panel submits."""
+    panel = PANEL.read_text(encoding="utf-8")
+    surface = (ROOT / "dpo4000_utils/gui_qt/composition/legacy_surface.py").read_text(
+        encoding="utf-8"
+    )
+    assert "LIVE_ACTION_DESCRIPTION, execute," in panel
+    assert ".startswith(LIVE_ACTION_DESCRIPTION)" in surface

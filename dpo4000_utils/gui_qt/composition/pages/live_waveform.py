@@ -24,6 +24,10 @@ CHANNEL_COLORS = {
 }
 
 
+# Shared with the host lease gateway, which admits only this action while A22 is active.
+LIVE_ACTION_DESCRIPTION = "A22 live waveform group"
+
+
 class LiveWaveformPlot(QWidget):
     """Large, bounded, shared-axis CH1..CH4 waveform canvas."""
 
@@ -400,7 +404,7 @@ class LiveWaveformPanel(QGroupBox):
 
         try:
             self._run_action(
-                "A22 live waveform group", execute,
+                LIVE_ACTION_DESCRIPTION, execute,
                 on_success=success, on_error=failure, retain_session=True,
             )
         except Exception as exc:

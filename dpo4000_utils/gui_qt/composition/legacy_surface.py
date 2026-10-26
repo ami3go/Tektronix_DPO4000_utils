@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
 from ...settings import save_scope_settings_file
 from ..milestone_a_window import QtScopeWindow as MilestoneAFeatureWindow
 from ..logger_page_layout import LIVE_PAGE_INDEX
-from .pages.live_waveform import LiveWaveformPanel, LiveWaveformPlot
+from .pages.live_waveform import LIVE_ACTION_DESCRIPTION, LiveWaveformPanel, LiveWaveformPlot
 from .pages import (
     attach_measurement_trend_panel,
     attach_scientific_export_panel,
@@ -142,7 +142,7 @@ class ComposedFeatureSurface(MilestoneAFeatureWindow):
         # Local pure-data operations do not call this gateway and remain available.
         if getattr(self, "_composition_live_lease", False) and not str(
             description
-        ).startswith("A22 live waveform snapshot"):
+        ).startswith(LIVE_ACTION_DESCRIPTION):
             error = RuntimeError("A22 owns the instrument; Stop live streaming first")
             self.statusBar().showMessage(str(error))
             if on_error is not None:
