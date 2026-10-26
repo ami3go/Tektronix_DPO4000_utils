@@ -308,6 +308,8 @@ def restore_setup_verified(
     settle_timeout_s: float = 10.0,
     poll_interval_s: float = 0.5,
     restore_delay_s: float = 0.5,
+    always_apply: bool = False,
+    check_error: bool = False,
     sleep: Callable[[float], None] = time.sleep,
     monotonic: Callable[[], float] = time.monotonic,
 ) -> tuple[bool, int, str]:
@@ -320,8 +322,12 @@ def restore_setup_verified(
     is polled for up to ``settle_timeout_s``, and only if it is still different is the setup
     applied again (at most ``max_passes`` applications in total).
 
+    ``always_apply`` applies at least once even when the scope already reads back identical
+    (a round-trip check of the apply path itself). ``check_error`` has each application
+    verify ``*ESR?`` like :func:`apply_setup_string`.
+
     Returns ``(exact, passes_applied, final_setup)``. ``passes_applied`` is 0 when the scope
-    already matched.
+    already matched and ``always_apply`` was not requested.
     """
     if isinstance(max_passes, bool) or not isinstance(max_passes, int) or max_passes < 1:
         raise ValueError("max_passes must be a positive integer")
@@ -331,13 +337,14 @@ def restore_setup_verified(
     expected = str(setup_string).strip()
     current = read_scope_setup_string(scope)
     passes = 0
-    while current != expected and passes < max_passes:
+    needs_apply = always_apply or current != expected
+    while needs_apply and passes < max_passes:
         passes += 1
         apply_setup_string(
             scope,
             setup_string,
             wait_complete=False,
-            check_error=False,
+            check_error=check_error,
             restore_delay_s=restore_delay_s,
         )
         deadline = monotonic() + settle_timeout_s
@@ -345,6 +352,7 @@ def restore_setup_verified(
         while current != expected and monotonic() < deadline:
             sleep(poll_interval_s)
             current = read_scope_setup_string(scope)
+        needs_apply = current != expected
     return current == expected, passes, current
 
 

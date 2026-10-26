@@ -250,3 +250,28 @@ def test_restore_setup_verified_validates_arguments(kwargs):
     clock = Clock()
     with pytest.raises(ValueError):
         _restore(SettlingScope(clock, ":A"), clock, ":A", **kwargs)
+
+
+def test_restore_setup_verified_always_apply_exercises_the_apply_path_even_when_exact():
+    clock = Clock()
+    scope = SettlingScope(clock, ":A 1", settle_s=2.0)
+    exact, passes, final = _restore(scope, clock, ":A 1", always_apply=True)
+    assert (exact, passes, final) == (True, 1, ":A 1")
+    assert scope.applied == 1 and clock.now >= 2.0
+
+
+def test_restore_setup_verified_passes_check_error_to_each_application(monkeypatch):
+    from dpo4000_utils import settings as module
+
+    seen = []
+    clock = Clock()
+    scope = SettlingScope(clock, ":OTHER", settle_s=0.0)
+    real = module.apply_setup_string
+
+    def spy(session, setup, **kwargs):
+        seen.append(kwargs["check_error"])
+        return real(session, setup, **{**kwargs, "check_error": False})
+
+    monkeypatch.setattr(module, "apply_setup_string", spy)
+    _restore(scope, clock, ":A 1", check_error=True)
+    assert seen == [True]
