@@ -6,7 +6,7 @@ procedure and audit trail, not a physical-HIL pass certificate.
 
 ## Baseline and change isolation
 
-- Candidate version: `0.9.0rc2`; supported Python `>=3.10`.
+- Candidate version: `0.9.0rc3`; supported Python `>=3.10`.
 - A22.1 four-channel Live View, A25 hardening, the README matrix, and P0
   qualification guards are integrated. Resolve the exact candidate SHA at run time;
   never substitute the historical handoff baseline.

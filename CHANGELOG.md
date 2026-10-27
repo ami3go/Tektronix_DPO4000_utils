@@ -63,7 +63,7 @@
 
 ### Changed
 
-- Package version prepared as `0.9.0rc2`. The original A22 Measurement-card plot is
+- Package version prepared as `0.9.0rc3`. The original A22 Measurement-card plot is
   replaced in production by the dedicated Live workspace; Preview remains available
   and is restored when the user leaves Live.
 - Release builds use the refreshed pinned Python dependency set verified on 2026-10-22.

@@ -342,6 +342,13 @@ jobs:
         working-directory: release-assets
         run: sha256sum --check DPO4000Desk-integrity/SHA256SUMS
 
+      - name: Require release notes for this tag
+        run: |
+          test -f "docs/releases/${{ needs.prepare.outputs.release_tag }}.md" || {
+            echo "::error::docs/releases/${{ needs.prepare.outputs.release_tag }}.md is missing; refusing to publish a release without notes"
+            exit 1
+          }
+
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v3
         with:
@@ -349,7 +356,7 @@ jobs:
           target_commitish: ${{ github.sha }}
           name: DPO4000 Desk ${{ needs.prepare.outputs.release_tag }}
           body_path: docs/releases/${{ needs.prepare.outputs.release_tag }}.md
-          prerelease: ${{ github.event.inputs.prerelease == 'true' }}
+          prerelease: ${{ github.event.inputs.prerelease == 'true' || contains(needs.prepare.outputs.release_tag, 'rc') }}
           files: |
             release-assets/DPO4000Desk-windows/DPO4000Desk-windows.zip
             release-assets/DPO4000Desk-windows/release-python-environment-windows.txt
