@@ -93,7 +93,8 @@ def _track_file(root: Path, relative: str, tracked: dict[str, str]) -> Path:
 
 
 def _load(path: Path, tracked: dict[str, str], root: Path) -> dict:
-    relative = str(path.relative_to(root))
+    # POSIX form: callers look evidence up with "/" paths, also on Windows.
+    relative = path.relative_to(root).as_posix()
     # Hash and parse the same bytes: separate hash/read operations permit
     # a concurrent file replacement to change the judged evidence.
     path = _evidence_path(root, relative)
@@ -562,7 +563,7 @@ def evaluate(root: Path, *, commit: str) -> dict:
             xml_raw = xml_path.read_bytes()
             if not 0 < len(xml_raw) <= 10_000_000:
                 raise ValueError("A25 JUnit is empty or oversized")
-            tracked[str(xml_path.relative_to(root))] = hashlib.sha256(xml_raw).hexdigest()
+            tracked[xml_path.relative_to(root).as_posix()] = hashlib.sha256(xml_raw).hexdigest()
             parsed_xml = ET.fromstring(xml_raw)
             suites = ([parsed_xml] if parsed_xml.tag == "testsuite"
                       else list(parsed_xml.findall("testsuite")))
