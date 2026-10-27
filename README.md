@@ -64,7 +64,7 @@ See `docs/architecture.md`, `docs/a15-recipe-sequencer-plan.md`, `docs/a16-pass-
 | Deferred | Deliberately not exposed pending hardware/protocol evidence |
 | Qualification pending | Test machinery exists, but required retained hardware evidence is not verified complete |
 
-**Release posture:** Python package version 0.9.0rc2; a release candidate, **not** the hardware-qualified stable release. A22, A25 hardening, and P0 release guards are merged. Stable publication still requires exact-head CI/package evidence, independently reviewed transport-specific hardware results, and the formal 24-hour soak.
+**Release posture:** Python package version 0.9.0rc3; a release candidate, **not** the hardware-qualified stable release. A22, A25 hardening, and P0 release guards are merged. Stable publication still requires exact-head CI/package evidence, independently reviewed transport-specific hardware results, and the formal 24-hour soak.
 
 ### Core driver / instrument control
 

@@ -1,7 +1,7 @@
 # Current State
 
 **Current repository snapshot (2026-10-26):** the working candidate is Python
-package **0.9.0rc2**, a release candidate and **not** a hardware-qualified stable
+package **0.9.0rc3**, a release candidate and **not** a hardware-qualified stable
 release. Software implementations of A14, A15, A16, A18, A20, A21, A22.1
 four-channel Live View, A25, Automation A1–A12, Logger L1–L14, and the P0 release
 guards are merged. BUS decoding and certain A14 leaves remain capability-limited.
