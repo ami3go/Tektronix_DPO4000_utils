@@ -28,6 +28,8 @@ qualifying evidence yet, not an implied pass.
 | CH1–CH4 complete groups, USB | `DPO4000_A22_MULTI_CHANNELS=YES` hardware test | **Bench PASS** at 1k/10k/100k (non-RC commit); **PENDING exact-head run** |
 | CH1–CH4 complete groups, TCPIP | Same test on separate TCPIP resource | **Bench PASS** at 1k/10k/100k (non-RC commit); **PENDING exact-head run** |
 | 30–60 min soak (CH1/10k/5Hz) | Opt-in bench, JSON memory metrics and setup restoration | **PENDING** |
+| 12 h four-channel Live View soak (TCPIP) | `scripts/run_live_view_soak.py`, validated with `--validate-report` | **IN PROGRESS** (started 2026-10-26 17:32 UTC on commit `059bb10`; no result yet, so not qualification evidence) |
+| Same soak over USB | same script, USB resource | **PENDING** (USB link needs a physical replug first) |
 | Physical GUI heartbeat / shared-session conflict | Supervised GUI and instrument verification | **PENDING** |
 | Timeout / disconnect physical negative tests | Authorized fault injection and verified cleanup | **PENDING** |
 | Independent reviewer approval | Human reviewer not author | **PENDING** |
@@ -61,6 +63,29 @@ skew is first-to-last channel read):
 | 4 | 1k | 1.26 | 666 / 673 | 479 | 1.26 | 645 / 656 | 470 |
 | 4 | 10k | 1.25 | 685 / 710 | 515 | 1.25 | 678 / 706 | 493 |
 | 4 | 100k | 1.05 | 804 / 836 | 591 | 0.95 | 988 / 1030 | 740 |
+
+### After the preamble cache (TCPIP only; commit `0ab4429`)
+
+Same bench, same method, with the production Live View path (one `WFMOUTPRE?`
+query, cached preamble, raw-bytes decode; `preamble_cache: true` in each JSON).
+0 errors in every case; `SET?` identical before/after and the `DATA:*` restore
+verified. **USB was not re-run**: the USB link was already desynchronised when the
+run started (all setup steps errored), so USB has only the pre-cache numbers above.
+
+| Ch | Points | groups/s | p50 / p99 ms | skew ms |
+|---|---|---|---|---|
+| 1 | 1k | 4.97 | 117 / 187 | 0 |
+| 1 | 10k | 4.93 | 124 / 200 | 0 |
+| 1 | 100k | 3.73 | 194 / 277 | 0 |
+| 2 | 1k | 2.73 | 207 / 348 | 92 |
+| 2 | 10k | 2.53 | 225 / 366 | 99 |
+| 2 | 100k | 2.30 | 371 / 558 | 169 |
+| 4 | 1k | 2.20 | 388 / 570 | 279 |
+| 4 | 10k | 1.77 | 409 / 712 | 279 |
+| 4 | 100k | 1.17 | 717 / 1098 | 498 |
+
+Compared with the pre-cache TCPIP rows, one four-channel 100k group dropped from
+about 990 ms to about 720 ms (p50). Bench measurements only, not reviewed baselines.
 
 Reading the table: at 1 channel the 5 groups/s request is the limit up to 10k
 points; beyond that, and for every extra channel, the sequential per-channel cost
