@@ -153,7 +153,7 @@ def _write_report(output_dir: Path, *, args: argparse.Namespace, state: dict[str
         "elapsed_s": elapsed_s, "requested_duration_hours": args.duration_hours,
         "qualifying_duration_met": args.duration_hours >= QUALIFYING_HOURS,
         "resource": args.resource, "sources": list(state["sources"]),
-        "target_hz": args.target_hz, "commit_sha": os.environ.get("GITHUB_SHA") or base._git_commit(),
+        "target_hz": args.target_hz, "commit_sha": state["commit_sha"],
         "baseline_identity": state["baseline_identity"], "final_identity": state["final_identity"],
         "groups_completed": state["groups"], "group_failures": len(failures),
         "reconnects": state["reconnects"], "lifecycle_ops": state["lifecycle_ops"],
@@ -229,6 +229,8 @@ def run_soak(
     sources = tuple(args.sources)
     config = StreamConfig(sources=sources, point_count=None, target_hz=args.target_hz)
     state: dict[str, Any] = {
+        # Captured once: HEAD may move (commits, branch switches) during a 12 h run.
+        "commit_sha": os.environ.get("GITHUB_SHA") or base._git_commit(),
         "started_at": base._utc_now(), "sources": sources, "durations": array("d"),
         "groups": 0, "reconnects": 0, "lifecycle_ops": 0, "skipped": 0,
         "skew_max": 0.0, "baseline_identity": None, "final_identity": None,

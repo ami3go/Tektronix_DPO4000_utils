@@ -292,3 +292,12 @@ def test_main_validate_mode_returns_an_exit_code(tmp_path, capsys):
     assert soak.main(["--validate-report", out, "--min-hours", "0.04"]) == 0
     assert soak.main(["--validate-report", out, "--min-hours", "12"]) == 1
     assert "INVALID" in capsys.readouterr().out
+
+
+def test_report_records_the_commit_from_the_start_even_if_head_moves(tmp_path, monkeypatch):
+    monkeypatch.delenv("GITHUB_SHA", raising=False)
+    heads = iter(f"{n:040x}" for n in range(1, 10_000))
+    monkeypatch.setattr(soak.base, "_git_commit", lambda: next(heads))
+    code, report, _ = _run(tmp_path, "--duration-hours", "0.2", "--target-hz", "1",
+                           "--checkpoint-seconds", "60")
+    assert code == 0 and report["summary"]["commit_sha"] == f"{1:040x}"
