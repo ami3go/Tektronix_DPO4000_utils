@@ -176,6 +176,41 @@ on a runner labelled for DPO4000 bench access. Select the requested duration/pro
 
 **Important:** availability of the workflow/tooling is not a hardware PASS. A release may claim 24 h or 72 h qualification only when the corresponding self-hosted run against the physical DPO4054 has completed successfully and its report artifact is retained/reviewed.
 
+### Offline USB/Ethernet handoff soak
+
+For an unattended weekend run that must survive loss of the controlling terminal
+and Internet connection, use `scripts/run_transport_switch_soak.py`. It preflights
+USB and TCPIP against the same DPO4054, keeps only one VISA session open, switches
+transport every 30 minutes by default, and uses read-only public APIs. Cycle-level
+evidence is fsynced to `transport_switch_events.jsonl`; atomic JSON and Markdown
+summaries are checkpointed throughout the run.
+
+```bash
+setsid python scripts/run_transport_switch_soak.py \
+  --usb-resource USB0::0x0699::0x0401::C011280::INSTR \
+  --ethernet-resource TCPIP0::192.168.0.5::INSTR \
+  --duration-hours 48 --switch-minutes 30 --interval-seconds 10 \
+  --output-dir qualification_reports/soak/transport-switch-48h \
+  > qualification_reports/soak/transport-switch-48h/console.log 2>&1 < /dev/null &
+```
+
+Use a new output directory for every run. After completion, validate fully offline:
+
+```bash
+python scripts/run_transport_switch_soak.py \
+  --validate-report qualification_reports/soak/transport-switch-48h \
+  --min-hours 48
+```
+
+Retained result: `qualification_reports/soak/transport-switch-24h-20261030-194938/`
+is a 24 h run on a DPO4054 (scope only, no power supply) that validates with
+`--min-hours 24`: 8640 samples (USB 4320, Ethernet 4320), 0 failures, 0 reconnects,
+47/47 handoffs, 0 missed deadlines, RSS 49.80 to 62.64 MiB. It is not the formal
+P0-G3 soak.
+
+The scope Ethernet link may be a direct/local network. The runner performs no
+Internet access and does not depend on an agent connection after it starts.
+
 ## Generated verifier evidence
 
 By default API verification creates a timestamped directory under:
