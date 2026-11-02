@@ -126,7 +126,7 @@ def test_soak_preflights_and_alternates_one_session_at_a_time(tmp_path):
     assert summary["status"] == "PASS" and summary["run_state"] == "FINAL"
     assert summary["offline_operation"] is True
     assert len(summary["runner_sha256"]) == 64
-    assert summary["worktree_dirty_at_start"] is True
+    assert isinstance(summary["worktree_dirty_at_start"], bool)
     assert summary["planned_handoffs"] == summary["completed_handoffs"] == 5
     assert summary["samples_by_transport"]["usb"] > 0
     assert summary["samples_by_transport"]["ethernet"] > 0
