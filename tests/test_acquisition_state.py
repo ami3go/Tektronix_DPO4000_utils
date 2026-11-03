@@ -4,6 +4,11 @@ import pytest
 
 from dpo4000_utils.acquisition_state import (
     ACQUISITION_STATE_QUERY,
+    ACQUISITION_COUNT_QUERY,
+    STOP_AFTER_QUERY,
+    MAX_ACQUISITION_COUNT,
+    normalize_acquisition_count,
+    normalize_stop_after,
     BUSY_QUERY,
     TRIGGER_STATE_QUERY,
     AcquisitionStateMixin,
@@ -17,6 +22,10 @@ class FakeInstrument:
     def __init__(self, responses: dict[str, str]) -> None:
         self.responses = dict(responses)
         self.queries: list[str] = []
+        self.writes: list[str] = []
+
+    def write(self, command: str) -> None:
+        self.writes.append(command)
 
     def query(self, command: str) -> str:
         self.queries.append(command)
@@ -91,3 +100,52 @@ def test_driver_exposes_acquisition_busy_and_trigger_state_queries() -> None:
         BUSY_QUERY,
         TRIGGER_STATE_QUERY,
     ]
+
+
+@pytest.mark.parametrize("value, expected", [
+    ("0", 0), ("1", 1), (":ACQUIRE:NUMACQ 350", 350),
+    (str(MAX_ACQUISITION_COUNT), MAX_ACQUISITION_COUNT),
+])
+def test_acquisition_count_strict_valid_readbacks(value, expected):
+    assert normalize_acquisition_count(value) == expected
+
+
+@pytest.mark.parametrize("value", [
+    "-1", "1.0", "NaN", "", "MISSING", str(2**32), "2;*RST",
+])
+def test_acquisition_count_rejects_unverifiable_readback(value):
+    with pytest.raises(ValueError):
+        normalize_acquisition_count(value)
+
+
+@pytest.mark.parametrize("value, expected", [
+    ("SEQ", "SEQUENCE"), (":ACQUIRE:STOPAFTER SEQUENCE", "SEQUENCE"),
+    ("RUNST", "RUNSTOP"), ("RUNSTOP", "RUNSTOP"),
+])
+def test_stopafter_strict_readback(value, expected):
+    assert normalize_stop_after(value) == expected
+
+
+@pytest.mark.parametrize("value", ["", "AUTO", "1", "SEQ;*RST"])
+def test_stopafter_rejects_unknown_or_injected_value(value):
+    with pytest.raises(ValueError):
+        normalize_stop_after(value)
+
+
+def test_driver_exposes_counter_and_stopafter_without_mutating_acquisition():
+    instrument = FakeInstrument({
+        ACQUISITION_COUNT_QUERY: ":ACQUIRE:NUMACQ 1",
+        STOP_AFTER_QUERY: ":ACQUIRE:STOPAFTER RUNSTOP",
+    })
+    driver = StateDriver(instrument)
+    assert driver.get_acquisition_count() == 1
+    assert driver.get_stop_after() == "RUNSTOP"
+    driver.set_stop_after("SEQUENCE")
+    assert instrument.queries == [ACQUISITION_COUNT_QUERY, STOP_AFTER_QUERY]
+    assert instrument.writes == ["ACQUIRE:STOPAFTER SEQUENCE"]
+
+
+def test_failed_counter_query_is_not_silently_synthesized():
+    driver = StateDriver(FakeInstrument({}))
+    with pytest.raises(KeyError):
+        driver.get_acquisition_count()
