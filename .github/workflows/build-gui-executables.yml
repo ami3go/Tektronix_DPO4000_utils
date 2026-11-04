@@ -155,7 +155,12 @@ jobs:
   build-linux:
     name: Linux binary and packages
     needs: prepare
-    runs-on: ubuntu-latest
+    # Pinned, not ubuntu-latest: PyInstaller bundles the host's libglib into the
+    # Linux executable. Building on a newer runner produces a libglib that
+    # requires a GLIBC newer than the Flatpak runtime's, so the Flatpak smoke
+    # test fails with "GLIBC_2.4x not found". Ubuntu 24.04's libglib needs at
+    # most GLIBC_2.38, which is satisfied by the Flatpak 24.08 runtime.
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Check out repository
