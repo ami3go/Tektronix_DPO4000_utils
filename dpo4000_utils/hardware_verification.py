@@ -16,6 +16,8 @@ _core.PUBLIC_METHOD_RISK["restore_default_setup"] = _core.VerificationRisk.DISRU
 for _name in (
     "configure_session",
     "get_acquisition_state",
+    "get_acquisition_count",
+    "get_stop_after",
     "get_trigger_state",
     "is_acquiring",
     "is_busy",
@@ -27,6 +29,7 @@ for _name in (
 ):
     _core.PUBLIC_METHOD_RISK[_name] = _core.VerificationRisk.READ_ONLY
 _core.PUBLIC_METHOD_RISK["set_trigger_holdoff"] = _core.VerificationRisk.REVERSIBLE
+_core.PUBLIC_METHOD_RISK["set_stop_after"] = _core.VerificationRisk.REVERSIBLE
 
 # Framework utilities below perform no oscilloscope I/O. Classifying them as
 # read-only keeps the strict reflected package manifest exhaustive without
@@ -91,6 +94,8 @@ class HardwareVerifier(_core.HardwareVerifier):
             write_termination=getattr(scope, "write_termination", None) or "\n",
         )
         scope.get_acquisition_state()
+        scope.get_acquisition_count()
+        scope.get_stop_after()
         scope.is_acquiring()
         scope.get_trigger_state()
         scope.is_busy()
@@ -169,6 +174,8 @@ class HardwareVerifier(_core.HardwareVerifier):
             return super()._symbol_status("get_acquisition_setup", method=True)
         if method and symbol in {
             "get_acquisition_state",
+            "get_acquisition_count",
+            "get_stop_after",
             "get_trigger_state",
             "is_acquiring",
             "is_busy",
@@ -181,6 +188,8 @@ class HardwareVerifier(_core.HardwareVerifier):
             return super()._symbol_status("get_acquisition_setup", method=True)
         if method and symbol == "set_trigger_holdoff":
             return super()._symbol_status("configure_trigger", method=True)
+        if method and symbol == "set_stop_after":
+            return super()._symbol_status("configure_acquisition", method=True)
         if method and symbol in {
             "get_decoded_bus_capability",
             "supports_decoded_bus_events",
