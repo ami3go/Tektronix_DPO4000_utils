@@ -1,0 +1,22 @@
+{
+  "state_before": "0",
+  "stopafter": "SEQUENCE",
+  "stopafter_during": "RUNSTOP",
+  "trig_state_before": "SAV",
+  "count_before": 0,
+  "counts_while_run": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "state_running": "1",
+  "count_after_stop": [
+    0,
+    0
+  ],
+  "state_after": "0",
+  "set_identical": true
+}

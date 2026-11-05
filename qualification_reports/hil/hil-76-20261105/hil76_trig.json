@@ -1,0 +1,31 @@
+{
+  "TRIGGER:A:MODE?": "NORM",
+  "TRIGGER:A:TYPE?": "EDG",
+  "TRIGGER:A:EDGE:SOURCE?": "CH4",
+  "TRIGGER:A:LEVEL?": "2.5000",
+  "TRIGGER:STATE?": "SAV",
+  "ACQUIRE:MODE?": "SAM",
+  "HORIZONTAL:SCALE?": "4.0000E-6",
+  "stopafter": "SEQUENCE",
+  "counts_while_run": [
+    4,
+    14,
+    24,
+    34,
+    44,
+    54
+  ],
+  "trig_states": [
+    "ARM",
+    "AUTO",
+    "AUTO",
+    "AUTO",
+    "AUTO",
+    "AUTO"
+  ],
+  "count_after_stop": [
+    54,
+    54
+  ],
+  "set_identical": true
+}
