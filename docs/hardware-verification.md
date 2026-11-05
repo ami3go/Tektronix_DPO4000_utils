@@ -211,6 +211,37 @@ P0-G3 soak.
 The scope Ethernet link may be a direct/local network. The runner performs no
 Internet access and does not depend on an agent connection after it starts.
 
+## Acquisition counter and stop-after readback (HIL, 2026-11-05)
+
+`get_acquisition_count()` (`ACQUIRE:NUMACQ?`), `get_stop_after()` and
+`set_stop_after()` were exercised on a DPO4054 (S/N C011280, firmware v2.68) over
+both `TCPIP0::192.168.0.5::INSTR` and `USB0::1689::1025::C011280::0::INSTR`. Evidence,
+scripts and raw JSON: `qualification_reports/hil/hil-76-20261105/`. This is
+single-bench evidence; it has not been independently reviewed.
+
+Observed on both transports:
+
+- `ACQUIRE:STOPAFTER?` answers the short forms `SEQ` and `RUNST`; the driver maps
+  them to `SEQUENCE` and `RUNSTOP`. A `set_stop_after("RUNSTOP")` write read back as
+  `RUNSTOP`, restoring the original value read back as `SEQUENCE`, and a full `SET?`
+  snapshot taken before and after was identical. `set_stop_after("BOGUS")` raised
+  `ValueError` without writing.
+- With acquisition stopped the counter is stable (five reads, all equal).
+- Starting acquisition (`ACQUIRE:STATE RUN`) resets the counter to 0.
+- With `TRIGGER:A:MODE AUTO` the counter rose by about 10 per 0.5 s (5, 15, 25, 35,
+  45, 55 on both transports, trigger state `AUTO`) and stopped changing after
+  `ACQUIRE:STATE STOP`.
+- With `TRIGGER:A:MODE NORM` and an edge trigger that did not fire (bench setup:
+  CH4 source, 2.5 V level), the counter stayed at 0 for 2 s of running. The counter
+  counts completed acquisitions, so a waiting trigger leaves it unchanged; do not
+  read an unchanged counter as a stuck instrument without checking the trigger.
+
+Not covered: the counter wrap at 2^32 - 1, other firmware versions, other
+acquisition modes (only `SAMPLE` was in use), and behavior under heavy waveform
+transfer. The runs changed `TRIGGER:A:MODE` and `ACQUIRE:STOPAFTER` temporarily and
+restored both; check the `SET?` comparison in the JSON before reusing the scripts on
+another bench.
+
 ## Generated verifier evidence
 
 By default API verification creates a timestamped directory under:

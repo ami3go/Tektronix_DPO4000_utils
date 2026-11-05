@@ -1,0 +1,52 @@
+{
+  "tcp": {
+    "resource": "TCPIP0::192.168.0.5::INSTR",
+    "idn": "TEKTRONIX,DPO4054,C011280,CF:91.1CT FV:v2.68 DPO4AUTO:V1.00",
+    "acq_state_raw": "0",
+    "numacq_raw": "1",
+    "stopafter_raw": "SEQ",
+    "counts": [
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "stop_after_orig": "SEQUENCE",
+    "stop_after_set_readback": "RUNSTOP",
+    "stop_after_set_raw": "RUNST",
+    "stop_after_restored": "SEQUENCE",
+    "set_identical": true,
+    "set_len": [
+      8744,
+      8744
+    ],
+    "bogus_rejected": true,
+    "ok": true
+  },
+  "usb": {
+    "resource": "USB0::1689::1025::C011280::0::INSTR",
+    "idn": "TEKTRONIX,DPO4054,C011280,CF:91.1CT FV:v2.68 DPO4AUTO:V1.00",
+    "acq_state_raw": "0",
+    "numacq_raw": "1",
+    "stopafter_raw": "SEQ",
+    "counts": [
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "stop_after_orig": "SEQUENCE",
+    "stop_after_set_readback": "RUNSTOP",
+    "stop_after_set_raw": "RUNST",
+    "stop_after_restored": "SEQUENCE",
+    "set_identical": true,
+    "set_len": [
+      8744,
+      8744
+    ],
+    "bogus_rejected": true,
+    "ok": true
+  }
+}
