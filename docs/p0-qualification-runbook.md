@@ -4,6 +4,8 @@ Task: `DPO4000-P0-QUALIFICATION-RELEASE-01`
 Status as of 2026-10-26: **BLOCKED / NOT QUALIFIED**. This document is a
 procedure and audit trail, not a physical-HIL pass certificate.
 
+For every contributing PR, use [global CI/PR closure](ci-pr-closure-runbook.md) and the [final evidence record](pr-closure-evidence-template.md). This release handoff adds stronger P0 gates, rather than replacing per-PR verification.
+
 ## Baseline and change isolation
 
 - Candidate version: `0.9.0rc4`; supported Python `>=3.10`.
@@ -90,10 +92,21 @@ Read-only smoke; write no configuration:
 ```bash
 python scripts/run_hardware_verification.py \
   --resource "$DPO4000_RESOURCE" --profile read-only \
+  --authorize-read-only --expected-serial "$DPO4000_EXPECT_SERIAL" \
+  --verified-options "$DPO4000_VERIFIED_OPTIONS" \
   --test-channel 1 --waveform-points 1000 \
   --output-dir qualification_reports/hardware/usb/read-only
+# Only AFTER successful verified read-only admission: reviewed query-only modules,
+# not unrestricted tests/hardware (other modules may issue setup writes).
 DPO4000_HARDWARE=1 DPO4000_RESOURCE="$DPO4000_RESOURCE" \
-  python -m pytest -q -m hardware tests/hardware
+  DPO4000_EXPECT_SERIAL="$DPO4000_EXPECT_SERIAL" \
+  DPO4000_READONLY_AUTHORIZED=1 DPO4000_ENABLE_WRITE_TESTS=0 \
+  python -m pytest -q -m hardware \
+    tests/hardware/test_a15_recipe_hardware.py \
+    tests/hardware/test_a16_rule_hardware.py \
+    tests/hardware/test_a20_measurement_trend_hardware.py \
+    tests/hardware/test_a25_headless_job_hardware.py \
+    tests/hardware/test_dpo4054_readonly_waveform_hardware.py
 ```
 
 Set the output path to `hardware/tcpip/` when using Ethernet. Invoke the
@@ -195,9 +208,9 @@ hardware execution; retain trusted runner logs and complete provenance.
 
 ## P0-04 — A25 final physical and packaging gate
 
-Complete draft PR #50's hosted matrix and Windows/Linux package jobs.
-Dispatch its `.github/workflows/a25-headless-hil.yml` on branch
-`feat/a25-headless-job-runner` with exact `visa_resource` and
+Complete current final-head A25 hosted regression and Windows/Linux package jobs.
+Dispatch `.github/workflows/a25-headless-hil.yml` on the **exact tested
+candidate branch** (verify Actions checkout SHA) with exact `visa_resource` and
 `expected_idn`, using a real, exclusively owned DPO4054. The workflow
 runs installed `dpo4000-job` with a read-only A15 holdoff recipe, A16 rule,
 JSON report validation and a second connection to prove session release.
