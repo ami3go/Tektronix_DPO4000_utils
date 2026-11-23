@@ -16,7 +16,7 @@ WORKFLOWS = ROOT / ".github" / "workflows"
 
 def test_all_github_workflows_have_global_runbook_entries():
     text = RUNBOOK.read_text(encoding="utf-8")
-    workflows = sorted(WORKFLOWS.glob("*.yml"))
+    workflows = sorted(p for p in WORKFLOWS.iterdir() if p.suffix in {".yml", ".yaml"})
     assert workflows, "No GitHub workflows discovered"
     missing = [str(p.relative_to(ROOT)) for p in workflows if str(p.relative_to(ROOT)) not in text]
     assert not missing, f"Update global CI runbook with added workflows: {missing}"
