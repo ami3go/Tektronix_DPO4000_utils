@@ -29,15 +29,15 @@ Every PR must identify one or more classes; apply the **union** of their checks.
 | **A15/A16/A18/A20/A21** Recipes/rules/evidence/scientific/trend | CORE, focused feature tests + fail-closed/schema/atomicity checks, relevant synthetic benchmarks | Relevant physical A15/A16/A20/trace evidence only when qualifying physical behavior |
 | **A25** Headless CLI | CORE, A25 CLI validation/exit-code/cancellation tests and benchmark | Manually authorized A25 HIL for claims about actual DPO4054 operation and second-session cleanup |
 | **AUT/LOG** Automation/logger | CORE, focused automation/logger tests, stress/backpressure/reconnect/artifact tests | Authorized Probe Comp HIL for physical operation claims, with setup restoration evidence |
-| **MCP** Agent protocol | CORE, MCP SDK/client contract, auth and ownership, mock-VISA/fault tests on supported Python/OS matrix | MCP offline workflow from PR #80 (not on `main` yet); **no physical claim** before cross-process Desk ownership and separately authorized HIL |
+| **MCP** Agent protocol | CORE, MCP SDK/client contract, auth and ownership, mock-VISA/fault tests on supported Python/OS matrix | MCP offline workflow now on `main`; **no physical claim** before cross-process Desk ownership and separately authorized HIL |
 | **CI/SEC** Workflow, permission, auth, safety controls | CORE, CodeQL, independent review of workflow expression/permissions, static policy and negative tests | No untrusted code on physical bench; manual HIL workflow gate reviewed without dispatch |
 | **REL** Stable release/P0 qualification | ALL applicable hosted jobs, real USB+TCPIP R0 evidence, hardware API qualification, >=24h soak, A25, final manifest | Independent qualified human reviewer and approved same-candidate SHA; **no stable release with BLOCKED gates** |
 
 **DOC does not mean "ignore failed required CI".** An unrelated infrastructure failure needs documented cause and a repeatable green result or independent branch-policy resolution. Do not silently remove branch protections.
 
-## 3. Verified workflow inventory on `main` (2026-11-23)
+## 3. Verified workflow inventory on `main` (2026-11-23, after PR #80 merge)
 
-The following paths, triggers, jobs and evidence are taken from the repository workflow files. **Only `Tests`, `CodeQL`, and `DPO4054 Strict Read-Only Offline Safety` are unconditional hosted pull-request checks**. Build and A22 hosted workflows have path filters. Physical workflows need manual dispatch.
+The following paths, triggers, jobs and evidence are taken from the repository workflow files. **`Tests`, `CodeQL`, `DPO4054 Strict Read-Only Offline Safety`, and `MCP read-only offline contracts` are unconditional hosted pull-request checks**. Build and A22 hosted workflows have path filters. Physical workflows need manual dispatch.
 
 | Workflow | Trigger | Target / required results | Evidence |
 |---|---|---|---|
@@ -51,8 +51,9 @@ The following paths, triggers, jobs and evidence are taken from the repository w
 | `.github/workflows/a25-headless-hil.yml` | **manual** | [self-hosted,dpo4000] installed A25 CLI read-only recipe, rule report, setup-before/after equality | `a25-read-only-hil-<run_id>` directory |
 | `.github/workflows/hardware-soak.yml` | **manual** | [self-hosted,dpo4000] authorized 24/72-hour real soak and independent validator | `dpo4000-soak-<duration>h-<run_number>` with complete reports |
 | `.github/workflows/pages.yml` | **push** main with docs/README/workflow paths; manual | Publish static docs after merge; **not a pre-merge PR check** | Deployment URL and successful job on merged main SHA |
+| `.github/workflows/mcp-offline.yml` | PR to main; manual | SDK v2 stdio tool contract and mock-VISA gateway tests on Linux/Windows × Python 3.11/3.13 | Job results for all four configurations, no physical VISA; `dpo4000-mcp --help` smoke |
 
-**Pending addition:** PR [#80](https://github.com/ami3go/Tektronix_DPO4000_utils/pull/80) adds `.github/workflows/mcp-offline.yml` (PR-triggered, Linux/Windows × Python 3.11/3.13, SDK in-process checks and CLI smoke). Apply this gate to #80 and future MCP PRs once available; until merged it is **not** an existing `main` workflow.
+**Merged addition:** PR [#80](https://github.com/ami3go/Tektronix_DPO4000_utils/pull/80) added `.github/workflows/mcp-offline.yml` (PR-triggered, Linux/Windows × Python 3.11/3.13, SDK in-process checks and CLI smoke). It is now a baseline hosted PR check, even for documentation PRs; physical MCP qualification is still NOT_RUN.
 
 **Important workflow limitation:** `hardware-api-tests.yml` and `hardware-soak.yml` share `dpo4000-physical-bench` concurrency. **A22 HIL and A25 HIL do not currently declare this shared concurrency group**; A25 HIL also has no explicit authorization input. They must be manually bench-reserved, and a separate safety-hardening PR should unify physical bench locking/authorization. This runbook must not imply the YAML already enforces global exclusion. These workflows must not be started while any other VISA client or hardware workflow controls the instrument.
 
@@ -92,7 +93,7 @@ dpo4000-job --help
 # Strict read-only safety regression
 python -m pytest -q tests/test_read_only_guard.py tests/test_read_only_waveform.py tests/test_hardware_verification.py tests/test_p0_qualification_guards.py
 
-# MCP (only on a checkout containing PR #80; Python >=3.11)
+# MCP (PR #80 merged; Python >=3.11)
 python -m pip install -e '.[dev,mcp]'
 python -m pytest -q tests/test_mcp_gateway.py tests/test_mcp_protocol.py
 dpo4000-mcp --help
@@ -253,7 +254,7 @@ A reviewer must post `docs/pr-closure-evidence-template.md` as a final PR commen
 | `docs/p0-qualification-runbook.md` (legacy snippet) | Earlier read-only instructions omitted required `--authorize-read-only`, serial/options and named an unrestricted hardware pytest directory | This PR corrects the snippet and directs to the reviewed read-only hardware subset |
 | `docs/dpo4054-readonly-hil.md` | Concurrency group text named `dpo4000-exclusive-bench`, workflow actually uses `dpo4000-physical-bench` | This PR corrects the text |
 | `docs/automation-logger-hil.md` | Historical example checked out an old test branch and contained a sample IP as if bench-specific | This PR switches to exact candidate SHA and explicit operator-supplied VISA resource |
-| PR #80 MCP proposal | New gateway only serializes within its process; Desk ownership and MCP HTTP auth are not implemented | Do not claim live shared-session qualification; require DPO-MCP-02 integration and new offline/HIL evidence |
+| PR #80 MCP foundation (merged) | New gateway only serializes within its process; Desk ownership and MCP HTTP auth are not implemented | Do not claim live shared-session qualification; require DPO-MCP-02 integration and new offline/HIL evidence |
 
 ## References
 
