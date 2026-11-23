@@ -18,7 +18,8 @@ Commands below are **real instrument operations**, not dry runs. Execute them on
 
 ```bash
 # FIRST: manually obtain operator approval and known-good checkout.
-git checkout <APPROVED_KNOWN_GOOD_40_HEX_SHA>
+APPROVED_KNOWN_GOOD_SHA="<REPLACE_WITH_APPROVED_KNOWN_GOOD_40_HEX_SHA>"
+git switch --detach "$APPROVED_KNOWN_GOOD_SHA"
 export DPO4000_USB_RESOURCE="<VERIFIED_REAL_USB_VISA_RESOURCE>"
 export DPO4000_TCPIP_RESOURCE="<VERIFIED_REAL_TCPIP_VISA_RESOURCE>"
 export DPO4000_EXACT_IDN="<VERIFIED_FULL_IDN_INCLUDING_SERIAL>"
@@ -47,7 +48,8 @@ Record SHA-256 of all six immutable baseline files and of `tests/baselines/r0_ti
 ## 3. Candidate capture / comparison at exact final PR or release SHA
 
 ```bash
-git checkout <VERIFIED_FINAL_CANDIDATE_40_HEX_SHA>
+CANDIDATE_SHA="<REPLACE_WITH_VERIFIED_FINAL_CANDIDATE_40_HEX_SHA>"
+git switch --detach "$CANDIDATE_SHA"
 
 python scripts/compare_r0_baseline.py \
   --baseline-dir qualification_reports/performance/usb/baseline \
