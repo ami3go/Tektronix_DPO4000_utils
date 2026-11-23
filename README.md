@@ -26,6 +26,8 @@ The GUI must not own SCPI commands, access the raw `scope.scope` VISA handle, pa
 
 See `docs/architecture.md`, `docs/a15-recipe-sequencer-plan.md`, `docs/a16-pass-fail-rules.md`, and `docs/a21-scientific-export.md`.
 
+**CI / PR closure:** Follow the [global CI and PR-closure runbook](docs/ci-pr-closure-runbook.md) and [final evidence record](docs/pr-closure-evidence-template.md) for every PR. This includes exact-head hosted checks, manual physical qualification when relevant, artifact links, and independent release sign-off.
+
 ## Features
 
 - PySide6 desktop application with Connection, Channels, Measurement, Trigger, Acquisition, Automation, Recipe, Logger, File, Display, Log, and Live pages.

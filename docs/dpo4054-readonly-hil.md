@@ -18,7 +18,8 @@ No default VISA address is a valid substitute for identifying the instrument.
    unsupported queries under this authorization.
 3. Ensure a single instrument owner. The verifier requests a VISA exclusive lock;
    an unsupported or unsuccessful lock fails closed. The Actions job also serializes
-   runs under the `dpo4000-exclusive-bench` concurrency group.
+   runs under the `dpo4000-physical-bench` concurrency group (shared with
+   hardware-soak, but **not yet** A22/A25 HIL; those require separate manual reservation).
 4. Verify the baseline setup is saved before qualification and compared to the final
    `*LRN?` setup string. A mismatch fails. No setup restoration is issued in strict
    mode because restoration itself is a configuration write.

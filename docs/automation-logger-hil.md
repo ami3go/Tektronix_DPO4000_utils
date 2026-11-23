@@ -16,27 +16,30 @@ The default preflight expects a roughly 1 kHz Probe Comp waveform and intentiona
 PowerShell:
 
 ```powershell
-git fetch
-git switch test/automation-logger-hil
-git pull
+# On the authorized bench, select the exact approved candidate commit.
+git fetch origin
+$env:FINAL_CANDIDATE_SHA = "<REPLACE_WITH_VERIFIED_40_HEX_SHA>"
+git checkout $env:FINAL_CANDIDATE_SHA
 
+# Define the actual verified VISA resource; never copy a sample lab IP.
+$env:DPO4000_RESOURCE = "<VERIFIED_VISA_RESOURCE>"
 python scripts/run_automation_logger_hil.py `
-  --resource "TCPIP0::192.168.0.5::INSTR" `
+  --resource $env:DPO4000_RESOURCE `
   --channel 1 `
   --suite all `
   --output-dir "hardware_verification_reports\automation_logger_hil"
 ```
 
-The runner exits with code 0 when no case fails and code 1 when any case fails. A SKIP is not a failure.
+The runner exits with code 0 when no case fails and code 1 when any case fails. A SKIP is not a failure, but **does not qualify the skipped feature as PASS**. This runner changes scope setup; obtain explicit reversible-write authorization and confirm verified restoration. Include its results in the [global per-PR closure record](ci-pr-closure-runbook.md).
 
 Useful subsets:
 
 ```powershell
 # Automation only
-python scripts/run_automation_logger_hil.py --resource "TCPIP0::192.168.0.5::INSTR" --suite automation
+python scripts/run_automation_logger_hil.py --resource "<VERIFIED_VISA_RESOURCE>" --suite automation
 
 # Logger only, without slow hardcopy operations
-python scripts/run_automation_logger_hil.py --resource "TCPIP0::192.168.0.5::INSTR" --suite logger --skip-hardcopy
+python scripts/run_automation_logger_hil.py --resource "<VERIFIED_VISA_RESOURCE>" --suite logger --skip-hardcopy
 ```
 
 ## Coverage
