@@ -62,7 +62,8 @@ Use a fresh checkout of the PR, capture the 40-digit revision and Python environ
 
 ```bash
 git fetch origin
-git checkout <FINAL_PR_HEAD_40_HEX_SHA>
+FINAL_PR_HEAD_SHA="<REPLACE_WITH_VERIFIED_40_HEX_PR_HEAD_SHA>"
+git switch --detach "$FINAL_PR_HEAD_SHA"
 git status --short
 git rev-parse HEAD
 python --version
@@ -106,11 +107,14 @@ Shell globs such as `tests/test_a22_*.py` expand on POSIX shells; for Windows us
 Use read-only GitHub CLI commands after the workflows complete. Do **not** re-run or dispatch workflows as part of a review without the appropriate authorization.
 
 ```bash
-gh pr view <PR_NUMBER> --repo ami3go/Tektronix_DPO4000_utils --json headRefOid,baseRefName,mergeable,reviewDecision
-gh pr checks <PR_NUMBER> --repo ami3go/Tektronix_DPO4000_utils
-gh run list --repo ami3go/Tektronix_DPO4000_utils --commit <FINAL_HEAD_SHA> --limit 100
-gh run view <RUN_ID> --repo ami3go/Tektronix_DPO4000_utils --json headSha,status,conclusion,workflowName,jobs
-gh run download <RUN_ID> --repo ami3go/Tektronix_DPO4000_utils --dir ci-evidence/downloads
+PR_NUMBER="<REPLACE_WITH_PR_NUMBER>"
+FINAL_HEAD_SHA="<REPLACE_WITH_VERIFIED_40_HEX_PR_HEAD_SHA>"
+RUN_ID="<REPLACE_WITH_VERIFIED_WORKFLOW_RUN_ID>"
+gh pr view "$PR_NUMBER" --repo ami3go/Tektronix_DPO4000_utils --json headRefOid,baseRefName,mergeable,reviewDecision
+gh pr checks "$PR_NUMBER" --repo ami3go/Tektronix_DPO4000_utils
+gh run list --repo ami3go/Tektronix_DPO4000_utils --commit "$FINAL_HEAD_SHA" --limit 100
+gh run view "$RUN_ID" --repo ami3go/Tektronix_DPO4000_utils --json headSha,status,conclusion,workflowName,jobs
+gh run download "$RUN_ID" --repo ami3go/Tektronix_DPO4000_utils --dir ci-evidence/downloads
 ```
 
 GitHub run records can be for the synthetic PR merge revision: record both PR head and actual checkout SHA. Record every applicable job, including queued/failed/skipped status; **do not count a previous successful workflow run from an older commit**. Verify that the downloaded artifact corresponds to the recorded run ID and compare file SHA-256 as appropriate. A green `gh pr checks` alone does not satisfy an untriggered required feature-specific or HIL gate.

@@ -18,7 +18,8 @@ PowerShell:
 ```powershell
 # On the authorized bench, select the exact approved candidate commit.
 git fetch origin
-git checkout <FINAL_CANDIDATE_SHA>
+$env:FINAL_CANDIDATE_SHA = "<REPLACE_WITH_VERIFIED_40_HEX_SHA>"
+git checkout $env:FINAL_CANDIDATE_SHA
 
 # Define the actual verified VISA resource; never copy a sample lab IP.
 $env:DPO4000_RESOURCE = "<VERIFIED_VISA_RESOURCE>"
