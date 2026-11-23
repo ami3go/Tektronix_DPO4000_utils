@@ -1,0 +1,33 @@
+name: MCP read-only offline contracts
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mcp-offline:
+    name: MCP offline / ${{ matrix.os }} / Python ${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install optional MCP server and test tools
+        run: python -m pip install -e ".[dev,mcp]"
+      - name: Lint MCP server and offline contract tests
+        run: ruff check dpo4000_utils/mcp_server tests/test_mcp_gateway.py tests/test_mcp_protocol.py
+      - name: MCP protocol and gateway contracts (no VISA hardware)
+        run: pytest -q tests/test_mcp_gateway.py tests/test_mcp_protocol.py
+      - name: Installed CLI no-instrument smoke
+        run: dpo4000-mcp --help
