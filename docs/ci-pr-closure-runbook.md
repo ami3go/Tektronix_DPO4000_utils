@@ -254,4 +254,6 @@ A reviewer must post `docs/pr-closure-evidence-template.md` as a final PR commen
 - `docs/automation-logger-hil.md` — automated/logger real bench.
 - `docs/pr-closure-evidence-template.md` — final PR evidence record.
 
+**Agent instruction:** the repository-root `AGENTS.md` requires this policy for automated contributors as well as human-authored PRs.
+
 **Any future CI workflow added or removed must be added/removed here as part of the same PR.** The `tests/test_ci_runbook_inventory.py` contract intentionally fails if the tracked workflow inventory and this runbook diverge.
