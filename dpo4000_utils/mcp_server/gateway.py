@@ -77,6 +77,8 @@ def _validate_request(name: str, params: dict[str, Any]) -> None:
         _require_positive_int(
             params["preview_points"], name="preview_points", maximum=_MAX_PREVIEW_POINTS
         )
+        if params["preview_points"] < 4:
+            raise ValueError("preview_points must be at least 4 for extrema-preserving decimation")
 
 
 def _read_preconfigured(scope: Any, max_points: int, preview_points: int) -> dict[str, Any]:
