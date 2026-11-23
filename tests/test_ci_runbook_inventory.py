@@ -41,3 +41,26 @@ def test_closure_evidence_and_pr_template_have_required_contract_fields():
     assert "docs/ci-pr-closure-runbook.md" in agents
     assert "docs/pr-closure-evidence-template.md" in agents
     assert "file:line" in agents and "HIL" in agents
+
+
+def test_physical_hil_runbooks_are_linked_and_marked_unexecuted():
+    """Never allow an undocumented HIL category or a fake template PASS."""
+    runbook = RUNBOOK.read_text(encoding="utf-8")
+    required = (
+        ("physical-hil.md", "physical-hil-evidence-template.md"),
+        ("soak-24h.md", "soak-evidence-template.md"),
+        ("usb-tcpip-performance.md", "usb-tcpip-performance-evidence-template.md"),
+    )
+    for procedure, evidence in required:
+        for filename in (procedure, evidence):
+            path = ROOT / "docs" / "hil-runbooks" / filename
+            assert path.exists(), f"Missing documented HIL asset: {path}"
+            assert filename in runbook
+            assert path.read_text(encoding="utf-8").strip()
+        record = (ROOT / "docs" / "hil-runbooks" / evidence).read_text(encoding="utf-8")
+        assert "NOT_RUN" in record
+        assert "BLOCKED" in record
+    for path in (ROOT / "docs" / "hil-runbooks").glob("*.md"):
+        assert "NOT EXECUTED" in path.read_text(encoding="utf-8") or (
+            "NOT RUN" in path.read_text(encoding="utf-8")
+        )

@@ -119,6 +119,18 @@ gh run download "$RUN_ID" --repo ami3go/Tektronix_DPO4000_utils --dir ci-evidenc
 
 GitHub run records can be for the synthetic PR merge revision: record both PR head and actual checkout SHA. Record every applicable job, including queued/failed/skipped status; **do not count a previous successful workflow run from an older commit**. Verify that the downloaded artifact corresponds to the recorded run ID and compare file SHA-256 as appropriate. A green `gh pr checks` alone does not satisfy an untriggered required feature-specific or HIL gate.
 
+## Complete physical-qualification runbooks (template status only)
+
+Use the dedicated operator-facing procedures below, not abbreviated PR comments.
+Every linked evidence record is deliberately marked **NOT_RUN / BLOCKED** until
+real authorized observations are attached; none constitutes an instrument test.
+
+| Gate | Copy-ready procedure | Blank evidence record |
+|---|---|---|
+| Physical DPO4054 API HIL: strict query-only / reversible / disruptive | [HIL-01](hil-runbooks/physical-hil.md) | [Physical HIL record](hil-runbooks/physical-hil-evidence-template.md) |
+| Uninterrupted 24h/72h DPO4054 read-only soak | [HIL-02](hil-runbooks/soak-24h.md) | [Soak record](hil-runbooks/soak-evidence-template.md) |
+| Real USB and TCPIP R0 functional/timing/throughput comparison | [HIL-03](hil-runbooks/usb-tcpip-performance.md) | [USB/TCPIP record](hil-runbooks/usb-tcpip-performance-evidence-template.md) |
+
 ## 6. Physical HIL gate selection and exact results
 
 **Only after** a bench owner authorizes the operation, reserves the physical scope, verifies precise VISA resource, DPO4054 model + serial + firmware, installed options, probe wiring, VISA runtime, tested commit and no competing Desk/MCP client. Store operator approval in the closure record; never put secrets/PINs into public logs. Workflow UI: repository **Actions → select workflow → Run workflow**, select the exact authorized branch and validate its SHA. The self-hosted runner must have labels `self-hosted` and `dpo4000`.
