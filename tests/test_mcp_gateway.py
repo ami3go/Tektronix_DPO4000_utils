@@ -199,3 +199,95 @@ def test_cancellation_does_not_release_physical_busy_lease():
     finally:
         scope.unblock.set()
         gateway.close()
+
+
+class PreconfiguredVisa:
+    """Fake preconfigured SCPI target; any setup write is an immediate test failure."""
+
+    def __init__(self):
+        self.sent = []
+        self.points = 3
+        self.samples = [10, 20, 30]
+
+    def query(self, command):
+        self.sent.append(command)
+        responses = {
+            "DATA:SOURCE?": "CH1",
+            "DATA:START?": "1",
+            "DATA:STOP?": "100000",
+            "WFMOUTPRE?": "",
+            "WFMOUTPRE:BYT_NR?": "2",
+            "WFMOUTPRE:ENCDG?": "BIN",
+            "WFMOUTPRE:BN_FMT?": "RI",
+            "WFMOUTPRE:BYT_OR?": "MSB",
+            "WFMOUTPRE:NR_PT?": str(self.points),
+            "WFMOUTPRE:PT_FMT?": "Y",
+            "WFMOUTPRE:XUNIT?": "s",
+            "WFMOUTPRE:XINCR?": "0.001",
+            "WFMOUTPRE:XZERO?": "0",
+            "WFMOUTPRE:PT_OFF?": "0",
+            "WFMOUTPRE:YUNIT?": "V",
+            "WFMOUTPRE:YMULT?": "0.1",
+            "WFMOUTPRE:YOFF?": "0",
+            "WFMOUTPRE:YZERO?": "0",
+            "CH1:LABEL?": "Probe Comp",
+        }
+        return responses[command]
+
+    def query_binary_values(self, command, **kwargs):
+        self.sent.append(command)
+        return kwargs["container"](self.samples)
+
+    def write(self, command):
+        raise AssertionError(f"Forbidden configuration write: {command}")
+
+
+class PreconfiguredScope(FakeScope):
+    def __init__(self):
+        super().__init__()
+        self.visa = PreconfiguredVisa()
+
+    def ensure_connected(self):
+        return self.visa
+
+
+def test_preconfigured_capture_reuses_query_only_driver_path():
+    scope = PreconfiguredScope()
+    gateway = ReadOnlyGateway(
+        "USB::FAKE::INSTR",
+        allow_instrument_io=True,
+        session_factory=make_factory(scope, []),
+    )
+    try:
+        result = asyncio.run(
+            gateway.execute("capture_preconfigured", max_points=3, preview_points=4)
+        )
+        assert result["source"] == "CH1"
+        assert result["sample_count"] == 3
+        assert result["voltage_min_v"] == pytest.approx(1.0)
+        assert result["voltage_max_v"] == pytest.approx(3.0)
+        assert len(result["preview"]) == 3
+        assert result["continuous_adc_stream"] is False
+        assert "CURVE?" in scope.visa.sent
+        assert all(command.endswith("?") for command in scope.visa.sent)
+    finally:
+        gateway.close()
+
+
+def test_oversized_preconfigured_capture_never_truncates_or_reads_curve():
+    scope = PreconfiguredScope()
+    scope.visa.points = 1001
+    gateway = ReadOnlyGateway(
+        "USB::FAKE::INSTR",
+        allow_instrument_io=True,
+        session_factory=make_factory(scope, []),
+    )
+    try:
+        with pytest.raises(Exception, match="ceiling"):
+            asyncio.run(
+                gateway.execute("capture_preconfigured", max_points=1000, preview_points=64)
+            )
+        assert "CURVE?" not in scope.visa.sent
+        assert all(command.endswith("?") for command in scope.visa.sent)
+    finally:
+        gateway.close()
